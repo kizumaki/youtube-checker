@@ -385,7 +385,7 @@ def run_single_channel_audit(pure_handle):
     return excel_bytes, out_fname
 
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
-def render_shared_cart_ui():
+def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
     st.subheader(f"🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)")
@@ -393,14 +393,14 @@ def render_shared_cart_ui():
         df_cart = pd.DataFrame(list(cart_items.values()))
         st.dataframe(df_cart, use_container_width=True, column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem 🔗")})
         c1, c2, c3, c4 = st.columns(4)
-        c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True)
+        c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True, key=f"dl_txt_cart_{key_suffix}")
         buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
-        c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang_dung_chung.xlsx", use_container_width=True)
-        if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True):
+        c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang_dung_chung.xlsx", use_container_width=True, key=f"dl_xl_cart_{key_suffix}")
+        if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
             data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": "Cart Import"} for i in cart_items.values()]
             supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
             st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
-        if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True): 
+        if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
             st.session_state['cart'] = {}
             st.rerun()
     else:
@@ -508,8 +508,8 @@ with tab1:
             if existing_handles:
                 st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
 
-    # Render Shared Cart UI in Tab 1
-    render_shared_cart_ui()
+    # Render Shared Cart UI in Tab 1 (Using unique suffix)
+    render_shared_cart_ui(key_suffix="tab1")
 
 # --- TAB 2: LIVE API SCRAPER ---
 with tab2:
@@ -713,13 +713,13 @@ with tab3:
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.1, 1.6, 0.7, 0.8, 0.8])
-                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Trạng Thái DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.1, 1.6, 0.7, 0.8, 0.8])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc8.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '')); rc8.write(f"❌ {row['Lý do loại']}")
                     
                     p_id = to_pure_id(row['Handle'])
                     if p_id in st.session_state['cart']:
@@ -749,8 +749,8 @@ with tab3:
                             st.session_state['trigger_deep_search_now'] = True
                             st.rerun()
 
-    # Render Shared Cart UI in Tab 3
-    render_shared_cart_ui()
+    # Render Shared Cart UI in Tab 3 (Using unique suffix)
+    render_shared_cart_ui(key_suffix="tab3")
 
 # --- TAB 4, TAB 5, TAB 6 ---
 with tab4:
