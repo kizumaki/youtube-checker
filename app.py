@@ -43,6 +43,22 @@ if 'custom_kw_tab3' not in st.session_state:
 if 'cart' not in st.session_state:
     st.session_state['cart'] = {}
 
+# --- GLOBAL SIDEBAR FOR API KEYS ---
+if 'global_api_keys' not in st.session_state:
+    st.session_state['global_api_keys'] = DEFAULT_API_KEY
+
+with st.sidebar:
+    st.header("⚙️ Cấu Hình Hệ Thống")
+    st.markdown("Nhập nhiều **YouTube API Keys** (mỗi key 1 dòng). Hệ thống sẽ dùng chung cho mọi Tab và tự động nhảy Key khi hết Quota.")
+    st.text_area("Danh sách API Keys:", key='global_api_keys', height=250)
+    st.caption("💡 Mẹo: Nhập ở thanh bên này sẽ không bao giờ bị mất dữ liệu khi bạn chuyển Tab hay bấm tìm kiếm!")
+
+def set_api_keys(key_string):
+    keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
+    st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
+
+set_api_keys(st.session_state['global_api_keys'])
+
 # Connect to Supabase
 @st.cache_resource
 def init_supabase():
@@ -53,10 +69,6 @@ def init_supabase():
 supabase = init_supabase()
 
 # --- API QUOTA ROTATION MANAGER ---
-def set_api_keys(key_string):
-    keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
-    st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
-
 def yt_execute(request_func):
     keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     if not keys: keys = [DEFAULT_API_KEY]
@@ -258,6 +270,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     total_views = sum(v['Views'] for v in video_data)
     total_minutes = round(sum(v['Seconds'] for v in video_data) / 60)
 
+    # TAB 1: MAIN DATA SHEET
     ws.merge_cells('A1:E1')
     ws['A1'] = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {date_str}"
     ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
@@ -310,6 +323,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
     ws.column_dimensions['A'].width = 55; ws.column_dimensions['B'].width = 45; ws.column_dimensions['C'].width = 22; ws.column_dimensions['D'].width = 15; ws.column_dimensions['E'].width = 15
 
+    # TAB 2: DASHBOARD
     ws_charts = wb.create_sheet(title="Top 10 Video Title")
     top_10_videos = sorted(video_data, key=lambda x: x['Views'], reverse=True)[:10]
 
@@ -417,11 +431,7 @@ with tab1:
 # --- TAB 2: LIVE API SCRAPER ---
 with tab2:
     st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14")
-    col_input1, col_input2 = st.columns([2, 1])
-    with col_input1: channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
-    with col_input2:
-        api_keys_tab2 = st.text_area("YouTube Data API Keys (Nhiều key cách nhau bằng phẩy hoặc xuống dòng):", value=DEFAULT_API_KEY, height=68)
-        set_api_keys(api_keys_tab2)
+    channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
 
     if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14"):
         pure_h = to_pure_id(channel_url_input)
@@ -442,13 +452,12 @@ with tab3:
         st.success(st.session_state['audit_success_msg'])
         del st.session_state['audit_success_msg']
 
-    # --- STEP 2 OF DEEP SEARCH: Catch the trigger after rerun ---
     trigger_auto_start_search = False
     if st.session_state.get('trigger_deep_search_now', False):
         st.session_state['trigger_deep_search_now'] = False
         trigger_auto_start_search = True
 
-    col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+    col_f1, col_f2 = st.columns([2, 1])
     with col_f1:
         seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @NickDiGiovanni):", key="seed_input_tab3")
         
@@ -468,11 +477,8 @@ with tab3:
     with col_f2:
         min_subs_choice = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
         min_duration_choice = st.selectbox("Lọc Loại Bỏ Kênh Shorts:", options=[60, 180, 300, 600], index=0, format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Có Video > 10 phút")
-    with col_f3:
-        api_keys_tab3 = st.text_area("YouTube API Keys (Nhập nhiều key để chống hết Quota):", value=DEFAULT_API_KEY, height=68, key="api_keys_tab3_area")
-        set_api_keys(api_keys_tab3)
 
-    start_btn = st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách")
+    start_btn = st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách", type="primary")
 
     if (start_btn or trigger_auto_start_search) and seed_channel_input:
         pure_seed = to_pure_id(seed_channel_input)
@@ -568,7 +574,6 @@ with tab3:
         except Exception as e:
             st.error(f"Lỗi: {e}")
 
-    # Display Tables with Inline Cart, Audit & Safe Auto-Search
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
@@ -578,12 +583,10 @@ with tab3:
         # --- TAB PASSED ---
         with tab_pass:
             if passed_list:
-                col_btn1, col_btn2 = st.columns([1, 3])
-                with col_btn1:
-                    if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
-                        for row in passed_list:
-                            if "✅" in row["Trạng Thái DB"]: st.session_state['cart'][to_pure_id(row["Handle"])] = row
-                        st.rerun()
+                if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
+                    for row in passed_list:
+                        if "✅" in row["Trạng Thái DB"]: st.session_state['cart'][to_pure_id(row["Handle"])] = row
+                    st.rerun()
                 st.divider()
                 
                 h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns([1.2, 1.8, 0.8, 0.7, 1.1, 1.1, 1.2, 0.8, 1.0, 1.0])
@@ -613,7 +616,6 @@ with tab3:
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                     
-                    # --- STEP 1 OF DEEP SEARCH: Save pure handle to pending state and extract new kw ---
                     if c10.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary"):
                         cid_deep = get_channel_id_by_handle(p_id)
                         if cid_deep:
@@ -628,25 +630,25 @@ with tab3:
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
-                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Trạng Thái DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10 = st.columns([1.2, 1.6, 0.8, 0.7, 1.0, 1.0, 1.6, 0.8, 1.0, 1.0])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Lý Do**"); rh8.markdown("**🛒 Giỏ**"); rh9.markdown("**📄 Audit**"); rh10.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '')); rc8.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10 = st.columns([1.2, 1.6, 0.8, 0.7, 1.0, 1.0, 1.6, 0.8, 1.0, 1.0])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(f"❌ {row['Lý do loại']}")
                     
                     p_id = to_pure_id(row['Handle'])
                     if p_id in st.session_state['cart']:
-                        if rc9.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
+                        if rc8.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if rc9.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
+                        if rc8.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
 
                     audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
-                        rc10.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
+                        rc9.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
                     else:
-                        if rc10.button("📄 Tạo", key=f"btn_r_{p_id}"):
+                        if rc9.button("📄 Tạo", key=f"btn_r_{p_id}"):
                             with st.spinner(f"Đang dựng Audit..."):
                                 b_data, f_name = run_single_channel_audit(p_id)
                                 if b_data:
@@ -655,7 +657,7 @@ with tab3:
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
 
-                    if rc11.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
+                    if rc10.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
                         cid_deep = get_channel_id_by_handle(p_id)
                         if cid_deep:
                             ext_deep = extract_channel_master_keywords(cid_deep)
@@ -722,13 +724,7 @@ with tab5:
 
 with tab6:
     st.subheader("✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
-    col_k1, col_f2 = st.columns([2, 1])
-    with col_k1:
-        inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi:", value="@NickDiGiovanni")
-    with col_f2:
-        api_keys_tab6 = st.text_area("YouTube API Keys:", value=DEFAULT_API_KEY, height=68, key="api_keys_tab6_area")
-        set_api_keys(api_keys_tab6)
-
+    inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi:", value="@NickDiGiovanni")
     if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay"):
         pure_inspect = to_pure_id(inspect_handle_input)
         if pure_inspect:
