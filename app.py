@@ -41,6 +41,48 @@ def to_pure_id(raw_val):
     s = re.sub(r'^@+', '', s).strip().lower()
     return s if s else None
 
+def extract_handles_from_text(text_block):
+    """Extracts pure handle IDs from multi-line or comma-separated text."""
+    if not text_block:
+        return []
+    lines = re.split(r'[\n,\t\r]+', str(text_block))
+    handles = []
+    for line in lines:
+        p = to_pure_id(line)
+        if p and p not in handles:
+            handles.append(p)
+    return handles
+
+def extract_handles_from_file(uploaded_file):
+    """Extracts handles from uploaded TXT, CSV, or XLSX files."""
+    handles = []
+    fname = uploaded_file.name.lower()
+    
+    try:
+        if fname.endswith('.txt'):
+            content = uploaded_file.read().decode("utf-8", errors="ignore")
+            handles = extract_handles_from_text(content)
+            
+        elif fname.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+            for col in df.columns:
+                for val in df[col].dropna():
+                    p = to_pure_id(val)
+                    if p and p not in handles:
+                        handles.append(p)
+                        
+        elif fname.endswith('.xlsx') or fname.endswith('.xls'):
+            df = pd.read_excel(uploaded_file)
+            for col in df.columns:
+                for val in df[col].dropna():
+                    p = to_pure_id(val)
+                    if p and p not in handles:
+                        handles.append(p)
+    except Exception as e:
+        st.error(f"Lỗi đọc file: {e}")
+        
+    return handles
+
 def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
     base_no_ext = os.path.splitext(base)[0]
@@ -153,7 +195,6 @@ def get_video_details(youtube, video_ids, progress_bar=None):
     return video_data
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
-    """Generates exact V4.14 Excel report matching 4WD247_28-07-2026.xlsx format."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = clean_handle[:31]
@@ -164,9 +205,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     total_views = sum(v['Views'] for v in video_data)
     total_minutes = round(sum(v['Seconds'] for v in video_data) / 60)
 
-    # ---------------------------------------------------------
     # TAB 1: MAIN DATA SHEET
-    # ---------------------------------------------------------
     ws.merge_cells('A1:E1')
     ws['A1'] = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {date_str}"
     ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
@@ -189,7 +228,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     for row in range(2, 8):
         ws[f'A{row}'].font = Font(bold=True)
 
-    # Inject avatar image if available
     if avatar_url:
         try:
             res = requests.get(avatar_url, timeout=5)
@@ -213,28 +251,23 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
     for idx, v in enumerate(video_data):
         r = idx + 13
-        # Col A: Video Title (Chữ thuần - Plain Text, không gán Hyperlink)
         cA = ws.cell(row=r, column=1, value=v['Title'])
         cA.font = Font(name="Calibri", size=11)
         cA.alignment = Alignment(horizontal="left", vertical="center")
 
-        # Col B: Link (Giữ nguyên Hyperlink dẫn đến Video)
         cB = ws.cell(row=r, column=2, value=v['Link'])
         if v.get('Link'):
             cB.hyperlink = v['Link']
             cB.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
         cB.alignment = Alignment(horizontal="left", vertical="center")
 
-        # Col C: Length
         ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center", vertical="center")
         
-        # Col D: Views
         cD = ws.cell(row=r, column=4, value=v['Views'])
         cD.font = Font(name="Calibri", size=11)
         cD.number_format = '#,##0'
         cD.alignment = Alignment(horizontal="right", vertical="center")
 
-        # Col E: Published Date
         ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center", vertical="center")
 
     ws.column_dimensions['A'].width = 55
@@ -243,9 +276,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     ws.column_dimensions['D'].width = 15
     ws.column_dimensions['E'].width = 15
 
-    # ---------------------------------------------------------
     # TAB 2: "Top 10 Video Title" DASHBOARD
-    # ---------------------------------------------------------
     ws_charts = wb.create_sheet(title="Top 10 Video Title")
 
     top_10_videos = sorted(video_data, key=lambda x: x['Views'], reverse=True)[:10]
@@ -332,26 +363,143 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
 # --- APP UI HEADER ---
 st.title("📺 YouTube Channel Master Database")
-st.caption("Hệ thống quản lý, tra cứu, cào kênh live & xuất báo cáo Audit chuẩn 24/7")
+st.caption("Hệ thống quản lý, tra cứu hàng loạt, cào kênh live & xuất báo cáo Audit chuẩn 24/7")
 
 # Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["🔍 Tra cứu Handle", "⚡ Cào Live & Tạo Báo Cáo Audit", "📤 Upload Cập nhật Data", "📊 Xem Database"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Tra cứu Handle Hàng Loạt", "⚡ Cào Live & Tạo Báo Cáo Audit", "📤 Upload Cập nhật Data", "📊 Xem Database"])
 
-# --- TAB 1: SEARCH ---
+# --- TAB 1: BATCH SEARCH ---
 with tab1:
-    st.subheader("Kiểm tra Kênh đã có trong Database chưa")
-    search_input = st.text_input("Nhập Handle hoặc Tên kênh cần tra cứu (ví dụ: @MrBeast, PewDiePie):")
+    st.subheader("🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt")
+    st.markdown("Dán danh sách Handle/Link hoặc upload file để đối chiếu nhanh với Database Cloud.")
     
-    if search_input:
-        pure_search = to_pure_id(search_input)
-        if pure_search:
-            response = supabase.table("channels").select("*").ilike("handle", pure_search).execute()
-            
-            if response.data:
-                st.error(f"❌ **KÊNH ĐÃ TỒN TẠI!** Handle `@ {pure_search}` đã có trong Database.")
-                st.json(response.data)
-            else:
-                st.success(f"✅ **KÊNH HOÀN TOÀN MỚI!** Handle `@ {pure_search}` CHƯA CÓ trong Database.")
+    col_s1, col_s2 = st.columns([2, 1])
+    
+    with col_s1:
+        text_input_area = st.text_area(
+            "Cách 1: Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):",
+            placeholder="@MrBeast\n@PewDiePie\nhttps://www.youtube.com/@aCookieGod\n@123GO_",
+            height=180
+        )
+        
+    with col_s2:
+        file_input_check = st.file_uploader(
+            "Cách 2: Hoặc Upload file danh sách (.txt, .csv, .xlsx):",
+            type=["txt", "csv", "xlsx", "xls"]
+        )
+        
+    if st.button("🔎 Bắt Đầu Kiểm Tra Hàng Loạt", type="primary"):
+        # Combine handles from both inputs
+        all_target_handles = set()
+        
+        if text_input_area:
+            for h in extract_handles_from_text(text_input_area):
+                all_target_handles.add(h)
+                
+        if file_input_check:
+            for h in extract_handles_from_file(file_input_check):
+                all_target_handles.add(h)
+                
+        target_list = list(all_target_handles)
+        
+        if not target_list:
+            st.warning("⚠️ Vui lòng dán danh sách Handle hoặc chọn file để kiểm tra!")
+        else:
+            with st.spinner(f"Đang đối chiếu {len(target_list)} Handle với Database Supabase..."):
+                # Supabase BATCH query using in_ operator
+                response = supabase.table("channels").select("handle, youtuber_name, source").in_("handle", target_list).execute()
+                
+                db_matches = {item["handle"].lower(): item for item in response.data} if response.data else {}
+                
+                # Categorize
+                new_handles = []
+                existing_handles = []
+                report_data = []
+                
+                for h in target_list:
+                    if h in db_matches:
+                        matched_item = db_matches[h]
+                        existing_handles.append({
+                            "Handle": f"@{h}",
+                            "Tên / Ghi chú": matched_item.get("youtuber_name", "N/A"),
+                            "Nguồn Dữ Liệu": matched_item.get("source", "N/A"),
+                            "Trạng thái": "❌ Đã có trong DB"
+                        })
+                        report_data.append({
+                            "Handle": f"@{h}",
+                            "Trạng Thái": "❌ Đã có",
+                            "Tên/Nguồn": matched_item.get("youtuber_name", "N/A")
+                        })
+                    else:
+                        new_handles.append({
+                            "Handle": f"@{h}",
+                            "Trạng thái": "✅ Kênh Mới (Chưa làm)"
+                        })
+                        report_data.append({
+                            "Handle": f"@{h}",
+                            "Trạng Thái": "✅ Mới",
+                            "Tên/Nguồn": "Sẵn sàng cào dữ liệu"
+                        })
+
+                # Display Metrics
+                st.divider()
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Tổng số kênh kiểm tra", f"{len(target_list)} kênh")
+                m2.metric("❌ Kênh Đã Tồn Tại", f"{len(existing_handles)} kênh")
+                m3.metric("✅ Kênh Mới Có Thể Làm", f"{len(new_handles)} kênh")
+                
+                # Results Tabs
+                res_tab1, res_tab2 = st.tabs([f"✅ Kênh Mới Chưa Làm ({len(new_handles)})", f"❌ Kênh Đã Tồn Tại ({len(existing_handles)})"])
+                
+                with res_tab1:
+                    if new_handles:
+                        df_new = pd.DataFrame(new_handles)
+                        st.dataframe(df_new, use_container_width=True)
+                        
+                        # Prepare plain text list for download
+                        txt_content = "\n".join([item["Handle"] for item in new_handles])
+                        
+                        col_dl1, col_dl2 = st.columns(2)
+                        with col_dl1:
+                            st.download_button(
+                                label="📥 Tải Danh Sách Kênh Mới (.txt)",
+                                data=txt_content,
+                                file_name=f"danh_sach_kenh_moi_{datetime.date.today().strftime('%d-%m-%Y')}.txt",
+                                mime="text/plain"
+                            )
+                        with col_dl2:
+                            # Excel format download
+                            buf_new = io.BytesIO()
+                            df_new.to_excel(buf_new, index=False)
+                            st.download_button(
+                                label="📥 Tải Danh Sách Kênh Mới (.xlsx)",
+                                data=buf_new.getvalue(),
+                                file_name=f"danh_sach_kenh_moi_{datetime.date.today().strftime('%d-%m-%Y')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                    else:
+                        st.info("Tất cả các kênh trong danh sách của bạn đều **đã tồn tại** trong Database!")
+
+                with res_tab2:
+                    if existing_handles:
+                        df_exist = pd.DataFrame(existing_handles)
+                        st.dataframe(df_exist, use_container_width=True)
+                    else:
+                        st.success("🎉 Tuyệt vời! Không có kênh nào trùng lặp trong danh sách này!")
+                        
+                # Overall report download
+                st.divider()
+                df_report = pd.DataFrame(report_data)
+                buf_rep = io.BytesIO()
+                df_report.to_excel(buf_rep, index=False)
+                
+                st.download_button(
+                    label="📊 Tải Báo Cáo Kiểm Tra Tổng Hợp (.xlsx)",
+                    data=buf_rep.getvalue(),
+                    file_name=f"bao_cao_kiem_tra_trung_lap_{datetime.date.today().strftime('%d-%m-%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
 # --- TAB 2: LIVE API SCRAPER & V4.14 AUDIT REPORT ---
 with tab2:
