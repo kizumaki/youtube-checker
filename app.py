@@ -6,6 +6,7 @@ from openpyxl.drawing.image import Image as ExcelImage
 from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.series import DataPoint
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 import isodate
 import pycountry
 import requests
@@ -22,7 +23,7 @@ from supabase import create_client, Client
 st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
 
 # Global Default API Key
-DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyBrTtmMp-txQ7ID15wrJZUpN-i53SRVzgk")
+DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
 
 # Safe State Lifecycle Management
 if 'pending_keywords' in st.session_state:
@@ -32,8 +33,11 @@ if 'pending_keywords' in st.session_state:
 if 'custom_kw_tab3' not in st.session_state:
     st.session_state['custom_kw_tab3'] = ""
 
+if 'seed_input_tab3' not in st.session_state:
+    st.session_state['seed_input_tab3'] = "@NickDiGiovanni"
+
 if 'cart' not in st.session_state:
-    st.session_state['cart'] = {}  # Format: {pure_handle: dict_info}
+    st.session_state['cart'] = {}
 
 # Connect to Supabase
 @st.cache_resource
@@ -43,6 +47,31 @@ def init_supabase():
     return create_client(url, key)
 
 supabase = init_supabase()
+
+# --- API QUOTA ROTATION MANAGER ---
+def set_api_keys(key_string):
+    keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
+    st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
+
+def yt_execute(request_func):
+    """Tự động đổi API Key khi gặp lỗi hết Quota (403)"""
+    keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+    if not keys: keys = [DEFAULT_API_KEY]
+    idx = st.session_state.get('api_key_idx', 0)
+    
+    for attempt in range(len(keys)):
+        key = keys[idx]
+        try:
+            yt = build("youtube", "v3", developerKey=key)
+            req = request_func(yt)
+            return req.execute()
+        except HttpError as e:
+            if e.resp.status in [403, 400]: # Lỗi Quota hoặc Key chết
+                idx = (idx + 1) % len(keys)
+                st.session_state['api_key_idx'] = idx
+            else:
+                raise e
+    raise Exception("❌ Toàn bộ API Keys bạn nhập đã bị chết hoặc cạn sạch Quota!")
 
 # --- HELPER FUNCTIONS ---
 def to_pure_id(raw_val):
@@ -57,8 +86,7 @@ def to_pure_id(raw_val):
     return s if s else None
 
 def extract_handles_from_text(text_block):
-    if not text_block:
-        return []
+    if not text_block: return []
     lines = re.split(r'[\n,\t\r]+', str(text_block))
     handles = []
     for line in lines:
@@ -79,15 +107,13 @@ def extract_handles_from_file(uploaded_file):
             for col in df.columns:
                 for val in df[col].dropna():
                     p = to_pure_id(val)
-                    if p and p not in handles:
-                        handles.append(p)
+                    if p and p not in handles: handles.append(p)
         elif fname.endswith('.xlsx') or fname.endswith('.xls'):
             df = pd.read_excel(uploaded_file)
             for col in df.columns:
                 for val in df[col].dropna():
                     p = to_pure_id(val)
-                    if p and p not in handles:
-                        handles.append(p)
+                    if p and p not in handles: handles.append(p)
     except Exception as e:
         st.error(f"Lỗi đọc file: {e}")
     return handles
@@ -102,8 +128,7 @@ def extract_handle_from_filename(filename):
     return pure_id if pure_id else None
 
 def is_within_last_90_days(date_str):
-    if not date_str or date_str == "N/A":
-        return False
+    if not date_str or date_str == "N/A": return False
     s = str(date_str).strip().lower()
     today = datetime.date.today()
     m_iso = re.match(r'^(\d{4})-(\d{2})-(\d{2})', s)
@@ -117,40 +142,16 @@ def is_within_last_90_days(date_str):
 
 # --- STRICT FILTERS CONFIGURATION ---
 EXCLUDED_COUNTRIES = {'CN', 'TW', 'HK', 'TH', 'IN', 'VN'}
-
-EXCLUDED_TEXT_REGEX = re.compile(
-    r'[\u0E00-\u0E7F]|'  # Thai
-    r'[\u4E00-\u9FFF]|'  # Chinese
-    r'[\u0900-\u097F]|'  # Hindi
-    r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', # Vietnamese
-    re.IGNORECASE
-)
-
-EXCLUDED_KEYWORDS = [
-    'official mv', 'music video', 'official audio', 'album', 'song', 'records', 'lyrics', 'remix', 'vocal', 'cover',
-    'news', 'politics', 'lgbt', 'lgbtq', 'gay', 'lesbian', 'transgender', 'war', 'military', 'ukraine', 'russia', 
-    'tin tức', 'chính trị', 'thời sự', 'chiến tranh', 'đảng', 'quân sự'
-]
-
-STOP_WORDS = {
-    'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'it', 'this', 'that',
-    'ep', 'episode', 'part', 'video', 'shorts', 'full', 'hd', '2024', '2025', '2026', 'official', 'channel', 'vs',
-    'dude', 'perfect', 'nick', 'digiovanni', 'mrbeast', 'pewdiepie'
-}
+EXCLUDED_TEXT_REGEX = re.compile(r'[\u0E00-\u0E7F]|[\u4E00-\u9FFF]|[\u0900-\u097F]|[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', re.IGNORECASE)
+EXCLUDED_KEYWORDS = ['official mv', 'music video', 'official audio', 'album', 'song', 'records', 'lyrics', 'remix', 'vocal', 'cover', 'news', 'politics', 'lgbt', 'lgbtq', 'gay', 'lesbian', 'transgender', 'war', 'military', 'ukraine', 'russia', 'tin tức', 'chính trị', 'thời sự', 'chiến tranh', 'đảng', 'quân sự']
+STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'it', 'this', 'that', 'ep', 'episode', 'part', 'video', 'shorts', 'full', 'hd', '2024', '2025', '2026', 'official', 'channel', 'vs', 'dude', 'perfect', 'nick', 'digiovanni', 'mrbeast', 'pewdiepie'}
 
 def passes_layer1_metadata_filter(title, desc, country_code):
-    if country_code in EXCLUDED_COUNTRIES:
-        return False, f"Quốc gia bị loại ({country_code})"
-        
+    if country_code in EXCLUDED_COUNTRIES: return False, f"Quốc gia bị loại ({country_code})"
     combined_text = f"{title} {desc}".lower()
-    
-    if EXCLUDED_TEXT_REGEX.search(combined_text):
-        return False, "Ngôn ngữ không phù hợp (Trung, Thái, Hindi, Việt)"
-        
+    if EXCLUDED_TEXT_REGEX.search(combined_text): return False, "Ngôn ngữ không phù hợp (Trung, Thái, Hindi, Việt)"
     for kw in EXCLUDED_KEYWORDS:
-        if kw in combined_text:
-            return False, f"Chứa từ khóa bị cấm: '{kw}'"
-            
+        if kw in combined_text: return False, f"Chứa từ khóa bị cấm: '{kw}'"
     return True, "OK"
 
 def clean_and_extract_keywords(text, seed_handle=""):
@@ -159,35 +160,25 @@ def clean_and_extract_keywords(text, seed_handle=""):
     filtered = [w for w in words if w not in STOP_WORDS and w not in seed_clean]
     return filtered
 
-# --- YOUTUBE DATA API ENGINE ---
-def get_channel_id_by_handle(youtube, handle):
+# --- YOUTUBE API OPERATIONS ---
+def get_channel_id_by_handle(handle):
     clean = handle.replace('@', '').split('/')[-1].strip()
     try:
-        request = youtube.channels().list(part="id", forHandle=clean)
-        response = request.execute()
-        if 'items' in response and len(response['items']) > 0:
-            return response['items'][0]['id']
-    except Exception:
-        pass
-    request = youtube.search().list(part="snippet", q=clean, type="channel", maxResults=1)
-    response = request.execute()
-    if 'items' in response and len(response['items']) > 0:
-        return response['items'][0]['snippet']['channelId']
+        res = yt_execute(lambda yt: yt.channels().list(part="id", forHandle=clean))
+        if 'items' in res and len(res['items']) > 0: return res['items'][0]['id']
+    except Exception: pass
+    try:
+        res = yt_execute(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1))
+        if 'items' in res and len(res['items']) > 0: return res['items'][0]['snippet']['channelId']
+    except Exception: pass
     return None
 
-def extract_channel_master_keywords(youtube, channel_id):
-    keywords_pool = []
-    channel_keywords = []
-    top_tags = []
-    categories = []
-    
+def extract_channel_master_keywords(channel_id):
+    keywords_pool, channel_keywords, top_tags, categories = [], [], [], []
     try:
-        ch_req = youtube.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id)
-        ch_res = ch_req.execute()
-        
+        ch_res = yt_execute(lambda yt: yt.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id))
         if 'items' in ch_res and len(ch_res['items']) > 0:
             item = ch_res['items'][0]
-            
             raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
             found_kw = re.findall(r'"([^"]+)"|\b([a-zA-Z0-9]{3,})\b', raw_kw)
             for k1, k2 in found_kw:
@@ -197,102 +188,65 @@ def extract_channel_master_keywords(youtube, channel_id):
                     channel_keywords.append(kw.lower())
                     
             topics = item.get('topicDetails', {}).get('topicCategories', [])
-            for t in topics:
-                cat_name = t.split('/')[-1].replace('_', ' ')
-                categories.append(cat_name)
+            for t in topics: categories.append(t.split('/')[-1].replace('_', ' '))
                 
             uploads_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
             if uploads_playlist:
-                v_req = youtube.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15)
-                v_res = v_req.execute()
+                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15))
                 v_ids = [v['snippet']['resourceId']['videoId'] for v in v_res.get('items', [])]
-                
                 if v_ids:
-                    v_detail_req = youtube.videos().list(part="snippet", id=','.join(v_ids))
-                    v_detail_res = v_detail_req.execute()
-                    
+                    v_detail_res = yt_execute(lambda yt: yt.videos().list(part="snippet", id=','.join(v_ids)))
                     for v_item in v_detail_res.get('items', []):
-                        tags = v_item.get('snippet', {}).get('tags', [])
-                        for tag in tags:
+                        for tag in v_item.get('snippet', {}).get('tags', []):
                             if len(tag) > 2 and tag.lower() not in STOP_WORDS:
                                 keywords_pool.append(tag.lower())
                                 top_tags.append(tag.lower())
-    except Exception:
-        pass
+    except Exception: pass
 
     most_common_kws = [word for word, count in Counter(keywords_pool).most_common(15)]
     top_tag_counts = [word for word, count in Counter(top_tags).most_common(10)]
-    
-    return {
-        "master_keywords": most_common_kws,
-        "channel_keywords": list(set(channel_keywords))[:10],
-        "top_tags": top_tag_counts,
-        "categories": categories
-    }
+    return {"master_keywords": most_common_kws, "channel_keywords": list(set(channel_keywords))[:10], "top_tags": top_tag_counts, "categories": categories}
 
-def get_channel_details(youtube, channel_id):
-    request = youtube.channels().list(part="snippet,contentDetails,statistics", id=channel_id)
-    response = request.execute()
-    if 'items' in response and len(response['items']) > 0:
-        item = response['items'][0]
+def get_channel_details(channel_id):
+    res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=channel_id))
+    if 'items' in res and len(res['items']) > 0:
+        item = res['items'][0]
         playlist_id = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
         sub_count = int(item['statistics'].get('subscriberCount', 0))
         description = item['snippet'].get('description', 'No description available.')
-
         joined_date_raw = item['snippet'].get('publishedAt', '')
         joined_date = ""
         if joined_date_raw:
-            try:
-                joined_date = pd.to_datetime(joined_date_raw).strftime("%b %d, %Y")
-            except Exception:
-                joined_date = joined_date_raw[:10]
-
+            try: joined_date = pd.to_datetime(joined_date_raw).strftime("%b %d, %Y")
+            except Exception: joined_date = joined_date_raw[:10]
         country_code = item['snippet'].get('country', 'N/A')
-        country_name = "N/A"
-        if country_code != 'N/A':
-            country_obj = pycountry.countries.get(alpha_2=country_code)
-            country_name = country_obj.name if country_obj else country_code
-
-        thumbnails = item['snippet'].get('thumbnails', {})
-        avatar_url = thumbnails.get('high', {}).get('url', thumbnails.get('medium', {}).get('url', ''))
-
+        country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
+        avatar_url = item['snippet'].get('thumbnails', {}).get('high', {}).get('url', '')
         return playlist_id, sub_count, description, joined_date, country_name, country_code, avatar_url
     return None, 0, "", "", "", "", ""
 
-def get_video_details(youtube, video_ids, progress_bar=None):
+def get_video_details(video_ids, progress_bar=None):
     video_data = []
     total = len(video_ids)
-    if total == 0:
-        return video_data
-        
+    if total == 0: return video_data
     for i in range(0, total, 50):
         try:
-            request = youtube.videos().list(part="snippet,contentDetails,statistics", id=','.join(video_ids[i:i+50]))
-            response = request.execute()
-            for item in response.get('items', []):
+            chunk = video_ids[i:i+50]
+            res = yt_execute(lambda yt: yt.videos().list(part="snippet,contentDetails,statistics", id=','.join(chunk)))
+            for item in res.get('items', []):
                 duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
                 h, rem = divmod(duration_seconds, 3600)
                 m, s = divmod(rem, 60)
-
                 pub_date = item['snippet']['publishedAt']
-                try:
-                    formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
-                except Exception:
-                    formatted_date = pub_date[:10]
-
+                try: formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
+                except Exception: formatted_date = pub_date[:10]
                 video_data.append({
-                    'Title': item['snippet']['title'],
-                    'Link': f"https://youtube.com/watch?v={item['id']}",
-                    'Length (Exact)': f"{h:02d}:{m:02d}:{s:02d}",
-                    'Seconds': duration_seconds,
-                    'Views': int(item['statistics'].get('viewCount', 0)),
-                    'Published Date': formatted_date
+                    'Title': item['snippet']['title'], 'Link': f"https://youtube.com/watch?v={item['id']}",
+                    'Length (Exact)': f"{h:02d}:{m:02d}:{s:02d}", 'Seconds': duration_seconds,
+                    'Views': int(item['statistics'].get('viewCount', 0)), 'Published Date': formatted_date
                 })
-        except Exception:
-            pass
-        if progress_bar and total > 0:
-            progress_bar.progress(min(1.0, (i + 50) / total))
-            
+        except Exception: pass
+        if progress_bar and total > 0: progress_bar.progress(min(1.0, (i + 50) / total))
     return video_data
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
@@ -301,7 +255,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     ws.title = clean_handle[:31]
 
     date_str = datetime.datetime.now().strftime("%d-%m-%Y")
-
     total_videos = len(video_data)
     total_views = sum(v['Views'] for v in video_data)
     total_minutes = round(sum(v['Seconds'] for v in video_data) / 60)
@@ -326,8 +279,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     ws['A10'] = channel_desc
     ws['A10'].alignment = Alignment(vertical="top", wrap_text=True)
 
-    for row in range(2, 8):
-        ws[f'A{row}'].font = Font(bold=True)
+    for row in range(2, 8): ws[f'A{row}'].font = Font(bold=True)
 
     if avatar_url:
         try:
@@ -339,8 +291,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
                 img.save(temp_buf, format="PNG")
                 temp_buf.seek(0)
                 ws.add_image(ExcelImage(temp_buf), 'C10')
-        except Exception:
-            pass
+        except Exception: pass
 
     headers = ["Video Title", "Link", "Length", "Views", "Published Date"]
     for col_num, header in enumerate(headers, 1):
@@ -354,21 +305,10 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
         r = idx + 13
         cA = ws.cell(row=r, column=1, value=v['Title'])
         cA.font = Font(name="Calibri", size=11)
-        cA.alignment = Alignment(horizontal="left", vertical="center")
-
         cB = ws.cell(row=r, column=2, value=v['Link'])
-        if v.get('Link'):
-            cB.hyperlink = v['Link']
-            cB.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
-        cB.alignment = Alignment(horizontal="left", vertical="center")
-
+        if v.get('Link'): cB.hyperlink = v['Link']; cB.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
         ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center", vertical="center")
-        
-        cD = ws.cell(row=r, column=4, value=v['Views'])
-        cD.font = Font(name="Calibri", size=11)
-        cD.number_format = '#,##0'
-        cD.alignment = Alignment(horizontal="right", vertical="center")
-
+        cD = ws.cell(row=r, column=4, value=v['Views']); cD.number_format = '#,##0'
         ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center", vertical="center")
 
     ws.column_dimensions['A'].width = 55
@@ -383,110 +323,56 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
+    ws_charts['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"; ws_charts['A1'].font, ws_charts['A1'].fill = header_font, header_fill
+    ws_charts['B1'] = "Views"; ws_charts['B1'].font, ws_charts['B1'].fill = header_font, header_fill
 
-    ws_charts['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"
-    ws_charts['B1'] = "Views"
-
-    c1 = ws_charts['A1']
-    c2 = ws_charts['B1']
-    c1.font = header_font
-    c2.font = header_font
-    c1.fill = header_fill
-    c2.fill = header_fill
-    c1.alignment = Alignment(horizontal="center", vertical="center")
-    c2.alignment = Alignment(horizontal="center", vertical="center")
-
-    PALETTE = [
-        {"fill": "2F5597", "font": "FFFFFF"}, {"fill": "C00000", "font": "FFFFFF"},
-        {"fill": "70AD47", "font": "FFFFFF"}, {"fill": "7030A0", "font": "FFFFFF"},
-        {"fill": "00C0C0", "font": "FFFFFF"}, {"fill": "E37222", "font": "FFFFFF"},
-        {"fill": "41536B", "font": "FFFFFF"}, {"fill": "A04000", "font": "FFFFFF"},
-        {"fill": "385723", "font": "FFFFFF"}, {"fill": "626262", "font": "FFFFFF"}
-    ]
-
+    PALETTE = [{"fill": "2F5597", "font": "FFFFFF"}, {"fill": "C00000", "font": "FFFFFF"}, {"fill": "70AD47", "font": "FFFFFF"}, {"fill": "7030A0", "font": "FFFFFF"}, {"fill": "00C0C0", "font": "FFFFFF"}, {"fill": "E37222", "font": "FFFFFF"}, {"fill": "41536B", "font": "FFFFFF"}, {"fill": "A04000", "font": "FFFFFF"}, {"fill": "385723", "font": "FFFFFF"}, {"fill": "626262", "font": "FFFFFF"}]
     ws_charts['D1'] = f"📊 Top 10 Most Viewed Videos - {clean_handle}"
     ws_charts['D1'].font = Font(bold=True, size=14, color="1F4E78")
-    ws_charts['D1'].alignment = Alignment(vertical="center")
 
     for row_idx, video in enumerate(top_10_videos, start=2):
         color_idx = (row_idx - 2) % len(PALETTE)
-        current_style = PALETTE[color_idx]
-
-        short_title = video['Title'][:45] + "..." if len(video['Title']) > 45 else video['Title']
-
-        title_cell = ws_charts.cell(row=row_idx, column=1, value=short_title)
-        title_cell.hyperlink = video['Link']
-        title_cell.font = Font(bold=True, color=current_style["font"], underline="single")
-        title_cell.fill = PatternFill(start_color=current_style["fill"], end_color=current_style["fill"], fill_type="solid")
-
-        view_cell = ws_charts.cell(row=row_idx, column=2, value=video['Views'])
-        view_cell.number_format = '#,##0'
-        view_cell.font = Font(bold=True, color=current_style["font"])
-        view_cell.fill = PatternFill(start_color=current_style["fill"], end_color=current_style["fill"], fill_type="solid")
-        view_cell.alignment = Alignment(horizontal="right")
+        style = PALETTE[color_idx]
+        title_cell = ws_charts.cell(row=row_idx, column=1, value=video['Title'][:45] + "...")
+        title_cell.hyperlink = video['Link']; title_cell.font = Font(bold=True, color=style["font"], underline="single"); title_cell.fill = PatternFill("solid", fgColor=style["fill"])
+        view_cell = ws_charts.cell(row=row_idx, column=2, value=video['Views']); view_cell.number_format = '#,##0'
+        view_cell.font, view_cell.fill = Font(bold=True, color=style["font"]), PatternFill("solid", fgColor=style["fill"])
 
     ws_charts.column_dimensions['A'].width = 50
     ws_charts.column_dimensions['B'].width = 15
 
     if len(top_10_videos) > 0:
-        chart = BarChart()
-        chart.type = "col"
-        chart.title = None
-        chart.y_axis.title = 'Total Views'
-        chart.x_axis.title = 'Videos'
-
-        data_ref = Reference(ws_charts, min_col=2, min_row=1, max_col=2, max_row=len(top_10_videos)+1)
-        cats_ref = Reference(ws_charts, min_col=1, min_row=2, max_col=1, max_row=len(top_10_videos)+1)
-
-        chart.add_data(data_ref, titles_from_data=True)
-        chart.set_categories(cats_ref)
+        chart = BarChart(); chart.type = "col"; chart.y_axis.title = 'Total Views'; chart.x_axis.title = 'Videos'
+        chart.add_data(Reference(ws_charts, min_col=2, min_row=1, max_col=2, max_row=len(top_10_videos)+1), titles_from_data=True)
+        chart.set_categories(Reference(ws_charts, min_col=1, min_row=2, max_col=1, max_row=len(top_10_videos)+1))
         chart.legend = None
-
-        series = chart.series[0]
-        for idx in range(len(top_10_videos)):
-            dp = DataPoint(idx=idx)
-            dp.graphicalProperties.solidFill = PALETTE[idx]["fill"]
-            series.dPt.append(dp)
-
-        chart.width = 22
-        chart.height = 14
+        for idx in range(len(top_10_videos)): chart.series[0].dPt.append(DataPoint(idx=idx, graphicalProperties={"solidFill": PALETTE[idx]["fill"]}))
+        chart.width = 22; chart.height = 14
         ws_charts.add_chart(chart, "D3")
 
-    output_buf = io.BytesIO()
-    wb.save(output_buf)
-    return output_buf.getvalue()
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
-def run_single_channel_audit(pure_handle, api_key):
-    yt = build("youtube", "v3", developerKey=api_key)
-    cid = get_channel_id_by_handle(yt, pure_handle)
-    if not cid:
-        return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(yt, cid)
+def run_single_channel_audit(pure_handle):
+    cid = get_channel_id_by_handle(pure_handle)
+    if not cid: return None, None
+    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
     v_ids = []
     next_token = None
     while True:
-        req = yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token)
-        res = req.execute()
-        for v_item in res.get('items', []):
-            v_ids.append(v_item['snippet']['resourceId']['videoId'])
+        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
+        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
         next_token = res.get('nextPageToken')
         if not next_token: break
-    v_data = get_video_details(yt, v_ids)
-    excel_bytes = generate_v414_excel_report(
-        clean_handle=pure_handle,
-        sub_count=sub_count,
-        channel_desc=channel_desc,
-        channel_joined=channel_joined,
-        channel_country=channel_country,
-        avatar_url=avatar_url,
-        video_data=v_data
-    )
+    v_data = get_video_details(v_ids)
+    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
     out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     return excel_bytes, out_fname
 
 # --- APP UI HEADER ---
 st.title("📺 YouTube Channel Master Database")
-st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
+st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách siêu cấp (Chống Quota) & Soi Từ Khóa Kênh 24/7")
 
 # Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -503,13 +389,9 @@ with tab1:
     st.subheader("🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt")
     col_s1, col_s2 = st.columns([2, 1])
     with col_s1:
-        text_input_area = st.text_area(
-            "Cách 1: Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):",
-            placeholder="@MrBeast\n@PewDiePie\nhttps://www.youtube.com/@aCookieGod\n@123GO_",
-            height=180
-        )
+        text_input_area = st.text_area("Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):", height=180)
     with col_s2:
-        file_input_check = st.file_uploader("Cách 2: Hoặc Upload file danh sách (.txt, .csv, .xlsx):", type=["txt", "csv", "xlsx", "xls"])
+        file_input_check = st.file_uploader("Hoặc Upload file danh sách (.txt, .csv, .xlsx):")
         
     if st.button("🔎 Bắt Đầu Kiểm Tra Hàng Loạt", type="primary"):
         all_target_handles = set()
@@ -526,20 +408,12 @@ with tab1:
                 response = supabase.table("channels").select("handle, youtuber_name, source").in_("handle", target_list).execute()
                 db_matches = {item["handle"].lower(): item for item in response.data} if response.data else {}
                 
-                new_handles, existing_handles, report_data = [], [], []
+                new_handles, existing_handles = [], []
                 for h in target_list:
                     if h in db_matches:
-                        matched_item = db_matches[h]
-                        existing_handles.append({
-                            "Handle": f"@{h}",
-                            "Tên / Ghi chú": matched_item.get("youtuber_name", "N/A"),
-                            "Nguồn Dữ Liệu": matched_item.get("source", "N/A"),
-                            "Trạng thái": "❌ Đã có trong DB"
-                        })
-                        report_data.append({"Handle": f"@{h}", "Trạng Thái": "❌ Đã có", "Tên/Nguồn": matched_item.get("youtuber_name", "N/A")})
+                        existing_handles.append({"Handle": f"@{h}", "Tên Kênh": db_matches[h].get("youtuber_name", "N/A"), "Trạng thái": "❌ Đã có trong DB"})
                     else:
                         new_handles.append({"Handle": f"@{h}", "Trạng thái": "✅ Kênh Mới (Chưa làm)"})
-                        report_data.append({"Handle": f"@{h}", "Trạng Thái": "✅ Mới", "Tên/Nguồn": "Sẵn sàng cào dữ liệu"})
 
                 st.divider()
                 m1, m2, m3 = st.columns(3)
@@ -552,277 +426,185 @@ with tab1:
                     if new_handles:
                         df_new = pd.DataFrame(new_handles)
                         st.dataframe(df_new, use_container_width=True)
-                        col_dl1, col_dl2 = st.columns(2)
-                        with col_dl1:
-                            st.download_button("📥 Tải Danh Sách Kênh Mới (.txt)", data="\n".join([item["Handle"] for item in new_handles]), file_name=f"danh_sach_kenh_moi_{datetime.date.today().strftime('%d-%m-%Y')}.txt", mime="text/plain")
-                        with col_dl2:
-                            buf_new = io.BytesIO()
-                            df_new.to_excel(buf_new, index=False)
-                            st.download_button("📥 Tải Danh Sách Kênh Mới (.xlsx)", data=buf_new.getvalue(), file_name=f"danh_sach_kenh_moi_{datetime.date.today().strftime('%d-%m-%Y')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    else:
-                        st.info("Tất cả các kênh trong danh sách của bạn đều đã tồn tại trong Database!")
-
                 with res_tab2:
                     if existing_handles:
                         st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
-                    else:
-                        st.success("🎉 Tuyệt vời! Không có kênh nào trùng lặp!")
 
 # --- TAB 2: LIVE API SCRAPER ---
 with tab2:
     st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14")
     col_input1, col_input2 = st.columns([2, 1])
     with col_input1:
-        channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247", placeholder="https://www.youtube.com/@4wd247 hoặc @4wd247")
+        channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
     with col_input2:
-        api_key_input = st.text_input("YouTube Data API Key:", value=DEFAULT_API_KEY, type="password")
+        api_keys_tab2 = st.text_area("YouTube Data API Keys (Nhiều key cách nhau bằng phẩy hoặc xuống dòng):", value=DEFAULT_API_KEY, height=68)
+        set_api_keys(api_keys_tab2)
 
     if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14"):
         pure_h = to_pure_id(channel_url_input)
-        if not pure_h:
-            st.error("Handle không hợp lệ!")
-        else:
+        if pure_h:
             try:
-                youtube = build("youtube", "v3", developerKey=api_key_input)
-                channel_id = get_channel_id_by_handle(youtube, pure_h)
-                if not channel_id:
-                    st.error("Không tìm thấy Channel ID!")
-                else:
-                    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(youtube, channel_id)
-                    video_ids = []
-                    next_page_token = None
-                    try:
-                        while True:
-                            req = youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_page_token)
-                            res = req.execute()
-                            for item in res['items']:
-                                video_ids.append(item['snippet']['resourceId']['videoId'])
-                            next_page_token = res.get('nextPageToken')
-                            if not next_page_token: break
-                    except Exception:
-                        pass
-                        
-                    prog_bar = st.progress(0.0)
-                    video_data = get_video_details(youtube, video_ids, progress_bar=prog_bar)
-                    
+                b_data, f_name = run_single_channel_audit(pure_h)
+                if b_data:
                     supabase.table("channels").upsert([{"handle": pure_h, "youtuber_name": pure_h.upper(), "source": "YouTube API V4.14"}], on_conflict="handle").execute()
-                    
-                    st.divider()
-                    col_res1, col_res2 = st.columns([1, 2])
-                    latest_date = video_data[0]['Published Date'] if video_data else "N/A"
-                    with col_res1:
-                        if avatar_url: st.image(avatar_url, width=150)
-                    with col_res2:
-                        st.markdown(f"### 🎯 **@{pure_h}**")
-                        st.write(f"• **Số lượng Video:** `{len(video_data):,}` | **Subs:** `{sub_count:,}`")
-                        st.write(f"• **Quốc gia:** `{channel_country}` | **Gần nhất:** `{latest_date}`")
-
-                    excel_v414_bytes = generate_v414_excel_report(pure_h, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data)
-                    date_now_str = datetime.datetime.now().strftime("%d-%m-%Y")
-                    output_file_name = f"{pure_h}_{date_now_str}.xlsx"
-                    st.download_button(f"📥 Tải về File Audit V4.14 ({output_file_name})", data=excel_v414_bytes, file_name=output_file_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    st.success(f"🎉 Đã dựng xong báo cáo Audit!")
+                    st.download_button("📥 Tải về File Audit V4.14", data=b_data, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH SHOPPING CART ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH SHOPPING CART & AUTO CHAIN SEARCH ---
 with tab3:
-    st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Giỏ Hàng Kênh CRM")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Chọn lọc kênh thả vào **Giỏ hàng** để Xuất file (TXT, Excel, CSV) hoặc Nạp trực tiếp Database.")
+    st.subheader("🎯 Săn Kênh Tương Tự & Giỏ Hàng & Tự Động Đào Sâu")
     
     if 'audit_success_msg' in st.session_state:
         st.success(st.session_state['audit_success_msg'])
         del st.session_state['audit_success_msg']
 
+    # Catch the auto-search trigger from the "🎯 Đào Sâu" button
+    trigger_search = False
+    if st.session_state.get('trigger_auto_search', False):
+        st.session_state['trigger_auto_search'] = False
+        pure_s_auto = to_pure_id(st.session_state['seed_input_tab3'])
+        if pure_s_auto:
+            try:
+                cid_auto = get_channel_id_by_handle(pure_s_auto)
+                if cid_auto:
+                    extracted = extract_channel_master_keywords(cid_auto)
+                    st.session_state['custom_kw_tab3'] = ", ".join(extracted['master_keywords'][:6])
+                    trigger_search = True
+            except Exception as e:
+                st.error(f"Lỗi tự động phân tích: {e}")
+
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
-        seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @dudeperfect, @NickDiGiovanni, @4wd247):", value="@NickDiGiovanni", key="seed_input_tab3")
+        seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @NickDiGiovanni):", key="seed_input_tab3")
         
-        if st.button("✨ Tự Động Phân Tích từ Kênh Mồi", help="Bấm để YouTube API tự bóc tách thẻ từ khóa chuẩn nhất từ kênh mồi và điền vào bên dưới"):
+        if st.button("✨ Tự Động Phân Tích từ Kênh Mồi"):
             pure_s_auto = to_pure_id(seed_channel_input)
             if pure_s_auto:
                 try:
-                    yt_auto = build("youtube", "v3", developerKey=DEFAULT_API_KEY)
-                    cid_auto = get_channel_id_by_handle(yt_auto, pure_s_auto)
+                    cid_auto = get_channel_id_by_handle(pure_s_auto)
                     if cid_auto:
-                        extracted = extract_channel_master_keywords(yt_auto, cid_auto)
-                        st.session_state['pending_keywords'] = ", ".join(extracted['master_keywords'][:6])
+                        ext = extract_channel_master_keywords(cid_auto)
+                        st.session_state['custom_kw_tab3'] = ", ".join(ext['master_keywords'][:6])
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Lỗi bóc từ khóa: {e}")
+                    st.error(f"Lỗi: {e}")
                     
-        custom_keywords_input = st.text_input(
-            "Từ khóa chủ đề (Tự động liên kết từ Tab 6 hoặc bấm nút phân tích ở trên):", 
-            key="custom_kw_tab3",
-            placeholder="Ví dụ: Cooking, Food, Recipe, Chef"
-        )
+        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", key="custom_kw_tab3")
         
     with col_f2:
-        min_subs_choice = st.selectbox(
-            "Mốc Subscribers Tối Thiểu:",
-            options=[100000, 250000, 500000, 1000000],
-            index=3,
-            format_func=lambda x: f"{x:,} Subs ({'1 Triệu' if x==1000000 else f'{x//1000}k'})"
-        )
-        min_duration_choice = st.selectbox(
-            "Lọc Loại Bỏ Kênh Shorts:",
-            options=[60, 180, 300, 600],
-            index=0,
-            format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Bắt buộc có Video > 10 phút"
-        )
+        min_subs_choice = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
+        min_duration_choice = st.selectbox("Lọc Loại Bỏ Kênh Shorts:", options=[60, 180, 300, 600], index=0, format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Có Video > 10 phút")
     with col_f3:
-        api_key_tab3 = st.text_input("YouTube Data API Key:", value=DEFAULT_API_KEY, type="password", key="api_key_tab3")
+        api_keys_tab3 = st.text_area("YouTube API Keys (Nhập nhiều key để chống hết Quota):", value=DEFAULT_API_KEY, height=68, key="api_keys_tab3_area")
+        set_api_keys(api_keys_tab3)
 
-    if seed_channel_input and st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách"):
+    start_btn = st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách")
+
+    if (start_btn or trigger_search) and seed_channel_input:
         pure_seed = to_pure_id(seed_channel_input)
-        if not pure_seed:
-            st.error("Handle kênh mồi không hợp lệ!")
-        else:
-            try:
-                youtube = build("youtube", "v3", developerKey=api_key_tab3)
+        try:
+            st.info(f"🔍 Đang kết nối API và phân tích `{pure_seed}`...")
+            seed_id = get_channel_id_by_handle(pure_seed)
+            if not seed_id:
+                st.error("Không tìm thấy kênh mồi này trên YouTube!")
+            else:
+                playlist_id, _, seed_desc, _, _, _, _ = get_channel_details(seed_id)
                 
-                st.info("🔍 Đang tìm kiếm Channel ID của kênh mồi...")
-                seed_id = get_channel_id_by_handle(youtube, pure_seed)
-                
-                if not seed_id:
-                    st.error("Không tìm thấy kênh mồi này trên YouTube!")
+                if custom_keywords_input:
+                    top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
                 else:
-                    playlist_id, _, seed_desc, _, _, _, _ = get_channel_details(youtube, seed_id)
+                    ext_info = extract_channel_master_keywords(seed_id)
+                    top_kw_list = ext_info['master_keywords'][:4] if ext_info['master_keywords'] else [pure_seed.replace('_', ' ')]
                     
-                    st.info("💡 Đang bóc tách Từ Khóa Chủ Đề từ nội dung & thẻ Tags...")
+                st.write(f"🏷️ **Từ khóa quét:** `{', '.join(top_kw_list)}`")
+                st.info("🌐 Đang quét tự động hàng trăm ứng viên...")
+                
+                candidate_channel_ids = set()
+                q_chan = " ".join(top_kw_list[:2])
+                c_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50))
+                for c_item in c_search_res.get('items', []):
+                    if c_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(c_item['snippet']['channelId'])
                     
-                    if custom_keywords_input:
-                        top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
-                    else:
-                        ext_info = extract_channel_master_keywords(youtube, seed_id)
-                        top_kw_list = ext_info['master_keywords'][:4] if ext_info['master_keywords'] else [pure_seed.replace('_', ' ')]
+                search_queries = [" ".join(top_kw_list[:2]), " ".join(top_kw_list[2:4])] if len(top_kw_list) >= 4 else [" ".join(top_kw_list)]
+                for q in search_queries:
+                    if not q.strip(): continue
+                    v_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q, type="video", maxResults=50))
+                    for v_item in v_search_res.get('items', []):
+                        if v_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(v_item['snippet']['channelId'])
                         
-                    st.write(f"🏷️ **Từ khóa ngách chính dùng để quét:** `{', '.join(top_kw_list)}`")
+                candidate_ids_list = list(candidate_channel_ids)
+                
+                if not candidate_ids_list:
+                    st.warning("Không quét được ứng viên nào!")
+                else:
+                    st.info(f"📊 Lấy dữ liệu gốc cho {len(candidate_ids_list)} kênh ứng viên...")
+                    passed_channels, rejected_channels = [], []
+                    channel_item_map, candidate_handles = {}, []
                     
-                    st.info("🌐 Đang quét tìm rộng hàng trăm Kênh & Videos thuộc chủ đề này...")
+                    for i in range(0, len(candidate_ids_list), 50):
+                        chan_res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])))
+                        for item in chan_res.get('items', []):
+                            c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
+                            candidate_handles.append(c_h)
+                            channel_item_map[c_h] = item
+
+                    db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
+                    db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
                     
-                    candidate_channel_ids = set()
-                    
-                    q_chan = " ".join(top_kw_list[:2])
-                    c_search_req = youtube.search().list(part="snippet", q=q_chan, type="channel", maxResults=50)
-                    c_search_res = c_search_req.execute()
-                    for c_item in c_search_res.get('items', []):
-                        found_cid = c_item['snippet']['channelId']
-                        if found_cid != seed_id: candidate_channel_ids.add(found_cid)
+                    for c_handle, item in channel_item_map.items():
+                        c_title = item['snippet']['title']
+                        c_desc = item['snippet'].get('description', '')
+                        c_country = item['snippet'].get('country', 'N/A')
+                        c_subs = int(item['statistics'].get('subscriberCount', 0))
+                        c_video_count = int(item['statistics'].get('videoCount', 0))
+                        c_url = f"https://www.youtube.com/@{c_handle}"
+                        db_status = "❌ Đã có trong DB" if c_handle in db_existing_set else "✅ KÊNH MỚI"
                         
-                    search_queries = [" ".join(top_kw_list[:2]), " ".join(top_kw_list[2:4])] if len(top_kw_list) >= 4 else [" ".join(top_kw_list)]
-                    for q in search_queries:
-                        if not q.strip(): continue
-                        v_search_req = youtube.search().list(part="snippet", q=q, type="video", maxResults=50)
-                        v_search_res = v_search_req.execute()
-                        for v_item in v_search_res.get('items', []):
-                            found_cid = v_item['snippet']['channelId']
-                            if found_cid != seed_id: candidate_channel_ids.add(found_cid)
+                        c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+                        latest_date, has_qualifying_video = "N/A", False
+                        
+                        if c_playlist and c_video_count > 0:
+                            try:
+                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=10))
+                                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                                if v_ids:
+                                    v_details = get_video_details(v_ids)
+                                    if v_details:
+                                        latest_date = v_details[0]['Published Date']
+                                        has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
+                            except Exception: pass
+
+                        base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status}
+
+                        if c_subs < min_subs_choice:
+                            base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; rejected_channels.append(base_data); continue
+                        passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
+                        if not passes_l1:
+                            base_data["Lý do loại"] = l1_reason; rejected_channels.append(base_data); continue
+                        if c_video_count == 0 or not c_playlist:
+                            base_data["Lý do loại"] = "Kênh trống"; rejected_channels.append(base_data); continue
+                        if not is_within_last_90_days(latest_date):
+                            base_data["Lý do loại"] = f"Bỏ trống (Mới nhất: {latest_date})"; rejected_channels.append(base_data); continue
+                        if not has_qualifying_video:
+                            base_data["Lý do loại"] = "Shorts-only"; rejected_channels.append(base_data); continue
                             
-                    candidate_ids_list = list(candidate_channel_ids)
-                    
-                    if not candidate_ids_list:
-                        st.warning("Không quét thêm được kênh ứng viên nào cùng chủ đề!")
-                    else:
-                        st.info(f"📊 Tìm thấy {len(candidate_ids_list)} kênh ứng viên. Đang trích xuất dữ liệu gốc cho 100% ứng viên...")
-                        
-                        passed_channels = []
-                        rejected_channels = []
-                        
-                        channel_item_map = {}
-                        candidate_handles = []
-                        
-                        for i in range(0, len(candidate_ids_list), 50):
-                            chan_req = youtube.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50]))
-                            chan_res = chan_req.execute()
-                            for item in chan_res.get('items', []):
-                                c_handle = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
-                                candidate_handles.append(c_handle)
-                                channel_item_map[c_handle] = item
+                        passed_channels.append(base_data)
 
-                        db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
-                        db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
-                        
-                        for c_handle, item in channel_item_map.items():
-                            c_title = item['snippet']['title']
-                            c_desc = item['snippet'].get('description', '')
-                            c_country = item['snippet'].get('country', 'N/A')
-                            c_subs = int(item['statistics'].get('subscriberCount', 0))
-                            c_video_count = int(item['statistics'].get('videoCount', 0))
-                            c_url = f"https://www.youtube.com/@{c_handle}"
-                            in_db = c_handle in db_existing_set
-                            db_status = "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI"
-                            
-                            c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
-                            latest_date = "N/A"
-                            has_qualifying_video = False
-                            
-                            if c_playlist and c_video_count > 0:
-                                try:
-                                    v_req = youtube.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=10)
-                                    v_res = v_req.execute()
-                                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                                    if v_ids:
-                                        v_details = get_video_details(youtube, v_ids)
-                                        if v_details:
-                                            latest_date = v_details[0]['Published Date']
-                                            has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
-                                except Exception:
-                                    pass
+                    st.session_state['passed_channels'] = passed_channels
+                    st.session_state['rejected_channels'] = rejected_channels
 
-                            base_data = {
-                                "Handle": f"@{c_handle}", 
-                                "Link Kênh": c_url, 
-                                "Tên Kênh": c_title,
-                                "Subscribers": f"{c_subs:,}", 
-                                "Quốc gia": c_country, 
-                                "Video Gần Nhất": latest_date,
-                                "Tổng Số Video": f"{c_video_count:,}", 
-                                "Trạng Thái DB": db_status
-                            }
+                    st.divider()
+                    c_m1, c_m2, c_m3 = st.columns(3)
+                    c_m1.metric("Tổng ứng viên", len(candidate_ids_list))
+                    c_m2.metric(f"✅ Đạt Chuẩn (>{min_subs_choice:,} Subs)", len(passed_channels))
+                    c_m3.metric("❌ Bị Loại", len(rejected_channels))
 
-                            if c_subs < min_subs_choice:
-                                base_data["Lý do loại"] = f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"
-                                rejected_channels.append(base_data)
-                                continue
+        except Exception as e:
+            st.error(f"Lỗi: {e}")
 
-                            passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
-                            if not passes_l1:
-                                base_data["Lý do loại"] = l1_reason
-                                rejected_channels.append(base_data)
-                                continue
-                                
-                            if c_video_count == 0 or not c_playlist:
-                                base_data["Lý do loại"] = "Kênh không có video nào"
-                                rejected_channels.append(base_data)
-                                continue
-
-                            if not is_within_last_90_days(latest_date):
-                                base_data["Lý do loại"] = f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"
-                                rejected_channels.append(base_data)
-                                continue
-                                
-                            if not has_qualifying_video:
-                                base_data["Lý do loại"] = f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"
-                                rejected_channels.append(base_data)
-                                continue
-                                
-                            passed_channels.append(base_data)
-
-                        st.session_state['passed_channels'] = passed_channels
-                        st.session_state['rejected_channels'] = rejected_channels
-
-                        st.divider()
-                        st.markdown(f"### 🎉 Kết Quả Săn Kênh Đồng Ngách Từ `{pure_seed}`")
-                        
-                        col_m1, col_f2, col_f3 = st.columns(3)
-                        col_m1.metric("Tổng ứng viên đã quét", len(candidate_ids_list))
-                        col_f2.metric(f"✅ Đạt Chuẩn (>{min_subs_choice:,} Subs)", len(passed_channels))
-                        col_f3.metric("❌ Bị Loại Bởi Bộ Lọc", len(rejected_channels))
-
-            except Exception as e:
-                st.error(f"Lỗi khi tìm kênh tương tự: {e}")
-
-    # Display Tables with Inline Cart & Audit
+    # Display Tables with Inline Cart, Audit & Auto-Search (Đào Sâu)
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
@@ -832,228 +614,107 @@ with tab3:
         # --- TAB PASSED ---
         with tab_pass:
             if passed_list:
-                col_btn_all1, col_btn_all2 = st.columns([1, 2])
-                with col_btn_all1:
-                    if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", key="add_all_new_passed"):
-                        added_cnt = 0
+                col_btn1, col_btn2 = st.columns([1, 3])
+                with col_btn1:
+                    if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
                         for row in passed_list:
-                            if "✅" in row["Trạng Thái DB"]:
-                                p_id = to_pure_id(row["Handle"])
-                                if p_id not in st.session_state['cart']:
-                                    st.session_state['cart'][p_id] = row
-                                    added_cnt += 1
-                        st.success(f"🎉 Đã thêm {added_cnt} kênh mới vào Giỏ hàng!")
+                            if "✅" in row["Trạng Thái DB"]: st.session_state['cart'][to_pure_id(row["Handle"])] = row
                         st.rerun()
-                
                 st.divider()
                 
-                # Table Header with Cart Column
-                h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns([1.2, 1.8, 0.9, 0.8, 1.1, 1.1, 1.5, 1.3, 1.3])
-                h1.markdown("**Handle**")
-                h2.markdown("**Tên Kênh**")
-                h3.markdown("**Subs**")
-                h4.markdown("**Q.Gia**")
-                h5.markdown("**Video Mới**")
-                h6.markdown("**Tổng Video**")
-                h7.markdown("**Trạng Thái DB**")
-                h8.markdown("**🛒 Giỏ Hàng**")
-                h9.markdown("**Báo Cáo Audit**")
+                h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns([1.2, 1.8, 0.8, 0.7, 1.1, 1.1, 1.2, 0.8, 1.0, 1.0])
+                h1.markdown("**Handle**"); h2.markdown("**Tên Kênh**"); h3.markdown("**Subs**"); h4.markdown("**Q.Gia**"); h5.markdown("**Video Mới**"); h6.markdown("**Tổng Video**"); h7.markdown("**DB**"); h8.markdown("**🛒 Giỏ**"); h9.markdown("**📄 Audit**"); h10.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(passed_list):
-                    c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([1.2, 1.8, 0.9, 0.8, 1.1, 1.1, 1.5, 1.3, 1.3])
-                    c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
-                    c2.write(row['Tên Kênh'])
-                    c3.write(row['Subscribers'])
-                    c4.write(row['Quốc gia'])
-                    c5.write(row['Video Gần Nhất'])
-                    c6.write(row['Tổng Số Video'])
-                    c7.write(row['Trạng Thái DB'])
+                    c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.2, 1.8, 0.8, 0.7, 1.1, 1.1, 1.2, 0.8, 1.0, 1.0])
+                    c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); c2.write(row['Tên Kênh']); c3.write(row['Subscribers']); c4.write(row['Quốc gia']); c5.write(row['Video Gần Nhất']); c6.write(row['Tổng Số Video']); c7.write(row['Trạng Thái DB'].replace("trong DB", ""))
                     
-                    pure_h_inline = to_pure_id(row['Handle'])
-                    
-                    # Cart Button Logic
-                    in_cart = pure_h_inline in st.session_state['cart']
-                    if in_cart:
-                        if c8.button("❌ Bỏ Giỏ", key=f"remove_pass_{idx}_{pure_h_inline}"):
-                            del st.session_state['cart'][pure_h_inline]
-                            st.rerun()
+                    p_id = to_pure_id(row['Handle'])
+                    if p_id in st.session_state['cart']:
+                        if c8.button("❌ Bỏ", key=f"rm_p_{p_id}", help="Bỏ khỏi Giỏ"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if c8.button("🛒 Thêm Giỏ", key=f"add_pass_{idx}_{pure_h_inline}"):
-                            st.session_state['cart'][pure_h_inline] = row
-                            st.rerun()
+                        if c8.button("🛒 Thêm", key=f"add_p_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
                             
-                    # Audit Report Logic
-                    audit_key = f"audit_file_{pure_h_inline}"
+                    audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
-                        audit_info = st.session_state[audit_key]
-                        c9.download_button(
-                            "📥 Tải .xlsx",
-                            data=audit_info["bytes"],
-                            file_name=audit_info["filename"],
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"dl_pass_{idx}_{pure_h_inline}"
-                        )
+                        c9.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_p_{p_id}")
                     else:
-                        if c9.button("📄 Tạo Audit", key=f"btn_pass_{idx}_{pure_h_inline}"):
-                            with st.spinner(f"Đang cào {row['Handle']}..."):
-                                b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
+                        if c9.button("📄 Tạo", key=f"btn_p_{p_id}"):
+                            with st.spinner(f"Đang dựng Audit..."):
+                                b_data, f_name = run_single_channel_audit(p_id)
                                 if b_data:
-                                    try:
-                                        supabase.table("channels").upsert([{
-                                            "handle": pure_h_inline,
-                                            "youtuber_name": row['Tên Kênh'],
-                                            "source": "Smart Finder Audit V4.14"
-                                        }], on_conflict="handle").execute()
-                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database!"
-                                    except Exception as e:
-                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo Audit nhưng lưu DB lỗi: {e}"
-
+                                    supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                    st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
-                                else:
-                                    st.error("Lỗi khi cào kênh!")
+                                    
+                    # Auto-Search Button (Tìm từ kênh này)
+                    if c10.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary"):
+                        st.session_state['seed_input_tab3'] = f"@{p_id}"
+                        st.session_state['trigger_auto_search'] = True
+                        st.rerun()
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10 = st.columns([1.2, 1.6, 0.9, 0.7, 1.0, 1.0, 1.3, 2.2, 1.2, 1.2])
-                rh1.markdown("**Handle**")
-                rh2.markdown("**Tên Kênh**")
-                rh3.markdown("**Subs**")
-                rh4.markdown("**Q.Gia**")
-                rh5.markdown("**Video Mới**")
-                rh6.markdown("**Tổng Video**")
-                rh7.markdown("**Trạng Thái DB**")
-                rh8.markdown("**Lý Do Loại**")
-                rh9.markdown("**🛒 Giỏ Hàng**")
-                rh10.markdown("**Báo Cáo Audit**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10 = st.columns([1.2, 1.6, 0.8, 0.7, 1.0, 1.0, 1.6, 0.8, 1.0, 1.0])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Lý Do**"); rh8.markdown("**🛒 Giỏ**"); rh9.markdown("**📄 Audit**"); rh10.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10 = st.columns([1.2, 1.6, 0.9, 0.7, 1.0, 1.0, 1.3, 2.2, 1.2, 1.2])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
-                    rc2.write(row['Tên Kênh'])
-                    rc3.write(row['Subscribers'])
-                    rc4.write(row.get('Quốc gia', 'N/A'))
-                    rc5.write(row.get('Video Gần Nhất', 'N/A'))
-                    rc6.write(row.get('Tổng Số Video', 'N/A'))
-                    rc7.write(row.get('Trạng Thái DB', 'N/A'))
-                    rc8.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10 = st.columns([1.2, 1.6, 0.8, 0.7, 1.0, 1.0, 1.6, 0.8, 1.0, 1.0])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(f"❌ {row['Lý do loại']}")
                     
-                    pure_h_inline = to_pure_id(row['Handle'])
-                    
-                    # Cart Logic
-                    in_cart = pure_h_inline in st.session_state['cart']
-                    if in_cart:
-                        if rc9.button("❌ Bỏ Giỏ", key=f"remove_rej_{idx}_{pure_h_inline}"):
-                            del st.session_state['cart'][pure_h_inline]
-                            st.rerun()
+                    p_id = to_pure_id(row['Handle'])
+                    if p_id in st.session_state['cart']:
+                        if rc8.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if rc9.button("🛒 Thêm Giỏ", key=f"add_rej_{idx}_{pure_h_inline}"):
-                            st.session_state['cart'][pure_h_inline] = row
-                            st.rerun()
+                        if rc8.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
 
-                    # Audit Logic
-                    audit_key = f"audit_file_{pure_h_inline}"
+                    audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
-                        audit_info = st.session_state[audit_key]
-                        rc10.download_button(
-                            "📥 Tải .xlsx",
-                            data=audit_info["bytes"],
-                            file_name=audit_info["filename"],
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"dl_rej_{idx}_{pure_h_inline}"
-                        )
+                        rc9.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
                     else:
-                        if rc10.button("📄 Tạo Audit", key=f"btn_rej_{idx}_{pure_h_inline}"):
-                            with st.spinner(f"Đang cào {row['Handle']}..."):
-                                b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
+                        if rc9.button("📄 Tạo", key=f"btn_r_{p_id}"):
+                            with st.spinner(f"Đang dựng Audit..."):
+                                b_data, f_name = run_single_channel_audit(p_id)
                                 if b_data:
-                                    try:
-                                        supabase.table("channels").upsert([{
-                                            "handle": pure_h_inline,
-                                            "youtuber_name": row['Tên Kênh'],
-                                            "source": "Smart Finder Audit V4.14"
-                                        }], on_conflict="handle").execute()
-                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database!"
-                                    except Exception as e:
-                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo Audit nhưng lưu DB lỗi: {e}"
-
+                                    supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                    st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
-                                else:
-                                    st.error("Lỗi khi cào kênh!")
-            else:
-                st.info("Không có kênh nào bị loại.")
 
-    # --- DEDICATED CHANNEL CART CRM SECTION ---
+                    if rc10.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
+                        st.session_state['seed_input_tab3'] = f"@{p_id}"
+                        st.session_state['trigger_auto_search'] = True
+                        st.rerun()
+
+    # --- SHOPPING CART CRM ---
     st.divider()
     cart_items = st.session_state['cart']
     st.subheader(f"🛒 Giỏ Hàng Kênh Đã Chọn ({len(cart_items)} Kênh)")
-    st.caption("Quản lý danh sách các kênh bạn đã chọn lọc. Có thể xuất file TXT, Excel hoặc nạp trực tiếp vào Supabase Database.")
-
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
-        st.dataframe(
-            df_cart,
-            use_container_width=True,
-            column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")}
-        )
-
-        col_c1, col_c2, col_c3, col_c4 = st.columns(4)
-        
-        # 1. Export TXT Handles
-        txt_handles = "\n".join([item["Handle"] for item in cart_items.values()])
-        col_c1.download_button(
-            "📄 Tải Danh Sách TXT",
-            data=txt_handles,
-            file_name=f"gio_hang_kenh_{datetime.date.today().strftime('%d-%m-%Y')}.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-
-        # 2. Export Excel
-        buf_excel = io.BytesIO()
-        df_cart.to_excel(buf_excel, index=False)
-        col_c2.download_button(
-            "📊 Tải Bảng Excel (.xlsx)",
-            data=buf_excel.getvalue(),
-            file_name=f"gio_hang_kenh_{datetime.date.today().strftime('%d-%m-%Y')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-        # 3. Batch Push to Database
-        if col_c3.button("⚡ Nạp Giỏ Hàng Vào Database Supabase", type="primary", use_container_width=True):
-            insert_data = []
-            for item in cart_items.values():
-                pure_h_cart = to_pure_id(item["Handle"])
-                insert_data.append({
-                    "handle": pure_h_cart,
-                    "youtuber_name": item.get("Tên Kênh", pure_h_cart.upper()),
-                    "source": "Channel Cart Import"
-                })
-            try:
-                supabase.table("channels").upsert(insert_data, on_conflict="handle").execute()
-                st.success(f"🎉 Đã lưu thành công {len(insert_data)} kênh từ Giỏ hàng vào Database đám mây!")
-            except Exception as e:
-                st.error(f"Lỗi khi lưu Database: {e}")
-
-        # 4. Clear Cart
-        if col_c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True):
-            st.session_state['cart'] = {}
-            st.rerun()
+        st.dataframe(df_cart, use_container_width=True, column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem 🔗")})
+        c1, c2, c3, c4 = st.columns(4)
+        c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang.txt", use_container_width=True)
+        buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
+        c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang.xlsx", use_container_width=True)
+        if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True):
+            data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": "Cart Import"} for i in cart_items.values()]
+            supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
+            st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
+        if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True): st.session_state['cart'] = {}; st.rerun()
     else:
-        st.info("Giỏ hàng đang trống. Hãy bấm **`🛒 Thêm Giỏ`** ở bảng kết quả trên để đưa kênh vào giỏ hàng!")
+        st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' để nhặt kênh vào giỏ!")
 
-# --- TAB 4: UPLOAD & UPDATE ---
+# --- TAB 4, TAB 5, TAB 6 (Upload, Database View, SEO Inspector remain standard...) ---
 with tab4:
     st.subheader("Upload file .ZIP hoặc .TXT để cập nhật Database")
     uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo Excel) hoặc file `.txt` vào đây:", type=["zip", "txt", "xlsx"], accept_multiple_files=True)
-    
     if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database"):
         new_handles_to_insert = []
         for file in uploaded_files:
@@ -1072,17 +733,11 @@ with tab4:
                 for line in content.splitlines():
                     h = to_pure_id(line)
                     if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h, "source": file_name})
-
         if new_handles_to_insert:
             df_insert = pd.DataFrame(new_handles_to_insert).drop_duplicates(subset=["handle"])
-            data_dict = df_insert.to_dict(orient="records")
-            try:
-                supabase.table("channels").upsert(data_dict, on_conflict="handle").execute()
-                st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(data_dict)} Handle vào Database đám mây!")
-            except Exception as e:
-                st.error(f"Lỗi khi lưu dữ liệu: {e}")
+            supabase.table("channels").upsert(df_insert.to_dict(orient="records"), on_conflict="handle").execute()
+            st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle vào Database đám mây!")
 
-# --- TAB 5: VIEW & DOWNLOAD ---
 with tab5:
     st.subheader("Danh sách toàn bộ Channel trong Database")
     res = supabase.table("channels").select("*").execute()
@@ -1093,74 +748,40 @@ with tab5:
         csv = df_all.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv")
 
-# --- TAB 6: DEDICATED CHANNEL KEYWORD INSPECTOR ---
 with tab6:
     st.subheader("✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
-    st.markdown("Nhập bất kỳ Handle nào để bóc tách **Thẻ từ khóa ẩn của Kênh (Channel Keywords)**, **Top Video Tags** và **Phân loại AI của YouTube**.")
-    
     col_k1, col_f2 = st.columns([2, 1])
     with col_k1:
-        inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi (ví dụ: @NickDiGiovanni, @dudeperfect):", value="@NickDiGiovanni", key="inspect_input")
+        inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi:", value="@NickDiGiovanni")
     with col_f2:
-        api_key_tab6 = st.text_input("YouTube Data API Key:", value=DEFAULT_API_KEY, type="password", key="api_key_tab6")
+        api_keys_tab6 = st.text_area("YouTube API Keys:", value=DEFAULT_API_KEY, height=68, key="api_keys_tab6_area")
+        set_api_keys(api_keys_tab6)
 
     if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay"):
         pure_inspect = to_pure_id(inspect_handle_input)
-        if not pure_inspect:
-            st.error("Handle không hợp lệ!")
-        else:
+        if pure_inspect:
             try:
-                yt_insp = build("youtube", "v3", developerKey=api_key_tab6)
-                cid_insp = get_channel_id_by_handle(yt_insp, pure_inspect)
-                
+                cid_insp = get_channel_id_by_handle(pure_inspect)
                 if not cid_insp:
                     st.error("Không tìm thấy Channel ID cho kênh này!")
                 else:
-                    with st.spinner("Đang bóc tách dữ liệu từ YouTube Studio & Tags..."):
-                        ext_data = extract_channel_master_keywords(yt_insp, cid_insp)
-                        master_str = ", ".join(ext_data['master_keywords'])
-                        
-                        st.session_state['pending_keywords'] = master_str
-                        st.session_state['last_inspected_data'] = ext_data
-                        st.session_state['last_inspected_handle'] = pure_inspect
-                        st.rerun()
-                        
+                    ext_data = extract_channel_master_keywords(cid_insp)
+                    st.session_state['pending_keywords'] = ", ".join(ext_data['master_keywords'])
+                    st.session_state['last_inspected_data'] = ext_data
+                    st.session_state['last_inspected_handle'] = pure_inspect
+                    st.rerun()
             except Exception as e:
                 st.error(f"Lỗi khi soi từ khóa: {e}")
 
     if 'last_inspected_data' in st.session_state:
-        ext_data = st.session_state['last_inspected_data']
-        pure_inspect = st.session_state.get('last_inspected_handle', '')
-        master_str = ", ".join(ext_data['master_keywords'])
-        
-        st.divider()
-        st.success(f"✨ Đã liên kết tự động bộ từ khóa này sang Tab 3 ('Săn Kênh Tương Tự')!")
+        ext_data, pure_inspect = st.session_state['last_inspected_data'], st.session_state.get('last_inspected_handle', '')
+        st.divider(); st.success(f"✨ Đã liên kết tự động bộ từ khóa này sang Tab 3 ('Săn Kênh Tương Tự')!")
         st.markdown(f"### 🏷️ Dữ Liệu Từ Khóa Của Kênh `@{pure_inspect}`")
-        
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            st.markdown("#### 🔑 Thẻ Từ Khóa Ẩn Của Kênh (Channel Keywords):")
-            if ext_data['channel_keywords']:
-                for kw in ext_data['channel_keywords']:
-                    st.write(f"• `{kw}`")
-            else:
-                st.info("Kênh này không cài đặt Thẻ từ khóa ẩn.")
-                
-            st.markdown("#### 📂 Phân Loại Chủ Đề Của YouTube (Topics):")
-            if ext_data['categories']:
-                for cat in ext_data['categories']:
-                    st.write(f"• **{cat}**")
-            else:
-                st.info("Chưa có thông tin Topic Category.")
-
+            st.markdown("#### 🔑 Thẻ Từ Khóa Ẩn (Channel Keywords):")
+            for kw in ext_data['channel_keywords']: st.write(f"• `{kw}`")
         with col_t2:
             st.markdown("#### 📌 Top Video Tags Xuất Hiện Nhiều Nhất:")
-            if ext_data['top_tags']:
-                for tag in ext_data['top_tags']:
-                    st.write(f"• `{tag}`")
-            else:
-                st.info("Không tìm thấy Video Tags.")
-
-        st.divider()
-        st.markdown("#### 🎯 Bộ Từ Khóa Gợi Ý (Đã tự động gửi sang Tab 3):")
-        st.code(master_str, language="text")
+            for tag in ext_data['top_tags']: st.write(f"• `{tag}`")
+        st.code(", ".join(ext_data['master_keywords']), language="text")
