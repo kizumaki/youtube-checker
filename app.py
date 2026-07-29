@@ -474,7 +474,7 @@ with tab2:
     with col_input1:
         channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247", placeholder="https://www.youtube.com/@4wd247 hoặc @4wd247")
     with col_input2:
-        default_api_key = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyBrTtmMp-txQ7ID15wrJZUpN-i53SRVzgk")
+        default_api_key = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
         api_key_input = st.text_input("YouTube Data API Key:", value=default_api_key, type="password")
 
     if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14"):
@@ -524,16 +524,17 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER (>1M SUBS + STRICT FILTERS) ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER (>1M SUBS + EDITABLE API KEY) ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung (Chỉ chọn kênh > 1 Triệu Subs)")
     st.markdown("Hệ thống bóc tách **Từ Khóa Nội Dung** từ Video của Kênh Mồi $\rightarrow$ Quét các Creator cùng ngách $\rightarrow$ Lọc khắt khe **Lớn hơn 1 Triệu Subs** + Lọc Tiếng/Chủ đề cấm.")
     
     col_f1, col_f2 = st.columns([2, 1])
     with col_f1:
-        seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @4wd247 hoặc @jackdoherty):", value="@4wd247")
+        seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @4wd247 hoặc @jackdoherty):", value="@4wd247", key="seed_input_tab3")
     with col_f2:
-        api_key_tab3 = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
+        default_api_key_tab3 = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
+        api_key_tab3 = st.text_input("YouTube Data API Key:", value=default_api_key_tab3, type="password", key="api_key_tab3")
 
     if seed_channel_input and st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách (>1M Subs)"):
         pure_seed = to_pure_id(seed_channel_input)
@@ -554,7 +555,6 @@ with tab3:
                     
                     st.info("💡 Đang phân tích Video của kênh mồi để bóc tách Từ Khóa Chủ Đề...")
                     
-                    # Get top recent videos to extract content keywords
                     niche_keywords = []
                     try:
                         v_seed_req = youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=10)
@@ -570,10 +570,7 @@ with tab3:
                     
                     st.info("🌐 Đang quét Video & Creators sản xuất nội dung cùng ngách...")
                     
-                    # Search Videos in the exact niche to find candidate Channel IDs
                     candidate_channel_ids = set()
-                    
-                    # Search via Video Niche Query
                     v_search_req = youtube.search().list(part="snippet", q=top_niche_query, type="video", maxResults=50)
                     v_search_res = v_search_req.execute()
                     
@@ -589,7 +586,6 @@ with tab3:
                     else:
                         st.info(f"📊 Tìm thấy {len(candidate_ids_list)} kênh sản xuất video cùng chủ đề. Đang lọc khắt khe (> 1 Triệu Subs)...")
                         
-                        # Batch Fetch Candidate Channels Details (50 at a time)
                         passed_channels = []
                         rejected_channels = []
                         
@@ -613,22 +609,23 @@ with tab3:
                             c_desc = item['snippet'].get('description', '')
                             c_country = item['snippet'].get('country', 'N/A')
                             c_subs = int(item['statistics'].get('subscriberCount', 0))
+                            c_url = f"https://www.youtube.com/@{c_handle}"
                             
                             # --- STRICT SUBSCRIBER FILTER: MUST BE >= 1,000,000 SUBS ---
                             if c_subs < 1000000:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Dưới 1 Triệu Subscribers (<1M Subs)"})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Dưới 1 Triệu Subscribers (<1M Subs)"})
                                 continue
 
                             # --- LAYER 1 FILTER (Country, Language, Excluded Keywords) ---
                             passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
                             if not passes_l1:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": l1_reason})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": l1_reason})
                                 continue
                                 
                             # --- LAYER 2 FILTER (Activity < 90 days & Video Duration >= 10 mins) ---
                             c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
                             if not c_playlist:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Không có Playlist Uploads"})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Không có Playlist Uploads"})
                                 continue
 
                             try:
@@ -636,11 +633,11 @@ with tab3:
                                 v_res = v_req.execute()
                                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                             except Exception:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Playlist ẩn hoặc lỗi 404"})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Playlist ẩn hoặc lỗi 404"})
                                 continue
                                 
                             if not v_ids:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Kênh không có video nào"})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Kênh không có video nào"})
                                 continue
                                 
                             v_details = get_video_details(youtube, v_ids)
@@ -648,19 +645,20 @@ with tab3:
                             
                             # Filter 4: Activity < 90 days
                             if not is_within_last_90_days(latest_date):
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"})
                                 continue
                                 
                             # Filter 5: At least 1 video >= 10 minutes (600s)
                             has_long_video = any(v['Seconds'] >= 600 for v in v_details)
                             if not has_long_video:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "100% Video ngắn dưới 10 phút (Shorts-only)"})
+                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "100% Video ngắn dưới 10 phút (Shorts-only)"})
                                 continue
                                 
                             # PASSED ALL FILTERS INCLUDING >= 1M SUBS!
                             in_db = c_handle in db_existing_set
                             passed_channels.append({
                                 "Handle": f"@{c_handle}",
+                                "Link Kênh": c_url,
                                 "Tên Kênh": c_title,
                                 "Subscribers": f"{c_subs:,}",
                                 "Quốc gia": c_country,
@@ -682,7 +680,13 @@ with tab3:
                         with tab_pass:
                             if passed_channels:
                                 df_pass = pd.DataFrame(passed_channels)
-                                st.dataframe(df_pass, use_container_width=True)
+                                st.dataframe(
+                                    df_pass,
+                                    use_container_width=True,
+                                    column_config={
+                                        "Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")
+                                    }
+                                )
                                 new_only_handles = [row["Handle"] for row in passed_channels if "✅" in row["Trạng Thái DB"]]
                                 if new_only_handles:
                                     st.download_button("📥 Tải Danh Sách Handle Kênh Mới (.txt)", data="\n".join(new_only_handles), file_name=f"kenh_moi_1M_subs_{pure_seed}.txt", mime="text/plain")
@@ -691,7 +695,14 @@ with tab3:
                                 
                         with tab_rej:
                             if rejected_channels:
-                                st.dataframe(pd.DataFrame(rejected_channels), use_container_width=True)
+                                df_rej = pd.DataFrame(rejected_channels)
+                                st.dataframe(
+                                    df_rej,
+                                    use_container_width=True,
+                                    column_config={
+                                        "Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")
+                                    }
+                                )
 
             except Exception as e:
                 st.error(f"Lỗi khi tìm kênh tương tự: {e}")
