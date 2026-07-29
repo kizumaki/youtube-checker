@@ -18,7 +18,7 @@ from PIL import Image as PILImage
 from supabase import create_client, Client
 
 # Page Config
-st.set_page_config(page_title="YouTube Master DB & Audit Generator", page_icon="📺", layout="wide")
+st.set_page_config(page_title="YouTube Channel Master DB", page_icon="📺", layout="wide")
 
 # Connect to Supabase
 @st.cache_resource
@@ -213,23 +213,29 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
     for idx, v in enumerate(video_data):
         r = idx + 13
+        # Col A: Video Title (Chữ thuần - Plain Text, không gán Hyperlink)
         cA = ws.cell(row=r, column=1, value=v['Title'])
-        if v.get('Link'):
-            cA.hyperlink = v['Link']
-            cA.font = Font(color="0563C1", underline="single")
+        cA.font = Font(name="Calibri", size=11)
+        cA.alignment = Alignment(horizontal="left", vertical="center")
 
+        # Col B: Link (Giữ nguyên Hyperlink dẫn đến Video)
         cB = ws.cell(row=r, column=2, value=v['Link'])
         if v.get('Link'):
             cB.hyperlink = v['Link']
-            cB.font = Font(color="0563C1", underline="single")
+            cB.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
+        cB.alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center")
+        # Col C: Length
+        ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center", vertical="center")
         
+        # Col D: Views
         cD = ws.cell(row=r, column=4, value=v['Views'])
+        cD.font = Font(name="Calibri", size=11)
         cD.number_format = '#,##0'
-        cD.alignment = Alignment(horizontal="right")
+        cD.alignment = Alignment(horizontal="right", vertical="center")
 
-        ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center")
+        # Col E: Published Date
+        ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center", vertical="center")
 
     ws.column_dimensions['A'].width = 55
     ws.column_dimensions['B'].width = 45
@@ -421,7 +427,7 @@ with tab2:
                             st.warning("⚠️ **Trạng thái:** Không hoạt động quá 90 ngày")
 
                     # Generate V4.14 Excel
-                    st.info("📈 Đang khởi tạo file Excel Audit V4.14 (kèm Biểu đồ Top 10 tô màu)...")
+                    st.info("📈 Đang khởi tạo file Excel Audit V4.14...")
                     excel_v414_bytes = generate_v414_excel_report(
                         clean_handle=pure_h,
                         sub_count=sub_count,
