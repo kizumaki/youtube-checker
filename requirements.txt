@@ -4,3 +4,7 @@ pandas
 openpyxl
 requests
 beautifulsoup4
+google-api-python-client
+isodate
+pycountry
+pillow
