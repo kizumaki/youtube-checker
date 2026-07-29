@@ -55,7 +55,7 @@ with st.sidebar:
     
     st.divider()
     if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa các bảng kết quả hiển thị để làm gọn màn hình (Giữ nguyên API Key và Giỏ hàng)"):
-        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg']
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing']
         for key in keys_to_clear:
             if key in st.session_state:
                 del st.session_state[key]
@@ -384,6 +384,28 @@ def run_single_channel_audit(pure_handle):
     out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     return excel_bytes, out_fname
 
+# --- REUSABLE COMPONENT: RENDER SHARED CART ---
+def render_shared_cart_ui():
+    st.divider()
+    cart_items = st.session_state['cart']
+    st.subheader(f"🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)")
+    if cart_items:
+        df_cart = pd.DataFrame(list(cart_items.values()))
+        st.dataframe(df_cart, use_container_width=True, column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem 🔗")})
+        c1, c2, c3, c4 = st.columns(4)
+        c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True)
+        buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
+        c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang_dung_chung.xlsx", use_container_width=True)
+        if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True):
+            data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": "Cart Import"} for i in cart_items.values()]
+            supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
+            st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
+        if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True): 
+            st.session_state['cart'] = {}
+            st.rerun()
+    else:
+        st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' ở Tab 1 hoặc Tab 3 để nhặt kênh vào giỏ!")
+
 # --- APP UI HEADER ---
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách siêu cấp (Chống Quota) & Soi Từ Khóa Kênh 24/7")
@@ -398,7 +420,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "✨ Soi Từ Khóa Kênh (SEO Inspector)"
 ])
 
-# --- TAB 1: BATCH SEARCH ---
+# --- TAB 1: BATCH SEARCH WITH INTEGRATED SHARED CART ---
 with tab1:
     st.subheader("🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt")
     col_s1, col_s2 = st.columns([2, 1])
@@ -421,23 +443,73 @@ with tab1:
                 
                 new_handles, existing_handles = [], []
                 for h in target_list:
-                    if h in db_matches: existing_handles.append({"Handle": f"@{h}", "Tên Kênh": db_matches[h].get("youtuber_name", "N/A"), "Trạng thái": "❌ Đã có trong DB"})
-                    else: new_handles.append({"Handle": f"@{h}", "Trạng thái": "✅ Kênh Mới (Chưa làm)"})
+                    p_id = to_pure_id(h)
+                    if p_id in db_matches: existing_handles.append({"Handle": f"@{p_id}", "Tên Kênh": db_matches[p_id].get("youtuber_name", "N/A"), "Trạng thái": "❌ Đã có trong DB"})
+                    else: new_handles.append({"Handle": f"@{p_id}", "Tên Kênh": p_id.upper(), "Link Kênh": f"https://www.youtube.com/@{p_id}", "Trạng thái": "✅ Kênh Mới (Chưa làm)"})
+
+                st.session_state['batch_check_new'] = new_handles
+                st.session_state['batch_check_existing'] = existing_handles
+
+    if 'batch_check_new' in st.session_state or 'batch_check_existing' in st.session_state:
+        new_handles = st.session_state.get('batch_check_new', [])
+        existing_handles = st.session_state.get('batch_check_existing', [])
+
+        st.divider()
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Tổng số kênh kiểm tra", f"{len(new_handles) + len(existing_handles)} kênh")
+        m2.metric("❌ Kênh Đã Tồn Tại", f"{len(existing_handles)} kênh")
+        m3.metric("✅ Kênh Mới Có Thể Làm", f"{len(new_handles)} kênh")
+        
+        res_tab1, res_tab2 = st.tabs([f"✅ Kênh Mới Chưa Làm ({len(new_handles)})", f"❌ Kênh Đã Tồn Tại ({len(existing_handles)})"])
+        with res_tab1:
+            if new_handles:
+                if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", type="primary", key="btn_add_all_t1"):
+                    for item in new_handles:
+                        p_id = to_pure_id(item["Handle"])
+                        st.session_state['cart'][p_id] = {
+                            "Handle": item["Handle"],
+                            "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
+                            "Link Kênh": f"https://www.youtube.com/@{p_id}",
+                            "Trạng Thái DB": "✅ KÊNH MỚI"
+                        }
+                    st.success(f"🎉 Đã thêm {len(new_handles)} kênh mới vào Giỏ hàng chung!")
+                    st.rerun()
 
                 st.divider()
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Tổng số kênh kiểm tra", f"{len(target_list)} kênh")
-                m2.metric("❌ Kênh Đã Tồn Tại", f"{len(existing_handles)} kênh")
-                m3.metric("✅ Kênh Mới Có Thể Làm", f"{len(new_handles)} kênh")
-                
-                res_tab1, res_tab2 = st.tabs([f"✅ Kênh Mới Chưa Làm ({len(new_handles)})", f"❌ Kênh Đã Tồn Tại ({len(existing_handles)})"])
-                with res_tab1:
-                    if new_handles:
-                        df_new = pd.DataFrame(new_handles)
-                        st.dataframe(df_new, use_container_width=True)
-                with res_tab2:
-                    if existing_handles:
-                        st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
+                h1, h2, h3 = st.columns([3, 3, 2])
+                h1.markdown("**Handle**")
+                h2.markdown("**Trạng Thái**")
+                h3.markdown("**🛒 Thao Tác Giỏ Hàng**")
+                st.divider()
+
+                for idx, item in enumerate(new_handles):
+                    c1, c2, c3 = st.columns([3, 3, 2])
+                    p_id = to_pure_id(item["Handle"])
+                    c1.markdown(f"[{item['Handle']}]({item['Link Kênh']})")
+                    c2.write(item["Trạng thái"])
+                    
+                    if p_id in st.session_state['cart']:
+                        if c3.button("❌ Bỏ", key=f"rm_t1_{idx}_{p_id}"):
+                            del st.session_state['cart'][p_id]
+                            st.rerun()
+                    else:
+                        if c3.button("🛒 Thêm", key=f"add_t1_{idx}_{p_id}"):
+                            st.session_state['cart'][p_id] = {
+                                "Handle": item["Handle"],
+                                "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
+                                "Link Kênh": f"https://www.youtube.com/@{p_id}",
+                                "Trạng Thái DB": "✅ KÊNH MỚI"
+                            }
+                            st.rerun()
+            else:
+                st.info("Tất cả kênh đều đã tồn tại trong Database!")
+
+        with res_tab2:
+            if existing_handles:
+                st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
+
+    # Render Shared Cart UI in Tab 1
+    render_shared_cart_ui()
 
 # --- TAB 2: LIVE API SCRAPER ---
 with tab2:
@@ -641,13 +713,13 @@ with tab3:
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
-                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Trạng Thái DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.1, 1.6, 0.7, 0.8, 0.8])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '')); rc8.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.1, 1.6, 0.7, 0.8, 0.8])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc8.write(f"❌ {row['Lý do loại']}")
                     
                     p_id = to_pure_id(row['Handle'])
                     if p_id in st.session_state['cart']:
@@ -677,24 +749,8 @@ with tab3:
                             st.session_state['trigger_deep_search_now'] = True
                             st.rerun()
 
-    # --- SHOPPING CART CRM ---
-    st.divider()
-    cart_items = st.session_state['cart']
-    st.subheader(f"🛒 Giỏ Hàng Kênh Đã Chọn ({len(cart_items)} Kênh)")
-    if cart_items:
-        df_cart = pd.DataFrame(list(cart_items.values()))
-        st.dataframe(df_cart, use_container_width=True, column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem 🔗")})
-        c1, c2, c3, c4 = st.columns(4)
-        c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang.txt", use_container_width=True)
-        buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
-        c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang.xlsx", use_container_width=True)
-        if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True):
-            data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": "Cart Import"} for i in cart_items.values()]
-            supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
-            st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
-        if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True): st.session_state['cart'] = {}; st.rerun()
-    else:
-        st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' để nhặt kênh vào giỏ!")
+    # Render Shared Cart UI in Tab 3
+    render_shared_cart_ui()
 
 # --- TAB 4, TAB 5, TAB 6 ---
 with tab4:
