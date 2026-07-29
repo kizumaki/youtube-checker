@@ -25,16 +25,20 @@ st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="�
 # Global Default API Key
 DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
 
-# Safe State Lifecycle Management
+# --- SAFE STATE LIFECYCLE MANAGEMENT (HANDLES STATE UPDATES BEFORE WIDGET INSTANTIATION) ---
+if 'pending_seed_input' in st.session_state:
+    st.session_state['seed_input_tab3'] = st.session_state['pending_seed_input']
+    del st.session_state['pending_seed_input']
+
+if 'seed_input_tab3' not in st.session_state:
+    st.session_state['seed_input_tab3'] = "@NickDiGiovanni"
+
 if 'pending_keywords' in st.session_state:
     st.session_state['custom_kw_tab3'] = st.session_state['pending_keywords']
     del st.session_state['pending_keywords']
 
 if 'custom_kw_tab3' not in st.session_state:
     st.session_state['custom_kw_tab3'] = ""
-
-if 'seed_input_tab3' not in st.session_state:
-    st.session_state['seed_input_tab3'] = "@NickDiGiovanni"
 
 if 'cart' not in st.session_state:
     st.session_state['cart'] = {}
@@ -66,7 +70,7 @@ def yt_execute(request_func):
             req = request_func(yt)
             return req.execute()
         except HttpError as e:
-            if e.resp.status in [403, 400]: # Lỗi Quota hoặc Key chết
+            if e.resp.status in [403, 400]:
                 idx = (idx + 1) % len(keys)
                 st.session_state['api_key_idx'] = idx
             else:
@@ -91,8 +95,7 @@ def extract_handles_from_text(text_block):
     handles = []
     for line in lines:
         p = to_pure_id(line)
-        if p and p not in handles:
-            handles.append(p)
+        if p and p not in handles: handles.append(p)
     return handles
 
 def extract_handles_from_file(uploaded_file):
@@ -452,7 +455,7 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH SHOPPING CART & AUTO CHAIN SEARCH ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH SAFE AUTO-SEARCH TRIGGER ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự & Giỏ Hàng & Tự Động Đào Sâu")
     
@@ -460,18 +463,18 @@ with tab3:
         st.success(st.session_state['audit_success_msg'])
         del st.session_state['audit_success_msg']
 
-    # Catch the auto-search trigger from the "🎯 Đào Sâu" button
-    trigger_search = False
-    if st.session_state.get('trigger_auto_search', False):
-        st.session_state['trigger_auto_search'] = False
-        pure_s_auto = to_pure_id(st.session_state['seed_input_tab3'])
+    # Safely handle deep search trigger without crashing widget state
+    auto_trigger_run = False
+    if st.session_state.get('trigger_deep_search', False):
+        st.session_state['trigger_deep_search'] = False
+        pure_s_auto = to_pure_id(st.session_state.get('seed_input_tab3', ''))
         if pure_s_auto:
             try:
                 cid_auto = get_channel_id_by_handle(pure_s_auto)
                 if cid_auto:
                     extracted = extract_channel_master_keywords(cid_auto)
-                    st.session_state['custom_kw_tab3'] = ", ".join(extracted['master_keywords'][:6])
-                    trigger_search = True
+                    st.session_state['pending_keywords'] = ", ".join(extracted['master_keywords'][:6])
+                    auto_trigger_run = True
             except Exception as e:
                 st.error(f"Lỗi tự động phân tích: {e}")
 
@@ -486,7 +489,7 @@ with tab3:
                     cid_auto = get_channel_id_by_handle(pure_s_auto)
                     if cid_auto:
                         ext = extract_channel_master_keywords(cid_auto)
-                        st.session_state['custom_kw_tab3'] = ", ".join(ext['master_keywords'][:6])
+                        st.session_state['pending_keywords'] = ", ".join(ext['master_keywords'][:6])
                         st.rerun()
                 except Exception as e:
                     st.error(f"Lỗi: {e}")
@@ -502,7 +505,7 @@ with tab3:
 
     start_btn = st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách")
 
-    if (start_btn or trigger_search) and seed_channel_input:
+    if (start_btn or auto_trigger_run) and seed_channel_input:
         pure_seed = to_pure_id(seed_channel_input)
         try:
             st.info(f"🔍 Đang kết nối API và phân tích `{pure_seed}`...")
@@ -604,7 +607,7 @@ with tab3:
         except Exception as e:
             st.error(f"Lỗi: {e}")
 
-    # Display Tables with Inline Cart, Audit & Auto-Search (Đào Sâu)
+    # Display Tables with Inline Cart, Audit & Safe Auto-Search (Đào Sâu)
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
@@ -649,10 +652,10 @@ with tab3:
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                     
-                    # Auto-Search Button (Tìm từ kênh này)
+                    # Safe State Trigger for "🎯 Đào Sâu"
                     if c10.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary"):
-                        st.session_state['seed_input_tab3'] = f"@{p_id}"
-                        st.session_state['trigger_auto_search'] = True
+                        st.session_state['pending_seed_input'] = f"@{p_id}"
+                        st.session_state['trigger_deep_search'] = True
                         st.rerun()
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
@@ -688,8 +691,8 @@ with tab3:
                                     st.rerun()
 
                     if rc10.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
-                        st.session_state['seed_input_tab3'] = f"@{p_id}"
-                        st.session_state['trigger_auto_search'] = True
+                        st.session_state['pending_seed_input'] = f"@{p_id}"
+                        st.session_state['trigger_deep_search'] = True
                         st.rerun()
 
     # --- SHOPPING CART CRM ---
@@ -711,7 +714,7 @@ with tab3:
     else:
         st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' để nhặt kênh vào giỏ!")
 
-# --- TAB 4, TAB 5, TAB 6 (Upload, Database View, SEO Inspector remain standard...) ---
+# --- TAB 4, TAB 5, TAB 6 ---
 with tab4:
     st.subheader("Upload file .ZIP hoặc .TXT để cập nhật Database")
     uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo Excel) hoặc file `.txt` vào đây:", type=["zip", "txt", "xlsx"], accept_multiple_files=True)
