@@ -486,7 +486,7 @@ def run_single_channel_audit(pure_handle, api_key):
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
-# Tabs
+# Tabs with Stable Icons
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
@@ -622,11 +622,16 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH INLINE ROW-BY-ROW AUDIT BUTTONS ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Tạo file Audit V4.14 trực tiếp trên từng dòng.")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Tạo file Audit V4.14 trực tiếp trên từng dòng & Lưu DB tự động.")
     
+    # Render Audit Success Message if exists
+    if 'audit_success_msg' in st.session_state:
+        st.success(st.session_state['audit_success_msg'])
+        del st.session_state['audit_success_msg']
+
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @dudeperfect, @NickDiGiovanni, @4wd247):", value="@NickDiGiovanni", key="seed_input_tab3")
@@ -864,6 +869,17 @@ with tab3:
                             with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
                                 b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
                                 if b_data:
+                                    # Auto Upsert to DB
+                                    try:
+                                        supabase.table("channels").upsert([{
+                                            "handle": pure_h_inline,
+                                            "youtuber_name": row['Tên Kênh'],
+                                            "source": "Smart Finder Audit V4.14"
+                                        }], on_conflict="handle").execute()
+                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database thành công!"
+                                    except Exception as e:
+                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo file Audit nhưng lưu Database thất bại: {e}"
+
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                 else:
@@ -907,6 +923,17 @@ with tab3:
                             with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
                                 b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
                                 if b_data:
+                                    # Auto Upsert to DB
+                                    try:
+                                        supabase.table("channels").upsert([{
+                                            "handle": pure_h_inline,
+                                            "youtuber_name": row['Tên Kênh'],
+                                            "source": "Smart Finder Audit V4.14"
+                                        }], on_conflict="handle").execute()
+                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database thành công!"
+                                    except Exception as e:
+                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo file Audit nhưng lưu Database thất bại: {e}"
+
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                 else:
