@@ -1,28 +1,24 @@
 import streamlit as st
 import pandas as pd
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.drawing.image import Image as ExcelImage
 from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.series import DataPoint
+from googleapiclient.discovery import build
+import isodate
+import pycountry
 import requests
-from bs4 import BeautifulSoup
-import xml.etree.ElementTree as ET
 import zipfile
 import os
 import re
 import datetime
-import json
 import io
+from PIL import Image as PILImage
 from supabase import create_client, Client
 
 # Page Config
-st.set_page_config(page_title="YouTube Channel Master DB", page_icon="📺", layout="wide")
-
-# Persistent HTTP Session
-session = requests.Session()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9"
-})
+st.set_page_config(page_title="YouTube Master DB & Audit Generator", page_icon="📺", layout="wide")
 
 # Connect to Supabase
 @st.cache_resource
@@ -44,10 +40,6 @@ def to_pure_id(raw_val):
     s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
     return s if s else None
-
-def format_display_handle(raw_val):
-    pure = to_pure_id(raw_val)
-    return f"@{pure}" if pure else "N/A"
 
 def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
@@ -84,295 +76,260 @@ def is_within_last_90_days(date_str):
             
     return False
 
-def fetch_full_channel_audit_live(input_str):
-    """Fetches full channel metadata & video list from YouTube."""
-    pure_h = to_pure_id(input_str)
-    if not pure_h:
-        return None, []
-        
-    url = f"https://www.youtube.com/@{pure_h}"
-    channel_info = {
-        "title": pure_h.upper(),
-        "handle": f"@{pure_h}",
-        "url": url,
-        "total_videos": "N/A",
-        "total_duration_minutes": "N/A",
-        "total_views": "N/A",
-        "subscribers": "N/A",
-        "country": "N/A",
-        "joined_date": "N/A",
-        "description": "N/A"
-    }
-    
-    videos_list = []
-    channel_id = None
-    
+# --- YOUTUBE DATA API V4.14 SCRAPER ENGINE ---
+def get_channel_id_by_handle(youtube, handle):
+    clean = handle.replace('@', '').split('/')[-1].strip()
     try:
-        r = session.get(url, timeout=8)
-        if r.status_code == 200:
-            html = r.text
-            
-            # Channel Title
-            m_title = re.search(r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html)
-            if m_title:
-                channel_info["title"] = m_title.group(1)
-                
-            # Channel ID
-            patterns = [
-                r'itemprop=["\']channelId["\']\s+content=["\'](UC[A-Za-z0-9_.-]+)["\']',
-                r'["\']channelId["\']:\s*["\'](UC[A-Za-z0-9_.-]+)["\']',
-                r'["\']externalId["\']:\s*["\'](UC[A-Za-z0-9_.-]+)["\']',
-                r'youtube\.com/channel/(UC[A-Za-z0-9_.-]+)'
-            ]
-            for p in patterns:
-                m = re.search(p, html, re.IGNORECASE)
-                if m:
-                    channel_id = m.group(1)
-                    break
-                    
-            # Extract Subscribers & Description from meta
-            m_sub = re.search(r'"subscriberCountText":\s*\{\s*"accessibility":\s*\{\s*"accessibilityData":\s*\{\s*"label":\s*"([^"]+)"', html)
-            if m_sub:
-                channel_info["subscribers"] = m_sub.group(1)
-                
-            m_desc = re.search(r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)["\']', html)
-            if m_desc:
-                channel_info["description"] = m_desc.group(1)
+        request = youtube.channels().list(part="id", forHandle=clean)
+        response = request.execute()
+        if 'items' in response and len(response['items']) > 0:
+            return response['items'][0]['id']
     except Exception:
         pass
+    request = youtube.search().list(part="snippet", q=clean, type="channel", maxResults=1)
+    response = request.execute()
+    if 'items' in response and len(response['items']) > 0:
+        return response['items'][0]['snippet']['channelId']
+    return None
 
-    # Fetch Videos via RSS Feed
-    if channel_id:
+def get_channel_details(youtube, channel_id):
+    request = youtube.channels().list(part="snippet,contentDetails,statistics", id=channel_id)
+    response = request.execute()
+    if 'items' in response and len(response['items']) > 0:
+        item = response['items'][0]
+        playlist_id = item['contentDetails']['relatedPlaylists']['uploads']
+        sub_count = int(item['statistics'].get('subscriberCount', 0))
+        description = item['snippet'].get('description', 'No description available.')
+
+        joined_date_raw = item['snippet'].get('publishedAt', '')
+        joined_date = ""
+        if joined_date_raw:
+            try:
+                joined_date = pd.to_datetime(joined_date_raw).strftime("%b %d, %Y")
+            except Exception:
+                joined_date = joined_date_raw[:10]
+
+        country_code = item['snippet'].get('country', 'N/A')
+        country_name = "N/A"
+        if country_code != 'N/A':
+            country_obj = pycountry.countries.get(alpha_2=country_code)
+            country_name = country_obj.name if country_obj else country_code
+
+        thumbnails = item['snippet'].get('thumbnails', {})
+        avatar_url = thumbnails.get('high', {}).get('url', thumbnails.get('medium', {}).get('url', ''))
+
+        return playlist_id, sub_count, description, joined_date, country_name, avatar_url
+    return None, 0, "", "", "", ""
+
+def get_video_details(youtube, video_ids, progress_bar=None):
+    video_data = []
+    total = len(video_ids)
+    
+    for i in range(0, total, 50):
+        request = youtube.videos().list(part="snippet,contentDetails,statistics", id=','.join(video_ids[i:i+50]))
+        response = request.execute()
+        for item in response.get('items', []):
+            duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
+            h, rem = divmod(duration_seconds, 3600)
+            m, s = divmod(rem, 60)
+
+            pub_date = item['snippet']['publishedAt']
+            try:
+                formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
+            except Exception:
+                formatted_date = pub_date[:10]
+
+            video_data.append({
+                'Title': item['snippet']['title'],
+                'Link': f"https://youtube.com/watch?v={item['id']}",
+                'Length (Exact)': f"{h:02d}:{m:02d}:{s:02d}",
+                'Seconds': duration_seconds,
+                'Views': int(item['statistics'].get('viewCount', 0)),
+                'Published Date': formatted_date
+            })
+        if progress_bar and total > 0:
+            progress_bar.progress(min(1.0, (i + 50) / total))
+            
+    return video_data
+
+def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
+    """Generates exact V4.14 Excel report matching 4WD247_28-07-2026.xlsx format."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = clean_handle[:31]
+
+    date_str = datetime.datetime.now().strftime("%d-%m-%Y")
+
+    total_videos = len(video_data)
+    total_views = sum(v['Views'] for v in video_data)
+    total_minutes = round(sum(v['Seconds'] for v in video_data) / 60)
+
+    # ---------------------------------------------------------
+    # TAB 1: MAIN DATA SHEET
+    # ---------------------------------------------------------
+    ws.merge_cells('A1:E1')
+    ws['A1'] = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {date_str}"
+    ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+    ws['A1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ws['A1'].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    ws['A2'] = f"Total Videos: {total_videos:,}"
+    ws['A3'] = f"Total Duration: {total_minutes:,} minutes"
+    ws['A4'] = f"Total Views: {total_views:,}"
+    ws['A5'] = f"Total Subscribers: {sub_count:,}"
+    ws['A6'] = f"Country Location: {channel_country}"
+    ws['A7'] = f"Channel Joined Date: {channel_joined}"
+
+    ws['A9'] = "Channel Description Text:"
+    ws['A9'].font = Font(bold=True, italic=True)
+    ws['A10'] = channel_desc
+    ws['A10'].alignment = Alignment(vertical="top", wrap_text=True)
+
+    for row in range(2, 8):
+        ws[f'A{row}'].font = Font(bold=True)
+
+    # Inject avatar image if available
+    if avatar_url:
         try:
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-            res = session.get(rss_url, timeout=8)
+            res = requests.get(avatar_url, timeout=5)
             if res.status_code == 200:
-                tree = ET.fromstring(res.content)
-                ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015', 'media': 'http://search.yahoo.com/mrss/'}
-                entries = tree.findall('atom:entry', ns)
-                
-                total_duration_sec = 0
-                total_views_sum = 0
-                
-                for entry in entries:
-                    v_id_el = entry.find('yt:videoId', ns)
-                    pub_el = entry.find('atom:published', ns)
-                    title_el = entry.find('atom:title', ns)
-                    
-                    media_group = entry.find('media:group', ns)
-                    views_el = media_group.find('media:community/media:statistics', ns) if media_group is not None else None
-                    
-                    if v_id_el is not None and title_el is not None:
-                        vid = v_id_el.text
-                        v_title = title_el.text
-                        v_link = f"https://youtube.com/watch?v={vid}"
-                        v_date = pub_el.text[:10] if pub_el is not None else "N/A"
-                        v_views = int(views_el.attrib.get('views', 0)) if views_el is not None and 'views' in views_el.attrib else 0
-                        
-                        total_views_sum += v_views
-                        
-                        videos_list.append({
-                            'title': v_title,
-                            'link': v_link,
-                            'length': '00:10:00', # Default duration estimate
-                            'views': v_views,
-                            'published_date': v_date
-                        })
-                        
-                channel_info["total_videos"] = f"{len(videos_list):,}"
-                if total_views_sum > 0:
-                    channel_info["total_views"] = f"{total_views_sum:,}"
-                channel_info["total_duration_minutes"] = f"{len(videos_list) * 10:,}"
+                img = PILImage.open(io.BytesIO(res.content))
+                img = img.resize((140, 140))
+                temp_buf = io.BytesIO()
+                img.save(temp_buf, format="PNG")
+                temp_buf.seek(0)
+                ws.add_image(ExcelImage(temp_buf), 'C10')
         except Exception:
             pass
 
-    return channel_info, videos_list
-
-def generate_perfect_standard_report_bytes(channel_info, videos_list):
-    """Generates 100% exact replica of 4WD247_28-07-2026.xlsx format."""
-    wb = openpyxl.Workbook()
-    
-    channel_title = channel_info.get('title', 'YouTube Channel')
-    sheet1_title = re.sub(r'[\\/*?:\[\]]', '', channel_title)[:30] or "Summary"
-    
-    # Sheet 1: Main Audit
-    ws1 = wb.active
-    ws1.title = sheet1_title
-    
-    font_header_title = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
-    fill_header_title = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    
-    font_bold = Font(name="Calibri", size=11, bold=True)
-    font_regular = Font(name="Calibri", size=11)
-    font_link = Font(name="Calibri", size=11, color="0563C1", underline="single")
-    
-    fill_tbl_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-    align_center = Alignment(horizontal="center", vertical="center")
-    align_left = Alignment(horizontal="left", vertical="center")
-    align_right = Alignment(horizontal="right", vertical="center")
-    
-    today_str = datetime.date.today().strftime('%d-%m-%Y')
-    
-    # Row 1: Merged Title
-    ws1.merge_cells("A1:E1")
-    ws1['A1'] = f"{channel_title.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {today_str}"
-    ws1['A1'].font = font_header_title
-    ws1['A1'].fill = fill_header_title
-    ws1['A1'].alignment = align_center
-    ws1.row_dimensions[1].height = 30
-    
-    # Rows 2-7: Channel Metadata
-    ws1['A2'] = f"Total Videos: {channel_info.get('total_videos', 'N/A')}"
-    ws1['A2'].font = font_bold
-    
-    ws1['A3'] = f"Total Duration: {channel_info.get('total_duration_minutes', 'N/A')} minutes"
-    ws1['A3'].font = font_bold
-    
-    ws1['A4'] = f"Total Views: {channel_info.get('total_views', 'N/A')}"
-    ws1['A4'].font = font_bold
-    
-    ws1['A5'] = f"Total Subscribers: {channel_info.get('subscribers', 'N/A')}"
-    ws1['A5'].font = font_bold
-    
-    ws1['A6'] = f"Country Location: {channel_info.get('country', 'N/A')}"
-    ws1['A6'].font = font_bold
-    
-    ws1['A7'] = f"Channel Joined Date: {channel_info.get('joined_date', 'N/A')}"
-    ws1['A7'].font = font_bold
-    
-    # Rows 9-10: Description
-    ws1['A9'] = "Channel Description Text:"
-    ws1['A9'].font = font_bold
-    
-    ws1['A10'] = channel_info.get('description', 'N/A')
-    ws1['A10'].font = font_regular
-    ws1['A10'].alignment = Alignment(wrap_text=True)
-    
-    # Row 12: Table Headers
     headers = ["Video Title", "Link", "Length", "Views", "Published Date"]
-    for c_idx, h in enumerate(headers, 1):
-        cell = ws1.cell(row=12, column=c_idx, value=h)
-        cell.font = font_bold
-        cell.fill = fill_tbl_header
-        if c_idx in [3, 4, 5]:
-            cell.alignment = align_center
-        else:
-            cell.alignment = align_left
-    ws1.row_dimensions[12].height = 24
-    
-    # Rows 13+: Video Entries
-    for r_idx, v in enumerate(videos_list, start=13):
-        title = v.get('title', 'N/A')
-        link = v.get('link', '')
-        length = v.get('length', '00:00:00')
-        views = v.get('views', 0)
-        pub_date = v.get('published_date', 'N/A')
-        
-        # Col A: Title
-        cA = ws1.cell(row=r_idx, column=1, value=title)
-        if link:
-            cA.hyperlink = link
-            cA.font = font_link
-        else:
-            cA.font = font_regular
-        cA.alignment = align_left
-            
-        # Col B: Link
-        cB = ws1.cell(row=r_idx, column=2, value=link)
-        if link:
-            cB.hyperlink = link
-            cB.font = font_link
-        else:
-            cB.font = font_regular
-        cB.alignment = align_left
-            
-        # Col C: Length
-        cC = ws1.cell(row=r_idx, column=3, value=length)
-        cC.font = font_regular
-        cC.alignment = align_center
-        
-        # Col D: Views
-        cD = ws1.cell(row=r_idx, column=4, value=views)
-        cD.font = font_regular
-        cD.number_format = "#,##0"
-        cD.alignment = align_right
-        
-        # Col E: Published Date
-        cE = ws1.cell(row=r_idx, column=5, value=pub_date)
-        cE.font = font_regular
-        cE.alignment = align_center
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=12, column=col_num, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[12].height = 24
 
-    # Column Widths
-    ws1.column_dimensions['A'].width = 55
-    ws1.column_dimensions['B'].width = 45
-    ws1.column_dimensions['C'].width = 22
-    ws1.column_dimensions['D'].width = 15
-    ws1.column_dimensions['E'].width = 15
+    for idx, v in enumerate(video_data):
+        r = idx + 13
+        cA = ws.cell(row=r, column=1, value=v['Title'])
+        if v.get('Link'):
+            cA.hyperlink = v['Link']
+            cA.font = Font(color="0563C1", underline="single")
 
-    # Sheet 2: Top 10 Video Title
-    ws2 = wb.create_sheet(title="Top 10 Video Title")
-    
-    ws2['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"
-    ws2['A1'].font = font_bold
-    
-    ws2['B1'] = "Views"
-    ws2['B1'].font = font_bold
-    
-    ws2['D1'] = f"📊 Top 10 Most Viewed Videos - {channel_title}"
-    ws2['D1'].font = Font(name="Calibri", size=12, bold=True)
-    
-    # Sort top 10 by view count
-    top10_videos = sorted(videos_list, key=lambda x: x.get('views', 0) if isinstance(x.get('views'), (int, float)) else 0, reverse=True)[:10]
-    
-    for r_idx, v in enumerate(top10_videos, start=2):
-        v_title = v.get('title', 'N/A')
-        v_link = v.get('link', '')
-        v_views = v.get('views', 0)
+        cB = ws.cell(row=r, column=2, value=v['Link'])
+        if v.get('Link'):
+            cB.hyperlink = v['Link']
+            cB.font = Font(color="0563C1", underline="single")
+
+        ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center")
         
-        cA = ws2.cell(row=r_idx, column=1, value=v_title[:45] + "..." if len(v_title) > 45 else v_title)
-        if v_link:
-            cA.hyperlink = v_link
-            cA.font = font_link
-        else:
-            cA.font = font_regular
-            
-        cB = ws2.cell(row=r_idx, column=2, value=v_views)
-        cB.font = font_regular
-        cB.number_format = "#,##0"
+        cD = ws.cell(row=r, column=4, value=v['Views'])
+        cD.number_format = '#,##0'
+        cD.alignment = Alignment(horizontal="right")
 
-    ws2.column_dimensions['A'].width = 50
-    ws2.column_dimensions['B'].width = 15
-    ws2.column_dimensions['D'].width = 40
-    
-    # Add Bar Chart
-    if len(top10_videos) > 0:
+        ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center")
+
+    ws.column_dimensions['A'].width = 55
+    ws.column_dimensions['B'].width = 45
+    ws.column_dimensions['C'].width = 22
+    ws.column_dimensions['D'].width = 15
+    ws.column_dimensions['E'].width = 15
+
+    # ---------------------------------------------------------
+    # TAB 2: "Top 10 Video Title" DASHBOARD
+    # ---------------------------------------------------------
+    ws_charts = wb.create_sheet(title="Top 10 Video Title")
+
+    top_10_videos = sorted(video_data, key=lambda x: x['Views'], reverse=True)[:10]
+
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+
+    ws_charts['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"
+    ws_charts['B1'] = "Views"
+
+    c1 = ws_charts['A1']
+    c2 = ws_charts['B1']
+    c1.font = header_font
+    c2.font = header_font
+    c1.fill = header_fill
+    c2.fill = header_fill
+    c1.alignment = Alignment(horizontal="center", vertical="center")
+    c2.alignment = Alignment(horizontal="center", vertical="center")
+
+    PALETTE = [
+        {"fill": "2F5597", "font": "FFFFFF"},
+        {"fill": "C00000", "font": "FFFFFF"},
+        {"fill": "70AD47", "font": "FFFFFF"},
+        {"fill": "7030A0", "font": "FFFFFF"},
+        {"fill": "00C0C0", "font": "FFFFFF"},
+        {"fill": "E37222", "font": "FFFFFF"},
+        {"fill": "41536B", "font": "FFFFFF"},
+        {"fill": "A04000", "font": "FFFFFF"},
+        {"fill": "385723", "font": "FFFFFF"},
+        {"fill": "626262", "font": "FFFFFF"}
+    ]
+
+    ws_charts['D1'] = f"📊 Top 10 Most Viewed Videos - {clean_handle}"
+    ws_charts['D1'].font = Font(bold=True, size=14, color="1F4E78")
+    ws_charts['D1'].alignment = Alignment(vertical="center")
+
+    for row_idx, video in enumerate(top_10_videos, start=2):
+        color_idx = (row_idx - 2) % len(PALETTE)
+        current_style = PALETTE[color_idx]
+
+        short_title = video['Title'][:45] + "..." if len(video['Title']) > 45 else video['Title']
+
+        title_cell = ws_charts.cell(row=row_idx, column=1, value=short_title)
+        title_cell.hyperlink = video['Link']
+        title_cell.font = Font(bold=True, color=current_style["font"], underline="single")
+        title_cell.fill = PatternFill(start_color=current_style["fill"], end_color=current_style["fill"], fill_type="solid")
+
+        view_cell = ws_charts.cell(row=row_idx, column=2, value=video['Views'])
+        view_cell.number_format = '#,##0'
+        view_cell.font = Font(bold=True, color=current_style["font"])
+        view_cell.fill = PatternFill(start_color=current_style["fill"], end_color=current_style["fill"], fill_type="solid")
+        view_cell.alignment = Alignment(horizontal="right")
+
+    ws_charts.column_dimensions['A'].width = 50
+    ws_charts.column_dimensions['B'].width = 15
+
+    if len(top_10_videos) > 0:
         chart = BarChart()
         chart.type = "col"
-        chart.style = 10
         chart.title = None
-        chart.y_axis.title = "Views"
-        chart.x_axis.title = "Videos"
-        chart.width = 16
-        chart.height = 8.5
-        
-        data_ref = Reference(ws2, min_col=2, min_row=1, max_row=len(top10_videos)+1)
-        cats_ref = Reference(ws2, min_col=1, min_row=2, max_row=len(top10_videos)+1)
-        
+        chart.y_axis.title = 'Total Views'
+        chart.x_axis.title = 'Videos'
+
+        data_ref = Reference(ws_charts, min_col=2, min_row=1, max_col=2, max_row=len(top_10_videos)+1)
+        cats_ref = Reference(ws_charts, min_col=1, min_row=2, max_col=1, max_row=len(top_10_videos)+1)
+
         chart.add_data(data_ref, titles_from_data=True)
         chart.set_categories(cats_ref)
-        
-        ws2.add_chart(chart, "D2")
-        
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
+        chart.legend = None
+
+        series = chart.series[0]
+        for idx in range(len(top_10_videos)):
+            dp = DataPoint(idx=idx)
+            dp.graphicalProperties.solidFill = PALETTE[idx]["fill"]
+            series.dPt.append(dp)
+
+        chart.width = 22
+        chart.height = 14
+        ws_charts.add_chart(chart, "D3")
+
+    output_buf = io.BytesIO()
+    wb.save(output_buf)
+    return output_buf.getvalue()
 
 # --- APP UI HEADER ---
 st.title("📺 YouTube Channel Master Database")
-st.caption("Hệ thống quản lý, tra cứu, cào kênh live & xuất báo cáo 24/7")
+st.caption("Hệ thống quản lý, tra cứu, cào kênh live & xuất báo cáo Audit chuẩn 24/7")
 
 # Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["🔍 Tra cứu Handle", "⚡ Tạo Báo Cáo Kênh", "📤 Upload Cập nhật Data", "📊 Xem Database"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Tra cứu Handle", "⚡ Cào Live & Tạo Báo Cáo Audit", "📤 Upload Cập nhật Data", "📊 Xem Database"])
 
 # --- TAB 1: SEARCH ---
 with tab1:
@@ -388,76 +345,105 @@ with tab1:
                 st.error(f"❌ **KÊNH ĐÃ TỒN TẠI!** Handle `@ {pure_search}` đã có trong Database.")
                 st.json(response.data)
             else:
-                st.success(f"✅ **KÊNH HOÀN TOÀN MỚI!** Handle `@ {pure_search}` CHƯA CÓ trong Database. Bạn có thể cào dữ liệu!")
+                st.success(f"✅ **KÊNH HOÀN TOÀN MỚI!** Handle `@ {pure_search}` CHƯA CÓ trong Database.")
 
-# --- TAB 2: LIVE FETCH & GENERATE EXPACT AUDIT REPORT ---
+# --- TAB 2: LIVE API SCRAPER & V4.14 AUDIT REPORT ---
 with tab2:
-    st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit Chuẩn Excel")
-    st.markdown("Dán Link YouTube hoặc Handle bất kỳ để kiểm tra, lưu Database và tải **file Excel Báo Cáo Audit 2 Sheet tiêu chuẩn**.")
+    st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14")
+    st.markdown("Cào chính thức qua **YouTube Data API v3** (lấy đủ 1000+ video, Avatar, Subscriptions, Views, Lengths, v.v.).")
     
-    channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", placeholder="https://www.youtube.com/@treasurehuntingwithjebus hoặc @4wd247")
-    
-    if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo Audit"):
-        with st.spinner("Đang cào toàn bộ dữ liệu kênh, danh sách video & dựng báo cáo Audit..."):
-            channel_info, videos_list = fetch_full_channel_audit_live(channel_url_input)
-            
-            if channel_info and channel_info.get("handle") != "N/A":
-                pure_h = to_pure_id(channel_info["handle"])
+    col_input1, col_input2 = st.columns([2, 1])
+    with col_input1:
+        channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247", placeholder="https://www.youtube.com/@4wd247 hoặc @4wd247")
+    with col_input2:
+        default_api_key = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyBrTtmMp-txQ7ID15wrJZUpN-i53SRVzgk")
+        api_key_input = st.text_input("YouTube Data API Key (Tùy chọn):", value=default_api_key, type="password")
+
+    if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14"):
+        pure_h = to_pure_id(channel_url_input)
+        if not pure_h:
+            st.error("Handle hoặc đường link không hợp lệ!")
+        else:
+            try:
+                st.info("🔄 Đang kết nối YouTube Data API v3...")
+                youtube = build("youtube", "v3", developerKey=api_key_input)
                 
-                # Check DB status
-                db_res = supabase.table("channels").select("*").ilike("handle", pure_h).execute()
-                exists_in_db = len(db_res.data) > 0
-                
-                # Auto Upsert into Supabase
-                supabase.table("channels").upsert([{
-                    "handle": pure_h,
-                    "youtuber_name": channel_info["title"],
-                    "source": "Live Web Scraper"
-                }], on_conflict="handle").execute()
-                
-                # Display Results
-                st.divider()
-                col1, col2 = st.columns([2, 1])
-                
-                latest_date = videos_list[0]['published_date'] if videos_list else "N/A"
-                is_active = is_within_last_90_days(latest_date)
-                
-                with col1:
-                    st.markdown(f"### 🎯 **{channel_info['title']}**")
-                    st.write(f"• **Handle:** `{channel_info['handle']}`")
-                    st.write(f"• **Link Kênh:** [{channel_info['url']}]({channel_info['url']})")
-                    st.write(f"• **Tổng số Video cào được:** `{len(videos_list)}`")
-                    st.write(f"• **Video gần nhất:** `{latest_date}`")
+                channel_id = get_channel_id_by_handle(youtube, pure_h)
+                if not channel_id:
+                    st.error("❌ Không tìm thấy Channel ID cho kênh này trên YouTube!")
+                else:
+                    playlist_id, sub_count, channel_desc, channel_joined, channel_country, avatar_url = get_channel_details(youtube, channel_id)
                     
-                    if is_active:
-                        st.success("🟢 **Trạng thái:** Đang hoạt động tích cực (Có video dài < 90 ngày)")
-                    else:
-                        st.warning("⚠️ **Trạng thái:** Không hoạt động hoặc Chỉ đăng Short (> 90 ngày)")
+                    st.info("📥 Đang trích xuất toàn bộ danh sách Video trong Playlist...")
+                    video_ids = []
+                    next_page_token = None
+                    
+                    while True:
+                        req = youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_page_token)
+                        res = req.execute()
+                        for item in res['items']:
+                            video_ids.append(item['snippet']['resourceId']['videoId'])
+                        next_page_token = res.get('nextPageToken')
+                        if not next_page_token:
+                            break
+                            
+                    st.write(f"📊 Tìm thấy **{len(video_ids)}** video. Đang lấy chi tiết thời lượng & số lượt xem...")
+                    prog_bar = st.progress(0.0)
+                    video_data = get_video_details(youtube, video_ids, progress_bar=prog_bar)
+                    
+                    # Auto Upsert into Supabase
+                    supabase.table("channels").upsert([{
+                        "handle": pure_h,
+                        "youtuber_name": pure_h.upper(),
+                        "source": "YouTube API V4.14"
+                    }], on_conflict="handle").execute()
+                    
+                    # Show Overview UI
+                    st.divider()
+                    col_res1, col_res2 = st.columns([1, 2])
+                    
+                    latest_date = video_data[0]['Published Date'] if video_data else "N/A"
+                    is_act = is_within_last_90_days(latest_date)
+                    
+                    with col_res1:
+                        if avatar_url:
+                            st.image(avatar_url, width=150)
+                    with col_res2:
+                        st.markdown(f"### 🎯 **@{pure_h}**")
+                        st.write(f"• **Số lượng Video:** `{len(video_data):,}`")
+                        st.write(f"• **Lượt đăng ký (Subs):** `{sub_count:,}`")
+                        st.write(f"• **Quốc gia:** `{channel_country}` | **Ngày tham gia:** `{channel_joined}`")
+                        st.write(f"• **Video gần nhất:** `{latest_date}`")
                         
-                with col2:
-                    if exists_in_db:
-                        st.info("ℹ️ Kênh này **đã có sẵn** trong Database (Đã cập nhật lại thông tin mới).")
-                    else:
-                        st.success("✨ Kênh mới! **Đã tự động lưu** vào Database Cloud.")
-                        
-                    # Generate Excel Audit report matching 4WD247 format
-                    excel_bytes = generate_perfect_standard_report_bytes(
-                        channel_info=channel_info,
-                        videos_list=videos_list
+                        if is_act:
+                            st.success("🟢 **Trạng thái:** Hoạt động tích cực (Đăng video dài < 90 ngày)")
+                        else:
+                            st.warning("⚠️ **Trạng thái:** Không hoạt động quá 90 ngày")
+
+                    # Generate V4.14 Excel
+                    st.info("📈 Đang khởi tạo file Excel Audit V4.14 (kèm Biểu đồ Top 10 tô màu)...")
+                    excel_v414_bytes = generate_v414_excel_report(
+                        clean_handle=pure_h,
+                        sub_count=sub_count,
+                        channel_desc=channel_desc,
+                        channel_joined=channel_joined,
+                        channel_country=channel_country,
+                        avatar_url=avatar_url,
+                        video_data=video_data
                     )
                     
-                    today_str = datetime.date.today().strftime('%d-%m-%Y')
-                    report_filename = f"{pure_h}_{today_str}.xlsx"
+                    date_now_str = datetime.datetime.now().strftime("%d-%m-%Y")
+                    output_file_name = f"{pure_h}_{date_now_str}.xlsx"
                     
                     st.download_button(
-                        label="📥 Tải về File Báo Cáo Standard (.xlsx)",
-                        data=excel_bytes,
-                        file_name=report_filename,
+                        label=f"📥 Tải về File Báo Cáo Audit Chuẩn V4.14 ({output_file_name})",
+                        data=excel_v414_bytes,
+                        file_name=output_file_name,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
-            else:
-                st.error("Không tìm thấy thông tin kênh YouTube này. Vui lòng kiểm tra lại đường link hoặc Handle!")
+            except Exception as e:
+                st.error(f"❌ Có lỗi xảy ra trong quá trình gọi YouTube API: {e}")
 
 # --- TAB 3: UPLOAD & UPDATE ---
 with tab3:
