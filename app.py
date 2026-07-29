@@ -485,7 +485,7 @@ def run_single_channel_audit(pure_handle, api_key):
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
-# Tabs
+# Tabs with Stable Icons
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
@@ -624,7 +624,7 @@ with tab2:
 # --- TAB 3: CONTENT-BASED SMART RELATED FINDER ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Đầy đủ chỉ số cho cả Kênh Đạt Chuẩn & Kênh Bị Loại.")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Trích xuất đầy đủ Quốc gia, Ngày Video, Tổng Video cho mọi ứng viên.")
     
     if 'audit_success_msg' in st.session_state:
         st.success(st.session_state['audit_success_msg'])
@@ -720,7 +720,7 @@ with tab3:
                     if not candidate_ids_list:
                         st.warning("Không quét thêm được kênh ứng viên nào cùng chủ đề!")
                     else:
-                        st.info(f"📊 Tìm thấy {len(candidate_ids_list)} kênh ứng viên. Đang áp dụng phễu lọc tiêu chuẩn (Subs $\ge$ {min_subs_choice:,})...")
+                        st.info(f"📊 Tìm thấy {len(candidate_ids_list)} kênh ứng viên. Đang trích xuất dữ liệu gốc cho 100% ứng viên...")
                         
                         passed_channels = []
                         rejected_channels = []
@@ -739,100 +739,84 @@ with tab3:
                         db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
                         db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
                         
+                        # Process each channel fully to prevent N/A
                         for c_handle, item in channel_item_map.items():
                             c_title = item['snippet']['title']
                             c_desc = item['snippet'].get('description', '')
                             c_country = item['snippet'].get('country', 'N/A')
                             c_subs = int(item['statistics'].get('subscriberCount', 0))
-                            c_url = f"https://www.youtube.com/@{c_handle}"
                             
+                            # Fetch Total Video Count instead of duration
+                            c_video_count = int(item['statistics'].get('videoCount', 0))
+                            
+                            c_url = f"https://www.youtube.com/@{c_handle}"
                             in_db = c_handle in db_existing_set
                             db_status = "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI"
+                            
+                            c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+                            latest_date = "N/A"
+                            has_qualifying_video = False
+                            
+                            # Only call playlistItems API if the channel has videos
+                            if c_playlist and c_video_count > 0:
+                                try:
+                                    v_req = youtube.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=10)
+                                    v_res = v_req.execute()
+                                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                                    
+                                    if v_ids:
+                                        v_details = get_video_details(youtube, v_ids)
+                                        if v_details:
+                                            latest_date = v_details[0]['Published Date']
+                                            has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
+                                except Exception:
+                                    pass
 
-                            # --- SUBSCRIBER FILTER ---
+                            # BASE DATA DICT (Full data for both passed and rejected)
+                            base_data = {
+                                "Handle": f"@{c_handle}", 
+                                "Link Kênh": c_url, 
+                                "Tên Kênh": c_title,
+                                "Subscribers": f"{c_subs:,}", 
+                                "Quốc gia": c_country, 
+                                "Video Gần Nhất": latest_date,
+                                "Tổng Số Video": f"{c_video_count:,}", 
+                                "Trạng Thái DB": db_status
+                            }
+
+                            # --- FILTER 1: SUBSCRIBERS ---
                             if c_subs < min_subs_choice:
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
-                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"
-                                })
+                                base_data["Lý do loại"] = f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"
+                                rejected_channels.append(base_data)
                                 continue
 
-                            # --- LAYER 1 FILTER ---
+                            # --- FILTER 2: METADATA & COUNTRY ---
                             passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
                             if not passes_l1:
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
-                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": l1_reason
-                                })
+                                base_data["Lý do loại"] = l1_reason
+                                rejected_channels.append(base_data)
                                 continue
                                 
-                            # --- LAYER 2 FILTER ---
-                            c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
-                            if not c_playlist:
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
-                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": "Không có Playlist Uploads"
-                                })
+                            # --- FILTER 3: HAS VIDEOS ---
+                            if c_video_count == 0 or not c_playlist:
+                                base_data["Lý do loại"] = "Kênh không có video nào"
+                                rejected_channels.append(base_data)
                                 continue
 
-                            try:
-                                v_req = youtube.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=10)
-                                v_res = v_req.execute()
-                                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                            except Exception:
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
-                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": "Playlist ẩn hoặc lỗi 404"
-                                })
-                                continue
-                                
-                            if not v_ids:
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
-                                    "Thời Lượng": "0m", "Trạng Thái DB": db_status, "Lý do loại": "Kênh không có video nào"
-                                })
-                                continue
-                                
-                            v_details = get_video_details(youtube, v_ids)
-                            latest_date = v_details[0]['Published Date'] if v_details else "N/A"
-                            
-                            total_seconds = sum(v['Seconds'] for v in v_details)
-                            h, rem = divmod(total_seconds, 3600)
-                            m, s = divmod(rem, 60)
-                            duration_str = f"{int(h)}h {int(m)}m" if h > 0 else f"{int(m)}m {int(s)}s"
-                            
+                            # --- FILTER 4: ACTIVITY ---
                             if not is_within_last_90_days(latest_date):
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date,
-                                    "Thời Lượng": duration_str, "Trạng Thái DB": db_status, "Lý do loại": f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"
-                                })
+                                base_data["Lý do loại"] = f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"
+                                rejected_channels.append(base_data)
                                 continue
                                 
-                            has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
+                            # --- FILTER 5: SHORTS ONLY ---
                             if not has_qualifying_video:
-                                rejected_channels.append({
-                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
-                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date,
-                                    "Thời Lượng": duration_str, "Trạng Thái DB": db_status, "Lý do loại": f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"
-                                })
+                                base_data["Lý do loại"] = f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"
+                                rejected_channels.append(base_data)
                                 continue
                                 
-                            passed_channels.append({
-                                "Handle": f"@{c_handle}",
-                                "Link Kênh": c_url,
-                                "Tên Kênh": c_title,
-                                "Subscribers": f"{c_subs:,}",
-                                "Quốc gia": c_country,
-                                "Video Gần Nhất": latest_date,
-                                "Thời Lượng": duration_str,
-                                "Trạng Thái DB": db_status
-                            })
+                            # PASSED ALL FILTERS
+                            passed_channels.append(base_data)
 
                         st.session_state['passed_channels'] = passed_channels
                         st.session_state['rejected_channels'] = rejected_channels
@@ -855,7 +839,7 @@ with tab3:
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
-        # --- TAB PASSED ---
+        # --- TAB PASSED: INLINE AUDIT BUTTONS ---
         with tab_pass:
             if passed_list:
                 new_only_handles = [row["Handle"] for row in passed_list if "✅" in row["Trạng Thái DB"]]
@@ -869,7 +853,7 @@ with tab3:
                 h3.markdown("**Subs**")
                 h4.markdown("**Quốc Gia**")
                 h5.markdown("**Video Mới Nhất**")
-                h6.markdown("**Thời Lượng(10v)**")
+                h6.markdown("**Tổng Video**")
                 h7.markdown("**Trạng Thái DB**")
                 h8.markdown("**Thao Tác Báo Cáo**")
                 st.divider()
@@ -881,7 +865,7 @@ with tab3:
                     c3.write(row['Subscribers'])
                     c4.write(row['Quốc gia'])
                     c5.write(row['Video Gần Nhất'])
-                    c6.write(row['Thời Lượng'])
+                    c6.write(row['Tổng Số Video'])
                     c7.write(row['Trạng Thái DB'])
                     
                     pure_h_inline = to_pure_id(row['Handle'])
@@ -927,7 +911,7 @@ with tab3:
                 rh3.markdown("**Subs**")
                 rh4.markdown("**Quốc Gia**")
                 rh5.markdown("**Video Mới Nhất**")
-                rh6.markdown("**Thời Lượng(10v)**")
+                rh6.markdown("**Tổng Video**")
                 rh7.markdown("**Trạng Thái DB**")
                 rh8.markdown("**Lý Do Loại**")
                 rh9.markdown("**Thao Tác Báo Cáo**")
@@ -940,7 +924,7 @@ with tab3:
                     rc3.write(row['Subscribers'])
                     rc4.write(row.get('Quốc gia', 'N/A'))
                     rc5.write(row.get('Video Gần Nhất', 'N/A'))
-                    rc6.write(row.get('Thời Lượng', 'N/A'))
+                    rc6.write(row.get('Tổng Số Video', 'N/A'))
                     rc7.write(row.get('Trạng Thái DB', 'N/A'))
                     rc8.write(f"❌ {row['Lý do loại']}")
                     
