@@ -258,7 +258,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     total_views = sum(v['Views'] for v in video_data)
     total_minutes = round(sum(v['Seconds'] for v in video_data) / 60)
 
-    # TAB 1: MAIN DATA SHEET
     ws.merge_cells('A1:E1')
     ws['A1'] = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {date_str}"
     ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
@@ -302,26 +301,19 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
     for idx, v in enumerate(video_data):
         r = idx + 13
-        cA = ws.cell(row=r, column=1, value=v['Title'])
-        cA.font = Font(name="Calibri", size=11)
+        cA = ws.cell(row=r, column=1, value=v['Title']); cA.font = Font(name="Calibri", size=11)
         cB = ws.cell(row=r, column=2, value=v['Link'])
         if v.get('Link'): cB.hyperlink = v['Link']; cB.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
         ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center", vertical="center")
         cD = ws.cell(row=r, column=4, value=v['Views']); cD.number_format = '#,##0'
         ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center", vertical="center")
 
-    ws.column_dimensions['A'].width = 55
-    ws.column_dimensions['B'].width = 45
-    ws.column_dimensions['C'].width = 22
-    ws.column_dimensions['D'].width = 15
-    ws.column_dimensions['E'].width = 15
+    ws.column_dimensions['A'].width = 55; ws.column_dimensions['B'].width = 45; ws.column_dimensions['C'].width = 22; ws.column_dimensions['D'].width = 15; ws.column_dimensions['E'].width = 15
 
-    # TAB 2: DASHBOARD
     ws_charts = wb.create_sheet(title="Top 10 Video Title")
     top_10_videos = sorted(video_data, key=lambda x: x['Views'], reverse=True)[:10]
 
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid"); header_font = Font(bold=True, color="FFFFFF")
     ws_charts['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"; ws_charts['A1'].font, ws_charts['A1'].fill = header_font, header_fill
     ws_charts['B1'] = "Views"; ws_charts['B1'].font, ws_charts['B1'].fill = header_font, header_fill
 
@@ -330,15 +322,13 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     ws_charts['D1'].font = Font(bold=True, size=14, color="1F4E78")
 
     for row_idx, video in enumerate(top_10_videos, start=2):
-        color_idx = (row_idx - 2) % len(PALETTE)
-        style = PALETTE[color_idx]
+        color_idx = (row_idx - 2) % len(PALETTE); style = PALETTE[color_idx]
         title_cell = ws_charts.cell(row=row_idx, column=1, value=video['Title'][:45] + "...")
         title_cell.hyperlink = video['Link']; title_cell.font = Font(bold=True, color=style["font"], underline="single"); title_cell.fill = PatternFill("solid", fgColor=style["fill"])
         view_cell = ws_charts.cell(row=row_idx, column=2, value=video['Views']); view_cell.number_format = '#,##0'
         view_cell.font, view_cell.fill = Font(bold=True, color=style["font"]), PatternFill("solid", fgColor=style["fill"])
 
-    ws_charts.column_dimensions['A'].width = 50
-    ws_charts.column_dimensions['B'].width = 15
+    ws_charts.column_dimensions['A'].width = 50; ws_charts.column_dimensions['B'].width = 15
 
     if len(top_10_videos) > 0:
         chart = BarChart(); chart.type = "col"; chart.y_axis.title = 'Total Views'; chart.x_axis.title = 'Videos'
@@ -387,10 +377,8 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 with tab1:
     st.subheader("🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt")
     col_s1, col_s2 = st.columns([2, 1])
-    with col_s1:
-        text_input_area = st.text_area("Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):", height=180)
-    with col_s2:
-        file_input_check = st.file_uploader("Hoặc Upload file danh sách (.txt, .csv, .xlsx):")
+    with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):", height=180)
+    with col_s2: file_input_check = st.file_uploader("Hoặc Upload file danh sách (.txt, .csv, .xlsx):")
         
     if st.button("🔎 Bắt Đầu Kiểm Tra Hàng Loạt", type="primary"):
         all_target_handles = set()
@@ -400,8 +388,7 @@ with tab1:
             for h in extract_handles_from_file(file_input_check): all_target_handles.add(h)
                 
         target_list = list(all_target_handles)
-        if not target_list:
-            st.warning("⚠️ Vui lòng dán danh sách Handle hoặc chọn file để kiểm tra!")
+        if not target_list: st.warning("⚠️ Vui lòng dán danh sách Handle hoặc chọn file để kiểm tra!")
         else:
             with st.spinner(f"Đang đối chiếu {len(target_list)} Handle với Database Supabase..."):
                 response = supabase.table("channels").select("handle, youtuber_name, source").in_("handle", target_list).execute()
@@ -409,10 +396,8 @@ with tab1:
                 
                 new_handles, existing_handles = [], []
                 for h in target_list:
-                    if h in db_matches:
-                        existing_handles.append({"Handle": f"@{h}", "Tên Kênh": db_matches[h].get("youtuber_name", "N/A"), "Trạng thái": "❌ Đã có trong DB"})
-                    else:
-                        new_handles.append({"Handle": f"@{h}", "Trạng thái": "✅ Kênh Mới (Chưa làm)"})
+                    if h in db_matches: existing_handles.append({"Handle": f"@{h}", "Tên Kênh": db_matches[h].get("youtuber_name", "N/A"), "Trạng thái": "❌ Đã có trong DB"})
+                    else: new_handles.append({"Handle": f"@{h}", "Trạng thái": "✅ Kênh Mới (Chưa làm)"})
 
                 st.divider()
                 m1, m2, m3 = st.columns(3)
@@ -433,8 +418,7 @@ with tab1:
 with tab2:
     st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14")
     col_input1, col_input2 = st.columns([2, 1])
-    with col_input1:
-        channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
+    with col_input1: channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
     with col_input2:
         api_keys_tab2 = st.text_area("YouTube Data API Keys (Nhiều key cách nhau bằng phẩy hoặc xuống dòng):", value=DEFAULT_API_KEY, height=68)
         set_api_keys(api_keys_tab2)
@@ -448,8 +432,7 @@ with tab2:
                     supabase.table("channels").upsert([{"handle": pure_h, "youtuber_name": pure_h.upper(), "source": "YouTube API V4.14"}], on_conflict="handle").execute()
                     st.success(f"🎉 Đã dựng xong báo cáo Audit!")
                     st.download_button("📥 Tải về File Audit V4.14", data=b_data, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+            except Exception as e: st.error(f"Lỗi: {e}")
 
 # --- TAB 3: CONTENT-BASED SMART RELATED FINDER ---
 with tab3:
@@ -478,8 +461,7 @@ with tab3:
                         ext = extract_channel_master_keywords(cid_auto)
                         st.session_state['pending_keywords'] = ", ".join(ext['master_keywords'][:6])
                         st.rerun()
-                except Exception as e:
-                    st.error(f"Lỗi: {e}")
+                except Exception as e: st.error(f"Lỗi: {e}")
                     
         custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", key="custom_kw_tab3")
         
@@ -497,13 +479,11 @@ with tab3:
         try:
             st.info(f"🔍 Đang kết nối API và phân tích `{pure_seed}`...")
             seed_id = get_channel_id_by_handle(pure_seed)
-            if not seed_id:
-                st.error("Không tìm thấy kênh mồi này trên YouTube!")
+            if not seed_id: st.error("Không tìm thấy kênh mồi này trên YouTube!")
             else:
                 playlist_id, _, seed_desc, _, _, _, _ = get_channel_details(seed_id)
                 
-                if custom_keywords_input:
-                    top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
+                if custom_keywords_input: top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
                 else:
                     ext_info = extract_channel_master_keywords(seed_id)
                     top_kw_list = ext_info['master_keywords'][:4] if ext_info['master_keywords'] else [pure_seed.replace('_', ' ')]
@@ -526,8 +506,7 @@ with tab3:
                         
                 candidate_ids_list = list(candidate_channel_ids)
                 
-                if not candidate_ids_list:
-                    st.warning("Không quét được ứng viên nào!")
+                if not candidate_ids_list: st.warning("Không quét được ứng viên nào!")
                 else:
                     st.info(f"📊 Lấy dữ liệu gốc cho {len(candidate_ids_list)} kênh ứng viên...")
                     passed_channels, rejected_channels = [], []
@@ -568,17 +547,12 @@ with tab3:
 
                         base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status}
 
-                        if c_subs < min_subs_choice:
-                            base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; rejected_channels.append(base_data); continue
+                        if c_subs < min_subs_choice: base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; rejected_channels.append(base_data); continue
                         passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
-                        if not passes_l1:
-                            base_data["Lý do loại"] = l1_reason; rejected_channels.append(base_data); continue
-                        if c_video_count == 0 or not c_playlist:
-                            base_data["Lý do loại"] = "Kênh trống"; rejected_channels.append(base_data); continue
-                        if not is_within_last_90_days(latest_date):
-                            base_data["Lý do loại"] = f"Bỏ trống (Mới nhất: {latest_date})"; rejected_channels.append(base_data); continue
-                        if not has_qualifying_video:
-                            base_data["Lý do loại"] = "Shorts-only"; rejected_channels.append(base_data); continue
+                        if not passes_l1: base_data["Lý do loại"] = l1_reason; rejected_channels.append(base_data); continue
+                        if c_video_count == 0 or not c_playlist: base_data["Lý do loại"] = "Kênh trống"; rejected_channels.append(base_data); continue
+                        if not is_within_last_90_days(latest_date): base_data["Lý do loại"] = f"Bỏ trống (Mới nhất: {latest_date})"; rejected_channels.append(base_data); continue
+                        if not has_qualifying_video: base_data["Lý do loại"] = "Shorts-only"; rejected_channels.append(base_data); continue
                             
                         passed_channels.append(base_data)
 
@@ -594,7 +568,7 @@ with tab3:
         except Exception as e:
             st.error(f"Lỗi: {e}")
 
-    # Display Tables with Inline Cart, Audit & Deep Search
+    # Display Tables with Inline Cart, Audit & Safe Auto-Search
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
@@ -654,25 +628,25 @@ with tab3:
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10 = st.columns([1.2, 1.6, 0.8, 0.7, 1.0, 1.0, 1.6, 0.8, 1.0, 1.0])
-                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Lý Do**"); rh8.markdown("**🛒 Giỏ**"); rh9.markdown("**📄 Audit**"); rh10.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Trạng Thái DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10 = st.columns([1.2, 1.6, 0.8, 0.7, 1.0, 1.0, 1.6, 0.8, 1.0, 1.0])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '')); rc8.write(f"❌ {row['Lý do loại']}")
                     
                     p_id = to_pure_id(row['Handle'])
                     if p_id in st.session_state['cart']:
-                        if rc8.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
+                        if rc9.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if rc8.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
+                        if rc9.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
 
                     audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
-                        rc9.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
+                        rc10.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
                     else:
-                        if rc9.button("📄 Tạo", key=f"btn_r_{p_id}"):
+                        if rc10.button("📄 Tạo", key=f"btn_r_{p_id}"):
                             with st.spinner(f"Đang dựng Audit..."):
                                 b_data, f_name = run_single_channel_audit(p_id)
                                 if b_data:
@@ -681,7 +655,7 @@ with tab3:
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
 
-                    if rc10.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
+                    if rc11.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
                         cid_deep = get_channel_id_by_handle(p_id)
                         if cid_deep:
                             ext_deep = extract_channel_master_keywords(cid_deep)
@@ -709,7 +683,7 @@ with tab3:
     else:
         st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' để nhặt kênh vào giỏ!")
 
-# --- TAB 4, TAB 5, TAB 6 (Upload, Database View, SEO Inspector remain standard...) ---
+# --- TAB 4, TAB 5, TAB 6 ---
 with tab4:
     st.subheader("Upload file .ZIP hoặc .TXT để cập nhật Database")
     uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo Excel) hoặc file `.txt` vào đây:", type=["zip", "txt", "xlsx"], accept_multiple_files=True)
