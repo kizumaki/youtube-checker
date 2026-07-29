@@ -43,7 +43,7 @@ if 'custom_kw_tab3' not in st.session_state:
 if 'cart' not in st.session_state:
     st.session_state['cart'] = {}
 
-# --- GLOBAL SIDEBAR FOR API KEYS ---
+# --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
 if 'global_api_keys' not in st.session_state:
     st.session_state['global_api_keys'] = DEFAULT_API_KEY
 
@@ -52,6 +52,17 @@ with st.sidebar:
     st.markdown("Nhập nhiều **YouTube API Keys** (mỗi key 1 dòng). Hệ thống sẽ dùng chung cho mọi Tab và tự động nhảy Key khi hết Quota.")
     st.text_area("Danh sách API Keys:", key='global_api_keys', height=250)
     st.caption("💡 Mẹo: Nhập ở thanh bên này sẽ không bao giờ bị mất dữ liệu khi bạn chuyển Tab hay bấm tìm kiếm!")
+    
+    st.divider()
+    if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa các bảng kết quả hiển thị để làm gọn màn hình (Giữ nguyên API Key và Giỏ hàng)"):
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg']
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        for key in list(st.session_state.keys()):
+            if key.startswith('audit_file_'):
+                del st.session_state[key]
+        st.rerun()
 
 def set_api_keys(key_string):
     keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
@@ -627,33 +638,16 @@ with tab3:
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
-        # --- TAB REJECTED (NOW INCLUDES DB STATUS COLUMNS explicitly) ---
+        # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.1, 1.6, 0.7, 0.8, 0.8])
-                rh1.markdown("**Handle**")
-                rh2.markdown("**Tên Kênh**")
-                rh3.markdown("**Subs**")
-                rh4.markdown("**Q.Gia**")
-                rh5.markdown("**Video Mới**")
-                rh6.markdown("**Tổng Video**")
-                rh7.markdown("**DB**")
-                rh8.markdown("**Lý Do**")
-                rh9.markdown("**🛒 Giỏ**")
-                rh10.markdown("**📄 Audit**")
-                rh11.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Trạng Thái DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.1, 1.6, 0.7, 0.8, 0.8])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
-                    rc2.write(row['Tên Kênh'])
-                    rc3.write(row['Subscribers'])
-                    rc4.write(row.get('Quốc gia', ''))
-                    rc5.write(row.get('Video Gần Nhất', ''))
-                    rc6.write(row.get('Tổng Số Video', ''))
-                    rc7.write(row.get('Trạng Thái DB', '').replace("trong DB", ""))
-                    rc8.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '')); rc8.write(f"❌ {row['Lý do loại']}")
                     
                     p_id = to_pure_id(row['Handle'])
                     if p_id in st.session_state['cart']:
