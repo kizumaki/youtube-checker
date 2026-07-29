@@ -50,11 +50,12 @@ if 'global_api_keys' not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Cấu Hình Hệ Thống")
     st.markdown("Nhập nhiều **YouTube API Keys** (mỗi key 1 dòng). Hệ thống sẽ dùng chung cho mọi Tab và tự động nhảy Key khi hết Quota.")
-    st.text_area("Danh sách API Keys:", key='global_api_keys', height=250)
+    st.text_area("Danh sách API Keys:", key='global_api_keys', height=220)
     st.caption("💡 Mẹo: Nhập ở thanh bên này sẽ không bao giờ bị mất dữ liệu khi bạn chuyển Tab hay bấm tìm kiếm!")
     
     st.divider()
-    if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa các bảng kết quả hiển thị để làm gọn màn hình (Giữ nguyên API Key và Giỏ hàng)"):
+    if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa bảng kết quả hiển thị để làm gọn màn hình (Bảo vệ tuyệt đối API Keys & Giỏ Hàng)"):
+        # Explicitly protect 'cart' and 'global_api_keys', only clear search view states
         keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing']
         for key in keys_to_clear:
             if key in st.session_state:
@@ -466,6 +467,7 @@ with tab1:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", type="primary", key="btn_add_all_t1"):
                     for item in new_handles:
                         p_id = to_pure_id(item["Handle"])
+                        # Deep copy dict to decouple from search results
                         st.session_state['cart'][p_id] = {
                             "Handle": item["Handle"],
                             "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
@@ -508,7 +510,7 @@ with tab1:
             if existing_handles:
                 st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
 
-    # Render Shared Cart UI in Tab 1 (Using unique suffix)
+    # Render Shared Cart UI in Tab 1
     render_shared_cart_ui(key_suffix="tab1")
 
 # --- TAB 2: LIVE API SCRAPER ---
@@ -668,7 +670,10 @@ with tab3:
             if passed_list:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
                     for row in passed_list:
-                        if "✅" in row["Trạng Thái DB"]: st.session_state['cart'][to_pure_id(row["Handle"])] = row
+                        if "✅" in row["Trạng Thái DB"]: 
+                            p_id = to_pure_id(row["Handle"])
+                            # Store independent copy of row dictionary
+                            st.session_state['cart'][p_id] = dict(row)
                     st.rerun()
                 st.divider()
                 
@@ -684,7 +689,9 @@ with tab3:
                     if p_id in st.session_state['cart']:
                         if c8.button("❌ Bỏ", key=f"rm_p_{p_id}", help="Bỏ khỏi Giỏ"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if c8.button("🛒 Thêm", key=f"add_p_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
+                        if c8.button("🛒 Thêm", key=f"add_p_{p_id}"): 
+                            st.session_state['cart'][p_id] = dict(row)
+                            st.rerun()
                             
                     audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
@@ -713,19 +720,21 @@ with tab3:
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
-                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**Trạng Thái DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.8, 0.8])
+                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.4, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.9, 0.9])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '')); rc8.write(f"❌ {row['Lý do loại']}")
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.8, 0.8])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc8.write(f"❌ {row['Lý do loại']}")
                     
                     p_id = to_pure_id(row['Handle'])
                     if p_id in st.session_state['cart']:
                         if rc9.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if rc9.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = row; st.rerun()
+                        if rc9.button("🛒 Thêm", key=f"add_r_{p_id}"): 
+                            st.session_state['cart'][p_id] = dict(row)
+                            st.rerun()
 
                     audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
@@ -749,7 +758,7 @@ with tab3:
                             st.session_state['trigger_deep_search_now'] = True
                             st.rerun()
 
-    # Render Shared Cart UI in Tab 3 (Using unique suffix)
+    # Render Shared Cart UI in Tab 3
     render_shared_cart_ui(key_suffix="tab3")
 
 # --- TAB 4, TAB 5, TAB 6 ---
