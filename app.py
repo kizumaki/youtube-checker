@@ -14,6 +14,7 @@ import os
 import re
 import datetime
 import io
+from collections import Counter
 from PIL import Image as PILImage
 from supabase import create_client, Client
 
@@ -120,7 +121,7 @@ EXCLUDED_KEYWORDS = [
 STOP_WORDS = {
     'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'it', 'this', 'that',
     'ep', 'episode', 'part', 'video', 'shorts', 'full', 'hd', '2024', '2025', '2026', 'official', 'channel', 'vs',
-    'dude', 'perfect', 'nick', 'digiovanni', 'mrbeast', 'pewdiepie' # Filter out seed brand names
+    'dude', 'perfect', 'nick', 'digiovanni', 'mrbeast', 'pewdiepie'
 }
 
 def passes_layer1_metadata_filter(title, desc, country_code):
@@ -159,6 +160,65 @@ def get_channel_id_by_handle(youtube, handle):
     if 'items' in response and len(response['items']) > 0:
         return response['items'][0]['snippet']['channelId']
     return None
+
+def extract_channel_master_keywords(youtube, channel_id):
+    """Deeply extracts channel keywords from Branding Settings, Video Tags, and Topics."""
+    keywords_pool = []
+    channel_keywords = []
+    top_tags = []
+    categories = []
+    
+    try:
+        ch_req = youtube.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id)
+        ch_res = ch_req.execute()
+        
+        if 'items' in ch_res and len(ch_res['items']) > 0:
+            item = ch_res['items'][0]
+            
+            # 1. Branding Channel Keywords
+            raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
+            found_kw = re.findall(r'"([^"]+)"|\b([a-zA-Z0-9]{3,})\b', raw_kw)
+            for k1, k2 in found_kw:
+                kw = k1 or k2
+                if kw and len(kw) > 2 and kw.lower() not in STOP_WORDS:
+                    keywords_pool.append(kw.lower())
+                    channel_keywords.append(kw.lower())
+                    
+            # 2. Topic Categories
+            topics = item.get('topicDetails', {}).get('topicCategories', [])
+            for t in topics:
+                cat_name = t.split('/')[-1].replace('_', ' ')
+                categories.append(cat_name)
+                
+            # 3. Top Video Tags from Recent Uploads
+            uploads_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+            if uploads_playlist:
+                v_req = youtube.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15)
+                v_res = v_req.execute()
+                v_ids = [v['snippet']['resourceId']['videoId'] for v in v_res.get('items', [])]
+                
+                if v_ids:
+                    v_detail_req = youtube.videos().list(part="snippet", id=','.join(v_ids))
+                    v_detail_res = v_detail_req.execute()
+                    
+                    for v_item in v_detail_res.get('items', []):
+                        tags = v_item.get('snippet', {}).get('tags', [])
+                        for tag in tags:
+                            if len(tag) > 2 and tag.lower() not in STOP_WORDS:
+                                keywords_pool.append(tag.lower())
+                                top_tags.append(tag.lower())
+    except Exception:
+        pass
+
+    most_common_kws = [word for word, count in Counter(keywords_pool).most_common(15)]
+    top_tag_counts = [word for word, count in Counter(top_tags).most_common(10)]
+    
+    return {
+        "master_keywords": most_common_kws,
+        "channel_keywords": list(set(channel_keywords))[:10],
+        "top_tags": top_tag_counts,
+        "categories": categories
+    }
 
 def get_channel_details(youtube, channel_id):
     request = youtube.channels().list(part="snippet,contentDetails,statistics", id=channel_id)
@@ -388,15 +448,16 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 
 # --- APP UI HEADER ---
 st.title("📺 YouTube Channel Master Database")
-st.caption("Hệ thống tra cứu, cào live & Săn Kênh Tương Tự Theo Nội Dung 24/7")
+st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
     "🎯 Săn Kênh Tương Tự (Content-Based)",
     "📤 Upload Cập nhật Data", 
-    "📊 Xem Database"
+    "📊 Xem Database",
+    "🪄 Soi Từ Khóa Kênh (SEO Inspector)"
 ])
 
 # --- TAB 1: BATCH SEARCH ---
@@ -526,26 +587,47 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH FLEXIBLE FILTERS ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH AUTO KEYWORD ANALYSIS ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Chủ Đề")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video** $\rightarrow$ Quét các Creator sản xuất video cùng chủ đề $\rightarrow$ Áp dụng Bộ Lọc Đa Tầng.")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator sản xuất video cùng chủ đề $\rightarrow$ Áp dụng Bộ Lọc Đa Tầng.")
     
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @dudeperfect, @NickDiGiovanni, @4wd247):", value="@NickDiGiovanni", key="seed_input_tab3")
-        custom_keywords_input = st.text_input("Từ khóa bổ sung (Tùy chọn - Ví dụ: Cooking, Food, Trickshot, Camping):", value="", placeholder="Gõ thêm từ khóa để định hướng chính xác hơn", key="custom_kw_tab3")
+        
+        # Auto-Extract Keywords Button inside Tab 3
+        if st.button("🪄 Tự Động Phân Tích & Điền Từ Khóa Ngách", help="Bấm để YouTube API tự bóc tách thẻ từ khóa chuẩn nhất từ kênh mồi"):
+            pure_s_auto = to_pure_id(seed_channel_input)
+            if pure_s_auto:
+                try:
+                    yt_auto = build("youtube", "v3", developerKey=st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854"))
+                    cid_auto = get_channel_id_by_handle(yt_auto, pure_s_auto)
+                    if cid_auto:
+                        extracted = extract_channel_master_keywords(yt_auto, cid_auto)
+                        st.session_state['auto_kws'] = ", ".join(extracted['master_keywords'][:6])
+                        st.success(f"🎉 Đã tự động bóc tách bộ từ khóa ngách: {st.session_state['auto_kws']}")
+                except Exception as e:
+                    st.error(f"Lỗi bóc từ khóa: {e}")
+                    
+        custom_keywords_input = st.text_input(
+            "Từ khóa chủ đề (Nhập tay hoặc bấm nút 'Tự Động Phân Tích' ở trên):", 
+            value=st.session_state.get('auto_kws', ''), 
+            placeholder="Ví dụ: Cooking, Food, Recipe, Chef", 
+            key="custom_kw_tab3"
+        )
+        
     with col_f2:
         min_subs_choice = st.selectbox(
             "Mốc Subscribers Tối Thiểu:",
             options=[100000, 250000, 500000, 1000000],
-            index=3, # Default to 1,000,000 Subs as requested
+            index=3, # Default 1,000,000 Subs
             format_func=lambda x: f"{x:,} Subs ({'1 Triệu' if x==1000000 else f'{x//1000}k'})"
         )
         min_duration_choice = st.selectbox(
             "Lọc Loại Bỏ Kênh Shorts:",
             options=[60, 180, 300, 600],
-            index=0, # Default >= 60 seconds (Filters out pure Shorts < 1 min, allows 2-5 min videos)
+            index=0, # Default >= 60 seconds
             format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Bắt buộc có Video > 10 phút"
         )
     with col_f3:
@@ -568,24 +650,15 @@ with tab3:
                 else:
                     playlist_id, _, seed_desc, _, _, _, _ = get_channel_details(youtube, seed_id)
                     
-                    st.info("💡 Đang bóc tách Từ Khóa Chủ Đề từ nội dung Video của kênh mồi...")
+                    st.info("💡 Đang bóc tách Từ Khóa Chủ Đề từ nội dung & thẻ Tags...")
                     
-                    niche_keywords = []
-                    try:
-                        v_seed_req = youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=15)
-                        v_seed_res = v_seed_req.execute()
-                        raw_titles = " ".join([v_item['snippet']['title'] for v_item in v_seed_res.get('items', [])])
-                        niche_keywords = clean_and_extract_keywords(f"{seed_desc} {raw_titles}", seed_handle=pure_seed)
-                    except Exception:
-                        niche_keywords = clean_and_extract_keywords(f"{seed_desc}", seed_handle=pure_seed)
-                        
-                    # Add custom keywords if provided
                     if custom_keywords_input:
-                        custom_kws = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
-                        niche_keywords = custom_kws + niche_keywords
-
-                    top_kw_list = niche_keywords[:4] if niche_keywords else [pure_seed.replace('_', ' ')]
-                    st.write(f"🏷️ **Từ khóa ngách chính được dùng để tìm kiếm:** `{', '.join(top_kw_list)}`")
+                        top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
+                    else:
+                        ext_info = extract_channel_master_keywords(youtube, seed_id)
+                        top_kw_list = ext_info['master_keywords'][:4] if ext_info['master_keywords'] else [pure_seed.replace('_', ' ')]
+                        
+                    st.write(f"🏷️ **Từ khóa ngách chính dùng để quét:** `{', '.join(top_kw_list)}`")
                     
                     st.info("🌐 Đang quét tìm rộng hàng trăm Kênh & Videos thuộc chủ đề này...")
                     
@@ -693,7 +766,7 @@ with tab3:
                                 "Subscribers": f"{c_subs:,}",
                                 "Quốc gia": c_country,
                                 "Video Gần Nhất": latest_date,
-                                "Trạng Thái DB": "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI TIỀM NAG"
+                                "Trạng Thái DB": "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI TIỀM NĂNG"
                             })
 
                         # Show Results
@@ -780,3 +853,64 @@ with tab5:
         st.dataframe(df_all, use_container_width=True)
         csv = df_all.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv")
+
+# --- TAB 6: DEDICATED CHANNEL KEYWORD INSPECTOR ---
+with tab6:
+    st.subheader("🪄 Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
+    st.markdown("Nhập bất kỳ Handle nào để bóc tách **Thẻ từ khóa ẩn của Kênh (Channel Keywords)**, **Top Video Tags** và **Phân loại AI của YouTube**.")
+    
+    col_k1, col_f2 = st.columns([2, 1])
+    with col_k1:
+        inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi (ví dụ: @NickDiGiovanni, @dudeperfect):", value="@NickDiGiovanni", key="inspect_input")
+    with col_f2:
+        api_key_tab6 = st.text_input("YouTube Data API Key:", value=default_api_key_tab3, type="password", key="api_key_tab6")
+
+    if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay"):
+        pure_inspect = to_pure_id(inspect_handle_input)
+        if not pure_inspect:
+            st.error("Handle không hợp lệ!")
+        else:
+            try:
+                yt_insp = build("youtube", "v3", developerKey=api_key_tab6)
+                cid_insp = get_channel_id_by_handle(yt_insp, pure_inspect)
+                
+                if not cid_insp:
+                    st.error("Không tìm thấy Channel ID cho kênh này!")
+                else:
+                    with st.spinner("Đang bóc tách dữ liệu từ YouTube Studio & Tags..."):
+                        ext_data = extract_channel_master_keywords(yt_insp, cid_insp)
+                        
+                        st.divider()
+                        st.markdown(f"### 🏷️ Dữ Liệu Từ Khóa Của Kênh `@{pure_inspect}`")
+                        
+                        col_t1, col_t2 = st.columns(2)
+                        with col_t1:
+                            st.markdown("#### 🔑 Thẻ Từ Khóa Ẩn Của Kênh (Channel Keywords):")
+                            if ext_data['channel_keywords']:
+                                for kw in ext_data['channel_keywords']:
+                                    st.write(f"• `{kw}`")
+                            else:
+                                st.info("Kênh này không cài đặt Thẻ từ khóa ẩn.")
+                                
+                            st.markdown("#### 📂 Phân Loại Chủ Đề Của YouTube (Topics):")
+                            if ext_data['categories']:
+                                for cat in ext_data['categories']:
+                                    st.write(f"• **{cat}**")
+                            else:
+                                st.info("Chưa có thông tin Topic Category.")
+
+                        with col_t2:
+                            st.markdown("#### 📌 Top Video Tags Xuất Hiện Nhiều Nhất:")
+                            if ext_data['top_tags']:
+                                for tag in ext_data['top_tags']:
+                                    st.write(f"• `{tag}`")
+                            else:
+                                st.info("Không tìm thấy Video Tags.")
+
+                        st.divider()
+                        st.markdown("#### 🎯 Gợi Ý Bộ Từ Khóa Tìm Kênh Đồng Ngách Chuẩn:")
+                        master_str = ", ".join(ext_data['master_keywords'])
+                        st.code(master_str, language="text")
+
+            except Exception as e:
+                st.error(f"Lỗi khi soi từ khóa: {e}")
