@@ -454,7 +454,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     return output_buf.getvalue()
 
 def run_single_channel_audit(pure_handle, api_key):
-    """Helper function to run full audit and return bytes + filename"""
     yt = build("youtube", "v3", developerKey=api_key)
     cid = get_channel_id_by_handle(yt, pure_handle)
     if not cid:
@@ -486,7 +485,7 @@ def run_single_channel_audit(pure_handle, api_key):
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
-# Tabs with Stable Icons
+# Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
@@ -625,9 +624,8 @@ with tab2:
 # --- TAB 3: CONTENT-BASED SMART RELATED FINDER ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Tạo file Audit V4.14 trực tiếp trên từng dòng & Lưu DB tự động.")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Đầy đủ chỉ số cho cả Kênh Đạt Chuẩn & Kênh Bị Loại.")
     
-    # Render Audit Success Message if exists
     if 'audit_success_msg' in st.session_state:
         st.success(st.session_state['audit_success_msg'])
         del st.session_state['audit_success_msg']
@@ -659,13 +657,13 @@ with tab3:
         min_subs_choice = st.selectbox(
             "Mốc Subscribers Tối Thiểu:",
             options=[100000, 250000, 500000, 1000000],
-            index=3, # Default 1,000,000 Subs
+            index=3,
             format_func=lambda x: f"{x:,} Subs ({'1 Triệu' if x==1000000 else f'{x//1000}k'})"
         )
         min_duration_choice = st.selectbox(
             "Lọc Loại Bỏ Kênh Shorts:",
             options=[60, 180, 300, 600],
-            index=0, # Default >= 60 seconds
+            index=0,
             format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Bắt buộc có Video > 10 phút"
         )
     with col_f3:
@@ -701,7 +699,6 @@ with tab3:
                     
                     candidate_channel_ids = set()
                     
-                    # 1. Search Channels directly by query
                     q_chan = " ".join(top_kw_list[:2])
                     c_search_req = youtube.search().list(part="snippet", q=q_chan, type="channel", maxResults=50)
                     c_search_res = c_search_req.execute()
@@ -709,7 +706,6 @@ with tab3:
                         found_cid = c_item['snippet']['channelId']
                         if found_cid != seed_id: candidate_channel_ids.add(found_cid)
                         
-                    # 2. Search Videos in the exact niche to find producing Channels
                     search_queries = [" ".join(top_kw_list[:2]), " ".join(top_kw_list[2:4])] if len(top_kw_list) >= 4 else [" ".join(top_kw_list)]
                     for q in search_queries:
                         if not q.strip(): continue
@@ -740,7 +736,6 @@ with tab3:
                                 candidate_handles.append(c_handle)
                                 channel_item_map[c_handle] = item
 
-                        # Query DB in batch
                         db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
                         db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
                         
@@ -751,21 +746,36 @@ with tab3:
                             c_subs = int(item['statistics'].get('subscriberCount', 0))
                             c_url = f"https://www.youtube.com/@{c_handle}"
                             
+                            in_db = c_handle in db_existing_set
+                            db_status = "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI"
+
                             # --- SUBSCRIBER FILTER ---
                             if c_subs < min_subs_choice:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
+                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"
+                                })
                                 continue
 
                             # --- LAYER 1 FILTER ---
                             passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
                             if not passes_l1:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": l1_reason})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
+                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": l1_reason
+                                })
                                 continue
                                 
                             # --- LAYER 2 FILTER ---
                             c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
                             if not c_playlist:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Không có Playlist Uploads"})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
+                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": "Không có Playlist Uploads"
+                                })
                                 continue
 
                             try:
@@ -773,26 +783,46 @@ with tab3:
                                 v_res = v_req.execute()
                                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                             except Exception:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Playlist ẩn hoặc lỗi 404"})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
+                                    "Thời Lượng": "N/A", "Trạng Thái DB": db_status, "Lý do loại": "Playlist ẩn hoặc lỗi 404"
+                                })
                                 continue
                                 
                             if not v_ids:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Kênh không có video nào"})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": "N/A",
+                                    "Thời Lượng": "0m", "Trạng Thái DB": db_status, "Lý do loại": "Kênh không có video nào"
+                                })
                                 continue
                                 
                             v_details = get_video_details(youtube, v_ids)
                             latest_date = v_details[0]['Published Date'] if v_details else "N/A"
                             
+                            total_seconds = sum(v['Seconds'] for v in v_details)
+                            h, rem = divmod(total_seconds, 3600)
+                            m, s = divmod(rem, 60)
+                            duration_str = f"{int(h)}h {int(m)}m" if h > 0 else f"{int(m)}m {int(s)}s"
+                            
                             if not is_within_last_90_days(latest_date):
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date,
+                                    "Thời Lượng": duration_str, "Trạng Thái DB": db_status, "Lý do loại": f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"
+                                })
                                 continue
                                 
                             has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
                             if not has_qualifying_video:
-                                rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"})
+                                rejected_channels.append({
+                                    "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title,
+                                    "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date,
+                                    "Thời Lượng": duration_str, "Trạng Thái DB": db_status, "Lý do loại": f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"
+                                })
                                 continue
                                 
-                            in_db = c_handle in db_existing_set
                             passed_channels.append({
                                 "Handle": f"@{c_handle}",
                                 "Link Kênh": c_url,
@@ -800,7 +830,8 @@ with tab3:
                                 "Subscribers": f"{c_subs:,}",
                                 "Quốc gia": c_country,
                                 "Video Gần Nhất": latest_date,
-                                "Trạng Thái DB": "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI TIỀM NĂNG"
+                                "Thời Lượng": duration_str,
+                                "Trạng Thái DB": db_status
                             })
 
                         st.session_state['passed_channels'] = passed_channels
@@ -824,7 +855,7 @@ with tab3:
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
-        # --- TAB PASSED: INLINE AUDIT BUTTONS ---
+        # --- TAB PASSED ---
         with tab_pass:
             if passed_list:
                 new_only_handles = [row["Handle"] for row in passed_list if "✅" in row["Trạng Thái DB"]]
@@ -832,32 +863,33 @@ with tab3:
                     st.download_button("📥 Tải Danh Sách Handle Kênh Mới (.txt)", data="\n".join(new_only_handles), file_name="kenh_moi_da_loc.txt", mime="text/plain")
                     st.divider()
                     
-                # Render Table Header
-                h1, h2, h3, h4, h5, h6, h7 = st.columns([1.5, 2.5, 1.2, 1.0, 1.3, 2.2, 1.8])
+                h1, h2, h3, h4, h5, h6, h7, h8 = st.columns([1.2, 2.0, 1.0, 1.0, 1.2, 1.2, 1.8, 1.5])
                 h1.markdown("**Handle**")
                 h2.markdown("**Tên Kênh**")
                 h3.markdown("**Subs**")
                 h4.markdown("**Quốc Gia**")
-                h5.markdown("**Video Gần Nhất**")
-                h6.markdown("**Trạng Thái DB**")
-                h7.markdown("**Thao Tác Báo Cáo**")
+                h5.markdown("**Video Mới Nhất**")
+                h6.markdown("**Thời Lượng(10v)**")
+                h7.markdown("**Trạng Thái DB**")
+                h8.markdown("**Thao Tác Báo Cáo**")
                 st.divider()
 
                 for idx, row in enumerate(passed_list):
-                    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 2.5, 1.2, 1.0, 1.3, 2.2, 1.8])
+                    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.2, 2.0, 1.0, 1.0, 1.2, 1.2, 1.8, 1.5])
                     c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
                     c2.write(row['Tên Kênh'])
                     c3.write(row['Subscribers'])
                     c4.write(row['Quốc gia'])
                     c5.write(row['Video Gần Nhất'])
-                    c6.write(row['Trạng Thái DB'])
+                    c6.write(row['Thời Lượng'])
+                    c7.write(row['Trạng Thái DB'])
                     
                     pure_h_inline = to_pure_id(row['Handle'])
                     audit_key = f"audit_file_{pure_h_inline}"
                     
                     if audit_key in st.session_state:
                         audit_info = st.session_state[audit_key]
-                        c7.download_button(
+                        c8.download_button(
                             "📥 Tải Audit .xlsx",
                             data=audit_info["bytes"],
                             file_name=audit_info["filename"],
@@ -865,11 +897,10 @@ with tab3:
                             key=f"dl_pass_{idx}_{pure_h_inline}"
                         )
                     else:
-                        if c7.button("📄 Tạo Audit V4.14", key=f"btn_pass_{idx}_{pure_h_inline}"):
+                        if c8.button("📄 Tạo Audit V4.14", key=f"btn_pass_{idx}_{pure_h_inline}"):
                             with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
                                 b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
                                 if b_data:
-                                    # Auto Upsert to DB
                                     try:
                                         supabase.table("channels").upsert([{
                                             "handle": pure_h_inline,
@@ -887,31 +918,38 @@ with tab3:
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
-        # --- TAB REJECTED: INLINE AUDIT BUTTONS ---
+        # --- TAB REJECTED WITH FULL COLUMNS ---
         with tab_rej:
             if rejected_list:
-                # Render Table Header
-                rh1, rh2, rh3, rh4, rh5 = st.columns([1.5, 2.5, 1.2, 3.0, 1.8])
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9 = st.columns([1.2, 1.8, 1.0, 0.9, 1.1, 1.1, 1.5, 2.5, 1.5])
                 rh1.markdown("**Handle**")
                 rh2.markdown("**Tên Kênh**")
                 rh3.markdown("**Subs**")
-                rh4.markdown("**Lý Do Loại**")
-                rh5.markdown("**Thao Tác Báo Cáo**")
+                rh4.markdown("**Quốc Gia**")
+                rh5.markdown("**Video Mới Nhất**")
+                rh6.markdown("**Thời Lượng(10v)**")
+                rh7.markdown("**Trạng Thái DB**")
+                rh8.markdown("**Lý Do Loại**")
+                rh9.markdown("**Thao Tác Báo Cáo**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5 = st.columns([1.5, 2.5, 1.2, 3.0, 1.8])
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9 = st.columns([1.2, 1.8, 1.0, 0.9, 1.1, 1.1, 1.5, 2.5, 1.5])
                     rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
                     rc2.write(row['Tên Kênh'])
                     rc3.write(row['Subscribers'])
-                    rc4.write(f"❌ {row['Lý do loại']}")
+                    rc4.write(row.get('Quốc gia', 'N/A'))
+                    rc5.write(row.get('Video Gần Nhất', 'N/A'))
+                    rc6.write(row.get('Thời Lượng', 'N/A'))
+                    rc7.write(row.get('Trạng Thái DB', 'N/A'))
+                    rc8.write(f"❌ {row['Lý do loại']}")
                     
                     pure_h_inline = to_pure_id(row['Handle'])
                     audit_key = f"audit_file_{pure_h_inline}"
                     
                     if audit_key in st.session_state:
                         audit_info = st.session_state[audit_key]
-                        rc5.download_button(
+                        rc9.download_button(
                             "📥 Tải Audit .xlsx",
                             data=audit_info["bytes"],
                             file_name=audit_info["filename"],
@@ -919,11 +957,10 @@ with tab3:
                             key=f"dl_rej_{idx}_{pure_h_inline}"
                         )
                     else:
-                        if rc5.button("📄 Tạo Audit V4.14", key=f"btn_rej_{idx}_{pure_h_inline}"):
+                        if rc9.button("📄 Tạo Audit V4.14", key=f"btn_rej_{idx}_{pure_h_inline}"):
                             with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
                                 b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
                                 if b_data:
-                                    # Auto Upsert to DB
                                     try:
                                         supabase.table("channels").upsert([{
                                             "handle": pure_h_inline,
@@ -1020,7 +1057,6 @@ with tab6:
             except Exception as e:
                 st.error(f"Lỗi khi soi từ khóa: {e}")
 
-    # Display inspection results if present in session_state
     if 'last_inspected_data' in st.session_state:
         ext_data = st.session_state['last_inspected_data']
         pure_inspect = st.session_state.get('last_inspected_handle', '')
