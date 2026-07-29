@@ -21,6 +21,9 @@ from supabase import create_client, Client
 # Page Config
 st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
 
+# Global Default API Key
+DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyBrTtmMp-txQ7ID15wrJZUpN-i53SRVzgk")
+
 # Safe State Lifecycle Management - Update pending state before widget instantiation
 if 'pending_keywords' in st.session_state:
     st.session_state['custom_kw_tab3'] = st.session_state['pending_keywords']
@@ -541,8 +544,7 @@ with tab2:
     with col_input1:
         channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247", placeholder="https://www.youtube.com/@4wd247 hoặc @4wd247")
     with col_input2:
-        default_api_key = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyBrTtmMp-txQ7ID15wrJZUpN-i53SRVzgk")
-        api_key_input = st.text_input("YouTube Data API Key:", value=default_api_key, type="password")
+        api_key_input = st.text_input("YouTube Data API Key:", value=DEFAULT_API_KEY, type="password")
 
     if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14"):
         pure_h = to_pure_id(channel_url_input)
@@ -600,12 +602,11 @@ with tab3:
     with col_f1:
         seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @dudeperfect, @NickDiGiovanni, @4wd247):", value="@NickDiGiovanni", key="seed_input_tab3")
         
-        # Auto-Extract Keywords Button in Tab 3
         if st.button("✨ Tự Động Phân Tích từ Kênh Mồi", help="Bấm để YouTube API tự bóc tách thẻ từ khóa chuẩn nhất từ kênh mồi và điền vào bên dưới"):
             pure_s_auto = to_pure_id(seed_channel_input)
             if pure_s_auto:
                 try:
-                    yt_auto = build("youtube", "v3", developerKey=st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854"))
+                    yt_auto = build("youtube", "v3", developerKey=DEFAULT_API_KEY)
                     cid_auto = get_channel_id_by_handle(yt_auto, pure_s_auto)
                     if cid_auto:
                         extracted = extract_channel_master_keywords(yt_auto, cid_auto)
@@ -634,8 +635,7 @@ with tab3:
             format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Bắt buộc có Video > 10 phút"
         )
     with col_f3:
-        default_api_key_tab3 = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
-        api_key_tab3 = st.text_input("YouTube Data API Key:", value=default_api_key_tab3, type="password", key="api_key_tab3")
+        api_key_tab3 = st.text_input("YouTube Data API Key:", value=DEFAULT_API_KEY, type="password", key="api_key_tab3")
 
     if seed_channel_input and st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách"):
         pure_seed = to_pure_id(seed_channel_input)
@@ -933,7 +933,7 @@ with tab6:
     with col_k1:
         inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi (ví dụ: @NickDiGiovanni, @dudeperfect):", value="@NickDiGiovanni", key="inspect_input")
     with col_f2:
-        api_key_tab6 = st.text_input("YouTube Data API Key:", value=default_api_key_tab3, type="password", key="api_key_tab6")
+        api_key_tab6 = st.text_input("YouTube Data API Key:", value=DEFAULT_API_KEY, type="password", key="api_key_tab6")
 
     if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay"):
         pure_inspect = to_pure_id(inspect_handle_input)
@@ -942,19 +942,20 @@ with tab6:
         else:
             try:
                 yt_insp = build("youtube", "v3", developerKey=api_key_tab6)
-                cid_insp = get_channel_id_by_handle(yt_insp, pure_inspect)
+                cid_insp = get_channel_id_by_handle(yt_insp, pure_inspect) # FIXED TYPO: cid_insp instead of cid_inspect
                 
                 if not cid_insp:
                     st.error("Không tìm thấy Channel ID cho kênh này!")
                 else:
                     with st.spinner("Đang bóc tách dữ liệu từ YouTube Studio & Tags..."):
-                        ext_data = extract_channel_master_keywords(yt_insp, cid_inspect)
+                        ext_data = extract_channel_master_keywords(yt_insp, cid_insp) # FIXED TYPO
                         master_str = ", ".join(ext_data['master_keywords'])
                         
-                        # Store in pending_keywords for Streamlit lifecycle safety
+                        # Safe state storage using pending_keywords
                         st.session_state['pending_keywords'] = master_str
                         st.session_state['last_inspected_data'] = ext_data
                         st.session_state['last_inspected_handle'] = pure_inspect
+                        st.rerun()
                         
             except Exception as e:
                 st.error(f"Lỗi khi soi từ khóa: {e}")
