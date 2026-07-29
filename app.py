@@ -32,6 +32,9 @@ if 'pending_keywords' in st.session_state:
 if 'custom_kw_tab3' not in st.session_state:
     st.session_state['custom_kw_tab3'] = ""
 
+if 'cart' not in st.session_state:
+    st.session_state['cart'] = {}  # Format: {pure_handle: dict_info}
+
 # Connect to Supabase
 @st.cache_resource
 def init_supabase():
@@ -485,7 +488,7 @@ def run_single_channel_audit(pure_handle, api_key):
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
-# Tabs with Stable Icons
+# Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
@@ -621,10 +624,10 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH SHOPPING CART ---
 with tab3:
-    st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Trích xuất đầy đủ Quốc gia, Ngày Video, Tổng Video cho mọi ứng viên.")
+    st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Giỏ Hàng Kênh CRM")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Chọn lọc kênh thả vào **Giỏ hàng** để Xuất file (TXT, Excel, CSV) hoặc Nạp trực tiếp Database.")
     
     if 'audit_success_msg' in st.session_state:
         st.success(st.session_state['audit_success_msg'])
@@ -739,16 +742,12 @@ with tab3:
                         db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
                         db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
                         
-                        # Process each channel fully to prevent N/A
                         for c_handle, item in channel_item_map.items():
                             c_title = item['snippet']['title']
                             c_desc = item['snippet'].get('description', '')
                             c_country = item['snippet'].get('country', 'N/A')
                             c_subs = int(item['statistics'].get('subscriberCount', 0))
-                            
-                            # Fetch Total Video Count instead of duration
                             c_video_count = int(item['statistics'].get('videoCount', 0))
-                            
                             c_url = f"https://www.youtube.com/@{c_handle}"
                             in_db = c_handle in db_existing_set
                             db_status = "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI"
@@ -757,13 +756,11 @@ with tab3:
                             latest_date = "N/A"
                             has_qualifying_video = False
                             
-                            # Only call playlistItems API if the channel has videos
                             if c_playlist and c_video_count > 0:
                                 try:
                                     v_req = youtube.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=10)
                                     v_res = v_req.execute()
                                     v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                                    
                                     if v_ids:
                                         v_details = get_video_details(youtube, v_ids)
                                         if v_details:
@@ -772,7 +769,6 @@ with tab3:
                                 except Exception:
                                     pass
 
-                            # BASE DATA DICT (Full data for both passed and rejected)
                             base_data = {
                                 "Handle": f"@{c_handle}", 
                                 "Link Kênh": c_url, 
@@ -784,38 +780,32 @@ with tab3:
                                 "Trạng Thái DB": db_status
                             }
 
-                            # --- FILTER 1: SUBSCRIBERS ---
                             if c_subs < min_subs_choice:
                                 base_data["Lý do loại"] = f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"
                                 rejected_channels.append(base_data)
                                 continue
 
-                            # --- FILTER 2: METADATA & COUNTRY ---
                             passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
                             if not passes_l1:
                                 base_data["Lý do loại"] = l1_reason
                                 rejected_channels.append(base_data)
                                 continue
                                 
-                            # --- FILTER 3: HAS VIDEOS ---
                             if c_video_count == 0 or not c_playlist:
                                 base_data["Lý do loại"] = "Kênh không có video nào"
                                 rejected_channels.append(base_data)
                                 continue
 
-                            # --- FILTER 4: ACTIVITY ---
                             if not is_within_last_90_days(latest_date):
                                 base_data["Lý do loại"] = f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"
                                 rejected_channels.append(base_data)
                                 continue
                                 
-                            # --- FILTER 5: SHORTS ONLY ---
                             if not has_qualifying_video:
                                 base_data["Lý do loại"] = f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"
                                 rejected_channels.append(base_data)
                                 continue
                                 
-                            # PASSED ALL FILTERS
                             passed_channels.append(base_data)
 
                         st.session_state['passed_channels'] = passed_channels
@@ -832,34 +822,46 @@ with tab3:
             except Exception as e:
                 st.error(f"Lỗi khi tìm kênh tương tự: {e}")
 
-    # Display Tables with Inline "Tạo File Báo Cáo" Buttons
+    # Display Tables with Inline Cart & Audit
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
-        # --- TAB PASSED: INLINE AUDIT BUTTONS ---
+        # --- TAB PASSED ---
         with tab_pass:
             if passed_list:
-                new_only_handles = [row["Handle"] for row in passed_list if "✅" in row["Trạng Thái DB"]]
-                if new_only_handles:
-                    st.download_button("📥 Tải Danh Sách Handle Kênh Mới (.txt)", data="\n".join(new_only_handles), file_name="kenh_moi_da_loc.txt", mime="text/plain")
-                    st.divider()
-                    
-                h1, h2, h3, h4, h5, h6, h7, h8 = st.columns([1.2, 2.0, 1.0, 1.0, 1.2, 1.2, 1.8, 1.5])
+                col_btn_all1, col_btn_all2 = st.columns([1, 2])
+                with col_btn_all1:
+                    if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", key="add_all_new_passed"):
+                        added_cnt = 0
+                        for row in passed_list:
+                            if "✅" in row["Trạng Thái DB"]:
+                                p_id = to_pure_id(row["Handle"])
+                                if p_id not in st.session_state['cart']:
+                                    st.session_state['cart'][p_id] = row
+                                    added_cnt += 1
+                        st.success(f"🎉 Đã thêm {added_cnt} kênh mới vào Giỏ hàng!")
+                        st.rerun()
+                
+                st.divider()
+                
+                # Table Header with Cart Column
+                h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns([1.2, 1.8, 0.9, 0.8, 1.1, 1.1, 1.5, 1.3, 1.3])
                 h1.markdown("**Handle**")
                 h2.markdown("**Tên Kênh**")
                 h3.markdown("**Subs**")
-                h4.markdown("**Quốc Gia**")
-                h5.markdown("**Video Mới Nhất**")
+                h4.markdown("**Q.Gia**")
+                h5.markdown("**Video Mới**")
                 h6.markdown("**Tổng Video**")
                 h7.markdown("**Trạng Thái DB**")
-                h8.markdown("**Thao Tác Báo Cáo**")
+                h8.markdown("**🛒 Giỏ Hàng**")
+                h9.markdown("**Báo Cáo Audit**")
                 st.divider()
 
                 for idx, row in enumerate(passed_list):
-                    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([1.2, 2.0, 1.0, 1.0, 1.2, 1.2, 1.8, 1.5])
+                    c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([1.2, 1.8, 0.9, 0.8, 1.1, 1.1, 1.5, 1.3, 1.3])
                     c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
                     c2.write(row['Tên Kênh'])
                     c3.write(row['Subscribers'])
@@ -869,20 +871,32 @@ with tab3:
                     c7.write(row['Trạng Thái DB'])
                     
                     pure_h_inline = to_pure_id(row['Handle'])
-                    audit_key = f"audit_file_{pure_h_inline}"
                     
+                    # Cart Button Logic
+                    in_cart = pure_h_inline in st.session_state['cart']
+                    if in_cart:
+                        if c8.button("❌ Bỏ Giỏ", key=f"remove_pass_{idx}_{pure_h_inline}"):
+                            del st.session_state['cart'][pure_h_inline]
+                            st.rerun()
+                    else:
+                        if c8.button("🛒 Thêm Giỏ", key=f"add_pass_{idx}_{pure_h_inline}"):
+                            st.session_state['cart'][pure_h_inline] = row
+                            st.rerun()
+                            
+                    # Audit Report Logic
+                    audit_key = f"audit_file_{pure_h_inline}"
                     if audit_key in st.session_state:
                         audit_info = st.session_state[audit_key]
-                        c8.download_button(
-                            "📥 Tải Audit .xlsx",
+                        c9.download_button(
+                            "📥 Tải .xlsx",
                             data=audit_info["bytes"],
                             file_name=audit_info["filename"],
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             key=f"dl_pass_{idx}_{pure_h_inline}"
                         )
                     else:
-                        if c8.button("📄 Tạo Audit V4.14", key=f"btn_pass_{idx}_{pure_h_inline}"):
-                            with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
+                        if c9.button("📄 Tạo Audit", key=f"btn_pass_{idx}_{pure_h_inline}"):
+                            with st.spinner(f"Đang cào {row['Handle']}..."):
                                 b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
                                 if b_data:
                                     try:
@@ -891,34 +905,35 @@ with tab3:
                                             "youtuber_name": row['Tên Kênh'],
                                             "source": "Smart Finder Audit V4.14"
                                         }], on_conflict="handle").execute()
-                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database thành công!"
+                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database!"
                                     except Exception as e:
-                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo file Audit nhưng lưu Database thất bại: {e}"
+                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo Audit nhưng lưu DB lỗi: {e}"
 
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                 else:
-                                    st.error("Lỗi khi cào dữ liệu kênh!")
+                                    st.error("Lỗi khi cào kênh!")
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
-        # --- TAB REJECTED WITH FULL COLUMNS ---
+        # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9 = st.columns([1.2, 1.8, 1.0, 0.9, 1.1, 1.1, 1.5, 2.5, 1.5])
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10 = st.columns([1.2, 1.6, 0.9, 0.7, 1.0, 1.0, 1.3, 2.2, 1.2, 1.2])
                 rh1.markdown("**Handle**")
                 rh2.markdown("**Tên Kênh**")
                 rh3.markdown("**Subs**")
-                rh4.markdown("**Quốc Gia**")
-                rh5.markdown("**Video Mới Nhất**")
+                rh4.markdown("**Q.Gia**")
+                rh5.markdown("**Video Mới**")
                 rh6.markdown("**Tổng Video**")
                 rh7.markdown("**Trạng Thái DB**")
                 rh8.markdown("**Lý Do Loại**")
-                rh9.markdown("**Thao Tác Báo Cáo**")
+                rh9.markdown("**🛒 Giỏ Hàng**")
+                rh10.markdown("**Báo Cáo Audit**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9 = st.columns([1.2, 1.8, 1.0, 0.9, 1.1, 1.1, 1.5, 2.5, 1.5])
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10 = st.columns([1.2, 1.6, 0.9, 0.7, 1.0, 1.0, 1.3, 2.2, 1.2, 1.2])
                     rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
                     rc2.write(row['Tên Kênh'])
                     rc3.write(row['Subscribers'])
@@ -929,20 +944,32 @@ with tab3:
                     rc8.write(f"❌ {row['Lý do loại']}")
                     
                     pure_h_inline = to_pure_id(row['Handle'])
-                    audit_key = f"audit_file_{pure_h_inline}"
                     
+                    # Cart Logic
+                    in_cart = pure_h_inline in st.session_state['cart']
+                    if in_cart:
+                        if rc9.button("❌ Bỏ Giỏ", key=f"remove_rej_{idx}_{pure_h_inline}"):
+                            del st.session_state['cart'][pure_h_inline]
+                            st.rerun()
+                    else:
+                        if rc9.button("🛒 Thêm Giỏ", key=f"add_rej_{idx}_{pure_h_inline}"):
+                            st.session_state['cart'][pure_h_inline] = row
+                            st.rerun()
+
+                    # Audit Logic
+                    audit_key = f"audit_file_{pure_h_inline}"
                     if audit_key in st.session_state:
                         audit_info = st.session_state[audit_key]
-                        rc9.download_button(
-                            "📥 Tải Audit .xlsx",
+                        rc10.download_button(
+                            "📥 Tải .xlsx",
                             data=audit_info["bytes"],
                             file_name=audit_info["filename"],
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             key=f"dl_rej_{idx}_{pure_h_inline}"
                         )
                     else:
-                        if rc9.button("📄 Tạo Audit V4.14", key=f"btn_rej_{idx}_{pure_h_inline}"):
-                            with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
+                        if rc10.button("📄 Tạo Audit", key=f"btn_rej_{idx}_{pure_h_inline}"):
+                            with st.spinner(f"Đang cào {row['Handle']}..."):
                                 b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
                                 if b_data:
                                     try:
@@ -951,16 +978,76 @@ with tab3:
                                             "youtuber_name": row['Tên Kênh'],
                                             "source": "Smart Finder Audit V4.14"
                                         }], on_conflict="handle").execute()
-                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database thành công!"
+                                        st.session_state['audit_success_msg'] = f"🎉 Đã tạo Audit và lưu kênh **@{pure_h_inline}** vào Database!"
                                     except Exception as e:
-                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo file Audit nhưng lưu Database thất bại: {e}"
+                                        st.session_state['audit_success_msg'] = f"⚠️ Đã tạo Audit nhưng lưu DB lỗi: {e}"
 
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                 else:
-                                    st.error("Lỗi khi cào dữ liệu kênh!")
+                                    st.error("Lỗi khi cào kênh!")
             else:
                 st.info("Không có kênh nào bị loại.")
+
+    # --- DEDICATED CHANNEL CART CRM SECTION ---
+    st.divider()
+    cart_items = st.session_state['cart']
+    st.subheader(f"🛒 Giỏ Hàng Kênh Đã Chọn ({len(cart_items)} Kênh)")
+    st.caption("Quản lý danh sách các kênh bạn đã chọn lọc. Có thể xuất file TXT, Excel hoặc nạp trực tiếp vào Supabase Database.")
+
+    if cart_items:
+        df_cart = pd.DataFrame(list(cart_items.values()))
+        st.dataframe(
+            df_cart,
+            use_container_width=True,
+            column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")}
+        )
+
+        col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+        
+        # 1. Export TXT Handles
+        txt_handles = "\n".join([item["Handle"] for item in cart_items.values()])
+        col_c1.download_button(
+            "📄 Tải Danh Sách TXT",
+            data=txt_handles,
+            file_name=f"gio_hang_kenh_{datetime.date.today().strftime('%d-%m-%Y')}.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+        # 2. Export Excel
+        buf_excel = io.BytesIO()
+        df_cart.to_excel(buf_excel, index=False)
+        col_c2.download_button(
+            "📊 Tải Bảng Excel (.xlsx)",
+            data=buf_excel.getvalue(),
+            file_name=f"gio_hang_kenh_{datetime.date.today().strftime('%d-%m-%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+        # 3. Batch Push to Database
+        if col_c3.button("⚡ Nạp Giỏ Hàng Vào Database Supabase", type="primary", use_container_width=True):
+            insert_data = []
+            for item in cart_items.values():
+                pure_h_cart = to_pure_id(item["Handle"])
+                insert_data.append({
+                    "handle": pure_h_cart,
+                    "youtuber_name": item.get("Tên Kênh", pure_h_cart.upper()),
+                    "source": "Channel Cart Import"
+                })
+            try:
+                supabase.table("channels").upsert(insert_data, on_conflict="handle").execute()
+                st.success(f"🎉 Đã lưu thành công {len(insert_data)} kênh từ Giỏ hàng vào Database đám mây!")
+            except Exception as e:
+                st.error(f"Lỗi khi lưu Database: {e}")
+
+        # 4. Clear Cart
+        if col_c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True):
+            st.session_state['cart'] = {}
+            st.rerun()
+    else:
+        st.info("Giỏ hàng đang trống. Hãy bấm **`🛒 Thêm Giỏ`** ở bảng kết quả trên để đưa kênh vào giỏ hàng!")
 
 # --- TAB 4: UPLOAD & UPDATE ---
 with tab4:
