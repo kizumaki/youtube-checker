@@ -30,6 +30,10 @@ def init_supabase():
 
 supabase = init_supabase()
 
+# Initialize Session State for Shared Keywords
+if 'custom_kw_tab3' not in st.session_state:
+    st.session_state['custom_kw_tab3'] = ""
+
 # --- HELPER FUNCTIONS ---
 def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]:
@@ -446,14 +450,14 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
-# Tabs
+# Tabs with Stable Icons
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
     "🎯 Săn Kênh Tương Tự (Content-Based)",
     "📤 Upload Cập nhật Data", 
     "📊 Xem Database",
-    "🪄 Soi Từ Khóa Kênh (SEO Inspector)"
+    "✨ Soi Từ Khóa Kênh (SEO Inspector)"
 ])
 
 # --- TAB 1: BATCH SEARCH ---
@@ -583,16 +587,17 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH 1-CLICK AUDIT REPORT ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH AUTOMATIC DYNAMIC LINKAGE ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Xuất Báo Cáo Audit V4.14 cho **bất kỳ kênh nào (kể cả kênh bị loại)**.")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Xuất Báo Cáo Audit V4.14 cho **bất kỳ kênh nào**.")
     
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @dudeperfect, @NickDiGiovanni, @4wd247):", value="@NickDiGiovanni", key="seed_input_tab3")
         
-        if st.button("🪄 Tự Động Phân Tích & Điền Từ Khóa Ngách", help="Bấm để YouTube API tự bóc tách thẻ từ khóa chuẩn nhất từ kênh mồi"):
+        # Auto-Extract Keywords Button in Tab 3
+        if st.button("✨ Tự Động Phân Tích từ Kênh Mồi", help="Bấm để YouTube API tự bóc tách thẻ từ khóa chuẩn nhất từ kênh mồi và điền vào bên dưới"):
             pure_s_auto = to_pure_id(seed_channel_input)
             if pure_s_auto:
                 try:
@@ -600,16 +605,15 @@ with tab3:
                     cid_auto = get_channel_id_by_handle(yt_auto, pure_s_auto)
                     if cid_auto:
                         extracted = extract_channel_master_keywords(yt_auto, cid_auto)
-                        st.session_state['auto_kws'] = ", ".join(extracted['master_keywords'][:6])
-                        st.success(f"🎉 Đã tự động bóc tách bộ từ khóa ngách: {st.session_state['auto_kws']}")
+                        st.session_state['custom_kw_tab3'] = ", ".join(extracted['master_keywords'][:6])
+                        st.rerun()
                 except Exception as e:
                     st.error(f"Lỗi bóc từ khóa: {e}")
                     
         custom_keywords_input = st.text_input(
-            "Từ khóa chủ đề (Nhập tay hoặc bấm nút 'Tự Động Phân Tích' ở trên):", 
-            value=st.session_state.get('auto_kws', ''), 
-            placeholder="Ví dụ: Cooking, Food, Recipe, Chef", 
-            key="custom_kw_tab3"
+            "Từ khóa chủ đề (Tự động liên kết từ Tab 6 hoặc bấm nút phân tích ở trên):", 
+            key="custom_kw_tab3",
+            placeholder="Ví dụ: Cooking, Food, Recipe, Chef"
         )
         
     with col_f2:
@@ -761,11 +765,9 @@ with tab3:
                                 "Trạng Thái DB": "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI TIỀM NĂNG"
                             })
 
-                        # Save to Session State for persistent Audit Exporting
                         st.session_state['passed_channels'] = passed_channels
                         st.session_state['rejected_channels'] = rejected_channels
 
-                        # Show Results Summary
                         st.divider()
                         st.markdown(f"### 🎉 Kết Quả Săn Kênh Đồng Ngách Từ `{pure_seed}`")
                         
@@ -777,7 +779,7 @@ with tab3:
             except Exception as e:
                 st.error(f"Lỗi khi tìm kênh tương tự: {e}")
 
-    # Display Tables & 1-Click Audit Report Generator if Results Exist
+    # Display Tables & 1-Click Audit Report Generator
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
@@ -809,14 +811,11 @@ with tab3:
             else:
                 st.info("Không có kênh nào bị loại.")
 
-        # --- NEW FEATURE: 1-CLICK FULL AUDIT EXPORT FOR ANY DISCOVERED CHANNEL (PASSED OR REJECTED) ---
         st.divider()
         st.subheader("📄 Tạo & Tải File Báo Cáo Audit V4.14 Cho Kênh Bất Kỳ")
         st.caption("Chọn bất kỳ kênh nào trong danh sách kết quả (kể cả kênh đạt chuẩn hay **kênh bị loại**) để xuất ngay 1 file Excel Audit 2 Sheet tiêu chuẩn.")
         
-        # Build options mapping: "Handle - Tên Kênh (Lý do/Trạng thái)"
         channel_options_map = {}
-        
         for item in passed_list:
             label = f"{item['Handle']} | {item['Tên Kênh']} | {item['Subscribers']} Subs (✅ Đạt Chuẩn)"
             channel_options_map[label] = item['Handle']
@@ -923,7 +922,7 @@ with tab5:
 
 # --- TAB 6: DEDICATED CHANNEL KEYWORD INSPECTOR ---
 with tab6:
-    st.subheader("🪄 Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
+    st.subheader("✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
     st.markdown("Nhập bất kỳ Handle nào để bóc tách **Thẻ từ khóa ẩn của Kênh (Channel Keywords)**, **Top Video Tags** và **Phân loại AI của YouTube**.")
     
     col_k1, col_f2 = st.columns([2, 1])
@@ -946,8 +945,13 @@ with tab6:
                 else:
                     with st.spinner("Đang bóc tách dữ liệu từ YouTube Studio & Tags..."):
                         ext_data = extract_channel_master_keywords(yt_insp, cid_insp)
+                        master_str = ", ".join(ext_data['master_keywords'])
+                        
+                        # DYNAMICALLY LINK KEYWORDS DIRECTLY TO TAB 3 INPUT!
+                        st.session_state['custom_kw_tab3'] = master_str
                         
                         st.divider()
+                        st.success(f"✨ Đã liên kết tự động bộ từ khóa này sang Tab 3 ('Săn Kênh Tương Tự')!")
                         st.markdown(f"### 🏷️ Dữ Liệu Từ Khóa Của Kênh `@{pure_inspect}`")
                         
                         col_t1, col_t2 = st.columns(2)
@@ -975,8 +979,7 @@ with tab6:
                                 st.info("Không tìm thấy Video Tags.")
 
                         st.divider()
-                        st.markdown("#### 🎯 Gợi Ý Bộ Từ Khóa Tìm Kênh Đồng Ngách Chuẩn:")
-                        master_str = ", ".join(ext_data['master_keywords'])
+                        st.markdown("#### 🎯 Bộ Từ Khóa Gợi Ý (Đã tự động gửi sang Tab 3):")
                         st.code(master_str, language="text")
 
             except Exception as e:
