@@ -162,7 +162,6 @@ def get_channel_id_by_handle(youtube, handle):
     return None
 
 def extract_channel_master_keywords(youtube, channel_id):
-    """Deeply extracts channel keywords from Branding Settings, Video Tags, and Topics."""
     keywords_pool = []
     channel_keywords = []
     top_tags = []
@@ -175,7 +174,6 @@ def extract_channel_master_keywords(youtube, channel_id):
         if 'items' in ch_res and len(ch_res['items']) > 0:
             item = ch_res['items'][0]
             
-            # 1. Branding Channel Keywords
             raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
             found_kw = re.findall(r'"([^"]+)"|\b([a-zA-Z0-9]{3,})\b', raw_kw)
             for k1, k2 in found_kw:
@@ -184,13 +182,11 @@ def extract_channel_master_keywords(youtube, channel_id):
                     keywords_pool.append(kw.lower())
                     channel_keywords.append(kw.lower())
                     
-            # 2. Topic Categories
             topics = item.get('topicDetails', {}).get('topicCategories', [])
             for t in topics:
                 cat_name = t.split('/')[-1].replace('_', ' ')
                 categories.append(cat_name)
                 
-            # 3. Top Video Tags from Recent Uploads
             uploads_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
             if uploads_playlist:
                 v_req = youtube.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15)
@@ -587,16 +583,15 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH AUTO KEYWORD ANALYSIS ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH 1-CLICK AUDIT REPORT ---
 with tab3:
-    st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Chủ Đề")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator sản xuất video cùng chủ đề $\rightarrow$ Áp dụng Bộ Lọc Đa Tầng.")
+    st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Xuất Báo Cáo Audit V4.14 cho **bất kỳ kênh nào (kể cả kênh bị loại)**.")
     
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
         seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @dudeperfect, @NickDiGiovanni, @4wd247):", value="@NickDiGiovanni", key="seed_input_tab3")
         
-        # Auto-Extract Keywords Button inside Tab 3
         if st.button("🪄 Tự Động Phân Tích & Điền Từ Khóa Ngách", help="Bấm để YouTube API tự bóc tách thẻ từ khóa chuẩn nhất từ kênh mồi"):
             pure_s_auto = to_pure_id(seed_channel_input)
             if pure_s_auto:
@@ -714,18 +709,18 @@ with tab3:
                             c_subs = int(item['statistics'].get('subscriberCount', 0))
                             c_url = f"https://www.youtube.com/@{c_handle}"
                             
-                            # --- SUBSCRIBER FILTER (FLEXIBLE) ---
+                            # --- SUBSCRIBER FILTER ---
                             if c_subs < min_subs_choice:
                                 rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Dưới mốc chọn (<{min_subs_choice:,} Subs)"})
                                 continue
 
-                            # --- LAYER 1 FILTER (Country, Language, Excluded Keywords) ---
+                            # --- LAYER 1 FILTER ---
                             passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
                             if not passes_l1:
                                 rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": l1_reason})
                                 continue
                                 
-                            # --- LAYER 2 FILTER (Activity < 90 days & Video Duration) ---
+                            # --- LAYER 2 FILTER ---
                             c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
                             if not c_playlist:
                                 rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": "Không có Playlist Uploads"})
@@ -746,18 +741,15 @@ with tab3:
                             v_details = get_video_details(youtube, v_ids)
                             latest_date = v_details[0]['Published Date'] if v_details else "N/A"
                             
-                            # Filter 4: Activity < 90 days
                             if not is_within_last_90_days(latest_date):
                                 rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Bỏ trống > 90 ngày (Mới nhất: {latest_date})"})
                                 continue
                                 
-                            # Filter 5: Video Duration Check
                             has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
                             if not has_qualifying_video:
                                 rejected_channels.append({"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Lý do loại": f"Video ngắn dưới {min_duration_choice//60} phút (Shorts-only)"})
                                 continue
                                 
-                            # PASSED ALL FILTERS!
                             in_db = c_handle in db_existing_set
                             passed_channels.append({
                                 "Handle": f"@{c_handle}",
@@ -769,46 +761,121 @@ with tab3:
                                 "Trạng Thái DB": "❌ Đã có trong DB" if in_db else "✅ KÊNH MỚI TIỀM NĂNG"
                             })
 
-                        # Show Results
+                        # Save to Session State for persistent Audit Exporting
+                        st.session_state['passed_channels'] = passed_channels
+                        st.session_state['rejected_channels'] = rejected_channels
+
+                        # Show Results Summary
                         st.divider()
-                        st.markdown(f"### 🎉 Kết Quả Săn Kênh Đồng Ngách Nổi Bật Từ `{pure_seed}`")
+                        st.markdown(f"### 🎉 Kết Quả Săn Kênh Đồng Ngách Từ `{pure_seed}`")
                         
                         col_m1, col_f2, col_f3 = st.columns(3)
                         col_m1.metric("Tổng ứng viên đã quét", len(candidate_ids_list))
                         col_f2.metric(f"✅ Đạt Chuẩn (>{min_subs_choice:,} Subs)", len(passed_channels))
                         col_f3.metric("❌ Bị Loại Bởi Bộ Lọc", len(rejected_channels))
-                        
-                        tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_channels)})", f"❌ Kênh Bị Loại ({len(rejected_channels)})"])
-                        
-                        with tab_pass:
-                            if passed_channels:
-                                df_pass = pd.DataFrame(passed_channels)
-                                st.dataframe(
-                                    df_pass,
-                                    use_container_width=True,
-                                    column_config={
-                                        "Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")
-                                    }
-                                )
-                                new_only_handles = [row["Handle"] for row in passed_channels if "✅" in row["Trạng Thái DB"]]
-                                if new_only_handles:
-                                    st.download_button("📥 Tải Danh Sách Handle Kênh Mới (.txt)", data="\n".join(new_only_handles), file_name=f"kenh_moi_ngach_{pure_seed}.txt", mime="text/plain")
-                            else:
-                                st.warning("Không tìm thấy kênh nào thuộc ngách này vượt qua toàn bộ bộ lọc! Bạn có thể thử hạ mốc Subs xuống 250k hoặc 500k xem sao nhé!")
-                                
-                        with tab_rej:
-                            if rejected_channels:
-                                df_rej = pd.DataFrame(rejected_channels)
-                                st.dataframe(
-                                    df_rej,
-                                    use_container_width=True,
-                                    column_config={
-                                        "Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")
-                                    }
-                                )
 
             except Exception as e:
                 st.error(f"Lỗi khi tìm kênh tương tự: {e}")
+
+    # Display Tables & 1-Click Audit Report Generator if Results Exist
+    if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
+        passed_list = st.session_state.get('passed_channels', [])
+        rejected_list = st.session_state.get('rejected_channels', [])
+        
+        tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
+        
+        with tab_pass:
+            if passed_list:
+                df_pass = pd.DataFrame(passed_list)
+                st.dataframe(
+                    df_pass,
+                    use_container_width=True,
+                    column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")}
+                )
+                new_only_handles = [row["Handle"] for row in passed_list if "✅" in row["Trạng Thái DB"]]
+                if new_only_handles:
+                    st.download_button("📥 Tải Danh Sách Handle Kênh Mới (.txt)", data="\n".join(new_only_handles), file_name="kenh_moi_da_loc.txt", mime="text/plain")
+            else:
+                st.info("Không có kênh nào đạt chuẩn.")
+                
+        with tab_rej:
+            if rejected_list:
+                df_rej = pd.DataFrame(rejected_list)
+                st.dataframe(
+                    df_rej,
+                    use_container_width=True,
+                    column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")}
+                )
+            else:
+                st.info("Không có kênh nào bị loại.")
+
+        # --- NEW FEATURE: 1-CLICK FULL AUDIT EXPORT FOR ANY DISCOVERED CHANNEL (PASSED OR REJECTED) ---
+        st.divider()
+        st.subheader("📄 Tạo & Tải File Báo Cáo Audit V4.14 Cho Kênh Bất Kỳ")
+        st.caption("Chọn bất kỳ kênh nào trong danh sách kết quả (kể cả kênh đạt chuẩn hay **kênh bị loại**) để xuất ngay 1 file Excel Audit 2 Sheet tiêu chuẩn.")
+        
+        # Build options mapping: "Handle - Tên Kênh (Lý do/Trạng thái)"
+        channel_options_map = {}
+        
+        for item in passed_list:
+            label = f"{item['Handle']} | {item['Tên Kênh']} | {item['Subscribers']} Subs (✅ Đạt Chuẩn)"
+            channel_options_map[label] = item['Handle']
+            
+        for item in rejected_list:
+            label = f"{item['Handle']} | {item['Tên Kênh']} | {item['Subscribers']} Subs (❌ Loại: {item['Lý do loại']})"
+            channel_options_map[label] = item['Handle']
+            
+        if channel_options_map:
+            selected_label = st.selectbox("Chọn kênh bạn muốn xuất file báo cáo Audit V4.14:", options=list(channel_options_map.keys()))
+            selected_handle = channel_options_map[selected_label]
+            
+            if st.button("🚀 Cào Toàn Bộ Video & Dựng File Audit V4.14"):
+                pure_audit_h = to_pure_id(selected_handle)
+                try:
+                    yt_audit = build("youtube", "v3", developerKey=api_key_tab3)
+                    cid_audit = get_channel_id_by_handle(yt_audit, pure_audit_h)
+                    
+                    if not cid_audit:
+                        st.error("Không tìm thấy Channel ID!")
+                    else:
+                        with st.spinner(f"Đang trích xuất toàn bộ video & dựng báo cáo Audit 2 Sheet cho {pure_audit_h}..."):
+                            playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(yt_audit, cid_audit)
+                            
+                            v_ids = []
+                            next_token = None
+                            while True:
+                                req = yt_audit.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token)
+                                res = req.execute()
+                                for v_item in res.get('items', []):
+                                    v_ids.append(v_item['snippet']['resourceId']['videoId'])
+                                next_token = res.get('nextPageToken')
+                                if not next_token: break
+                                
+                            prog_bar_audit = st.progress(0.0)
+                            v_data_audit = get_video_details(yt_audit, v_ids, progress_bar=prog_bar_audit)
+                            
+                            excel_audit_bytes = generate_v414_excel_report(
+                                clean_handle=pure_audit_h,
+                                sub_count=sub_count,
+                                channel_desc=channel_desc,
+                                channel_joined=channel_joined,
+                                channel_country=channel_country,
+                                avatar_url=avatar_url,
+                                video_data=v_data_audit
+                            )
+                            
+                            out_fname = f"{pure_audit_h}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+                            
+                            st.success(f"🎉 Đã dựng xong báo cáo Audit V4.14 cho @{pure_audit_h} ({len(v_data_audit)} video)!")
+                            st.download_button(
+                                label=f"📥 Tải Về Báo Cáo Audit Excel ({out_fname})",
+                                data=excel_audit_bytes,
+                                file_name=out_fname,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                except Exception as e:
+                    st.error(f"Lỗi khi tạo báo cáo: {e}")
 
 # --- TAB 4: UPLOAD & UPDATE ---
 with tab4:
