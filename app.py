@@ -21,6 +21,14 @@ from supabase import create_client, Client
 # Page Config
 st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
 
+# Safe State Lifecycle Management - Update pending state before widget instantiation
+if 'pending_keywords' in st.session_state:
+    st.session_state['custom_kw_tab3'] = st.session_state['pending_keywords']
+    del st.session_state['pending_keywords']
+
+if 'custom_kw_tab3' not in st.session_state:
+    st.session_state['custom_kw_tab3'] = ""
+
 # Connect to Supabase
 @st.cache_resource
 def init_supabase():
@@ -29,10 +37,6 @@ def init_supabase():
     return create_client(url, key)
 
 supabase = init_supabase()
-
-# Initialize Session State for Shared Keywords
-if 'custom_kw_tab3' not in st.session_state:
-    st.session_state['custom_kw_tab3'] = ""
 
 # --- HELPER FUNCTIONS ---
 def to_pure_id(raw_val):
@@ -450,7 +454,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
 
-# Tabs with Stable Icons
+# Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
@@ -605,7 +609,7 @@ with tab3:
                     cid_auto = get_channel_id_by_handle(yt_auto, pure_s_auto)
                     if cid_auto:
                         extracted = extract_channel_master_keywords(yt_auto, cid_auto)
-                        st.session_state['custom_kw_tab3'] = ", ".join(extracted['master_keywords'][:6])
+                        st.session_state['pending_keywords'] = ", ".join(extracted['master_keywords'][:6])
                         st.rerun()
                 except Exception as e:
                     st.error(f"Lỗi bóc từ khóa: {e}")
@@ -944,43 +948,51 @@ with tab6:
                     st.error("Không tìm thấy Channel ID cho kênh này!")
                 else:
                     with st.spinner("Đang bóc tách dữ liệu từ YouTube Studio & Tags..."):
-                        ext_data = extract_channel_master_keywords(yt_insp, cid_insp)
+                        ext_data = extract_channel_master_keywords(yt_insp, cid_inspect)
                         master_str = ", ".join(ext_data['master_keywords'])
                         
-                        # DYNAMICALLY LINK KEYWORDS DIRECTLY TO TAB 3 INPUT!
-                        st.session_state['custom_kw_tab3'] = master_str
+                        # Store in pending_keywords for Streamlit lifecycle safety
+                        st.session_state['pending_keywords'] = master_str
+                        st.session_state['last_inspected_data'] = ext_data
+                        st.session_state['last_inspected_handle'] = pure_inspect
                         
-                        st.divider()
-                        st.success(f"✨ Đã liên kết tự động bộ từ khóa này sang Tab 3 ('Săn Kênh Tương Tự')!")
-                        st.markdown(f"### 🏷️ Dữ Liệu Từ Khóa Của Kênh `@{pure_inspect}`")
-                        
-                        col_t1, col_t2 = st.columns(2)
-                        with col_t1:
-                            st.markdown("#### 🔑 Thẻ Từ Khóa Ẩn Của Kênh (Channel Keywords):")
-                            if ext_data['channel_keywords']:
-                                for kw in ext_data['channel_keywords']:
-                                    st.write(f"• `{kw}`")
-                            else:
-                                st.info("Kênh này không cài đặt Thẻ từ khóa ẩn.")
-                                
-                            st.markdown("#### 📂 Phân Loại Chủ Đề Của YouTube (Topics):")
-                            if ext_data['categories']:
-                                for cat in ext_data['categories']:
-                                    st.write(f"• **{cat}**")
-                            else:
-                                st.info("Chưa có thông tin Topic Category.")
-
-                        with col_t2:
-                            st.markdown("#### 📌 Top Video Tags Xuất Hiện Nhiều Nhất:")
-                            if ext_data['top_tags']:
-                                for tag in ext_data['top_tags']:
-                                    st.write(f"• `{tag}`")
-                            else:
-                                st.info("Không tìm thấy Video Tags.")
-
-                        st.divider()
-                        st.markdown("#### 🎯 Bộ Từ Khóa Gợi Ý (Đã tự động gửi sang Tab 3):")
-                        st.code(master_str, language="text")
-
             except Exception as e:
                 st.error(f"Lỗi khi soi từ khóa: {e}")
+
+    # Display inspection results if present in session_state
+    if 'last_inspected_data' in st.session_state:
+        ext_data = st.session_state['last_inspected_data']
+        pure_inspect = st.session_state.get('last_inspected_handle', '')
+        master_str = ", ".join(ext_data['master_keywords'])
+        
+        st.divider()
+        st.success(f"✨ Đã liên kết tự động bộ từ khóa này sang Tab 3 ('Săn Kênh Tương Tự')!")
+        st.markdown(f"### 🏷️ Dữ Liệu Từ Khóa Của Kênh `@{pure_inspect}`")
+        
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.markdown("#### 🔑 Thẻ Từ Khóa Ẩn Của Kênh (Channel Keywords):")
+            if ext_data['channel_keywords']:
+                for kw in ext_data['channel_keywords']:
+                    st.write(f"• `{kw}`")
+            else:
+                st.info("Kênh này không cài đặt Thẻ từ khóa ẩn.")
+                
+            st.markdown("#### 📂 Phân Loại Chủ Đề Của YouTube (Topics):")
+            if ext_data['categories']:
+                for cat in ext_data['categories']:
+                    st.write(f"• **{cat}**")
+            else:
+                st.info("Chưa có thông tin Topic Category.")
+
+        with col_t2:
+            st.markdown("#### 📌 Top Video Tags Xuất Hiện Nhiều Nhất:")
+            if ext_data['top_tags']:
+                for tag in ext_data['top_tags']:
+                    st.write(f"• `{tag}`")
+            else:
+                st.info("Không tìm thấy Video Tags.")
+
+        st.divider()
+        st.markdown("#### 🎯 Bộ Từ Khóa Gợi Ý (Đã tự động gửi sang Tab 3):")
+        st.code(master_str, language="text")
