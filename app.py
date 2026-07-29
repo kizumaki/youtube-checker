@@ -24,7 +24,7 @@ st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="�
 # Global Default API Key
 DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyBrTtmMp-txQ7ID15wrJZUpN-i53SRVzgk")
 
-# Safe State Lifecycle Management - Update pending state before widget instantiation
+# Safe State Lifecycle Management
 if 'pending_keywords' in st.session_state:
     st.session_state['custom_kw_tab3'] = st.session_state['pending_keywords']
     del st.session_state['pending_keywords']
@@ -453,6 +453,35 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(output_buf)
     return output_buf.getvalue()
 
+def run_single_channel_audit(pure_handle, api_key):
+    """Helper function to run full audit and return bytes + filename"""
+    yt = build("youtube", "v3", developerKey=api_key)
+    cid = get_channel_id_by_handle(yt, pure_handle)
+    if not cid:
+        return None, None
+    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(yt, cid)
+    v_ids = []
+    next_token = None
+    while True:
+        req = yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token)
+        res = req.execute()
+        for v_item in res.get('items', []):
+            v_ids.append(v_item['snippet']['resourceId']['videoId'])
+        next_token = res.get('nextPageToken')
+        if not next_token: break
+    v_data = get_video_details(yt, v_ids)
+    excel_bytes = generate_v414_excel_report(
+        clean_handle=pure_handle,
+        sub_count=sub_count,
+        channel_desc=channel_desc,
+        channel_joined=channel_joined,
+        channel_country=channel_country,
+        avatar_url=avatar_url,
+        video_data=v_data
+    )
+    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    return excel_bytes, out_fname
+
 # --- APP UI HEADER ---
 st.title("📺 YouTube Channel Master Database")
 st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách & Soi Từ Khóa Kênh 24/7")
@@ -593,10 +622,10 @@ with tab2:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH AUTOMATIC DYNAMIC LINKAGE ---
+# --- TAB 3: CONTENT-BASED SMART RELATED FINDER WITH INLINE ROW-BY-ROW AUDIT BUTTONS ---
 with tab3:
     st.subheader("🎯 Săn Kênh Tương Tự Theo Nội Dung & Xuất Báo Cáo Audit 1-Click")
-    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Xuất Báo Cáo Audit V4.14 cho **bất kỳ kênh nào**.")
+    st.markdown("Hệ thống tự phân tích **Nội dung Video & Tags** $\rightarrow$ Quét rộng các Creator cùng chủ đề $\rightarrow$ Lọc tiêu chuẩn $\rightarrow$ Tạo file Audit V4.14 trực tiếp trên từng dòng.")
     
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
@@ -783,102 +812,107 @@ with tab3:
             except Exception as e:
                 st.error(f"Lỗi khi tìm kênh tương tự: {e}")
 
-    # Display Tables & 1-Click Audit Report Generator
+    # Display Tables with Inline "Tạo File Báo Cáo" Buttons
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         passed_list = st.session_state.get('passed_channels', [])
         rejected_list = st.session_state.get('rejected_channels', [])
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
+        # --- TAB PASSED: INLINE AUDIT BUTTONS ---
         with tab_pass:
             if passed_list:
-                df_pass = pd.DataFrame(passed_list)
-                st.dataframe(
-                    df_pass,
-                    use_container_width=True,
-                    column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")}
-                )
                 new_only_handles = [row["Handle"] for row in passed_list if "✅" in row["Trạng Thái DB"]]
                 if new_only_handles:
                     st.download_button("📥 Tải Danh Sách Handle Kênh Mới (.txt)", data="\n".join(new_only_handles), file_name="kenh_moi_da_loc.txt", mime="text/plain")
+                    st.divider()
+                    
+                # Render Table Header
+                h1, h2, h3, h4, h5, h6, h7 = st.columns([1.5, 2.5, 1.2, 1.0, 1.3, 2.2, 1.8])
+                h1.markdown("**Handle**")
+                h2.markdown("**Tên Kênh**")
+                h3.markdown("**Subs**")
+                h4.markdown("**Quốc Gia**")
+                h5.markdown("**Video Gần Nhất**")
+                h6.markdown("**Trạng Thái DB**")
+                h7.markdown("**Thao Tác Báo Cáo**")
+                st.divider()
+
+                for idx, row in enumerate(passed_list):
+                    c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 2.5, 1.2, 1.0, 1.3, 2.2, 1.8])
+                    c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
+                    c2.write(row['Tên Kênh'])
+                    c3.write(row['Subscribers'])
+                    c4.write(row['Quốc gia'])
+                    c5.write(row['Video Gần Nhất'])
+                    c6.write(row['Trạng Thái DB'])
+                    
+                    pure_h_inline = to_pure_id(row['Handle'])
+                    audit_key = f"audit_file_{pure_h_inline}"
+                    
+                    if audit_key in st.session_state:
+                        audit_info = st.session_state[audit_key]
+                        c7.download_button(
+                            "📥 Tải Audit .xlsx",
+                            data=audit_info["bytes"],
+                            file_name=audit_info["filename"],
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"dl_pass_{idx}_{pure_h_inline}"
+                        )
+                    else:
+                        if c7.button("📄 Tạo Audit V4.14", key=f"btn_pass_{idx}_{pure_h_inline}"):
+                            with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
+                                b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
+                                if b_data:
+                                    st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
+                                    st.rerun()
+                                else:
+                                    st.error("Lỗi khi cào dữ liệu kênh!")
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
+        # --- TAB REJECTED: INLINE AUDIT BUTTONS ---
         with tab_rej:
             if rejected_list:
-                df_rej = pd.DataFrame(rejected_list)
-                st.dataframe(
-                    df_rej,
-                    use_container_width=True,
-                    column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem Kênh 🔗")}
-                )
+                # Render Table Header
+                rh1, rh2, rh3, rh4, rh5 = st.columns([1.5, 2.5, 1.2, 3.0, 1.8])
+                rh1.markdown("**Handle**")
+                rh2.markdown("**Tên Kênh**")
+                rh3.markdown("**Subs**")
+                rh4.markdown("**Lý Do Loại**")
+                rh5.markdown("**Thao Tác Báo Cáo**")
+                st.divider()
+
+                for idx, row in enumerate(rejected_list):
+                    rc1, rc2, rc3, rc4, rc5 = st.columns([1.5, 2.5, 1.2, 3.0, 1.8])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
+                    rc2.write(row['Tên Kênh'])
+                    rc3.write(row['Subscribers'])
+                    rc4.write(f"❌ {row['Lý do loại']}")
+                    
+                    pure_h_inline = to_pure_id(row['Handle'])
+                    audit_key = f"audit_file_{pure_h_inline}"
+                    
+                    if audit_key in st.session_state:
+                        audit_info = st.session_state[audit_key]
+                        rc5.download_button(
+                            "📥 Tải Audit .xlsx",
+                            data=audit_info["bytes"],
+                            file_name=audit_info["filename"],
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"dl_rej_{idx}_{pure_h_inline}"
+                        )
+                    else:
+                        if rc5.button("📄 Tạo Audit V4.14", key=f"btn_rej_{idx}_{pure_h_inline}"):
+                            with st.spinner(f"Đang dựng Audit cho {row['Handle']}..."):
+                                b_data, f_name = run_single_channel_audit(pure_h_inline, api_key_tab3)
+                                if b_data:
+                                    st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
+                                    st.rerun()
+                                else:
+                                    st.error("Lỗi khi cào dữ liệu kênh!")
             else:
                 st.info("Không có kênh nào bị loại.")
-
-        st.divider()
-        st.subheader("📄 Tạo & Tải File Báo Cáo Audit V4.14 Cho Kênh Bất Kỳ")
-        st.caption("Chọn bất kỳ kênh nào trong danh sách kết quả (kể cả kênh đạt chuẩn hay **kênh bị loại**) để xuất ngay 1 file Excel Audit 2 Sheet tiêu chuẩn.")
-        
-        channel_options_map = {}
-        for item in passed_list:
-            label = f"{item['Handle']} | {item['Tên Kênh']} | {item['Subscribers']} Subs (✅ Đạt Chuẩn)"
-            channel_options_map[label] = item['Handle']
-            
-        for item in rejected_list:
-            label = f"{item['Handle']} | {item['Tên Kênh']} | {item['Subscribers']} Subs (❌ Loại: {item['Lý do loại']})"
-            channel_options_map[label] = item['Handle']
-            
-        if channel_options_map:
-            selected_label = st.selectbox("Chọn kênh bạn muốn xuất file báo cáo Audit V4.14:", options=list(channel_options_map.keys()))
-            selected_handle = channel_options_map[selected_label]
-            
-            if st.button("🚀 Cào Toàn Bộ Video & Dựng File Audit V4.14"):
-                pure_audit_h = to_pure_id(selected_handle)
-                try:
-                    yt_audit = build("youtube", "v3", developerKey=api_key_tab3)
-                    cid_audit = get_channel_id_by_handle(yt_audit, pure_audit_h)
-                    
-                    if not cid_audit:
-                        st.error("Không tìm thấy Channel ID!")
-                    else:
-                        with st.spinner(f"Đang trích xuất toàn bộ video & dựng báo cáo Audit 2 Sheet cho {pure_audit_h}..."):
-                            playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(yt_audit, cid_audit)
-                            
-                            v_ids = []
-                            next_token = None
-                            while True:
-                                req = yt_audit.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token)
-                                res = req.execute()
-                                for v_item in res.get('items', []):
-                                    v_ids.append(v_item['snippet']['resourceId']['videoId'])
-                                next_token = res.get('nextPageToken')
-                                if not next_token: break
-                                
-                            prog_bar_audit = st.progress(0.0)
-                            v_data_audit = get_video_details(yt_audit, v_ids, progress_bar=prog_bar_audit)
-                            
-                            excel_audit_bytes = generate_v414_excel_report(
-                                clean_handle=pure_audit_h,
-                                sub_count=sub_count,
-                                channel_desc=channel_desc,
-                                channel_joined=channel_joined,
-                                channel_country=channel_country,
-                                avatar_url=avatar_url,
-                                video_data=v_data_audit
-                            )
-                            
-                            out_fname = f"{pure_audit_h}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-                            
-                            st.success(f"🎉 Đã dựng xong báo cáo Audit V4.14 cho @{pure_audit_h} ({len(v_data_audit)} video)!")
-                            st.download_button(
-                                label=f"📥 Tải Về Báo Cáo Audit Excel ({out_fname})",
-                                data=excel_audit_bytes,
-                                file_name=out_fname,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True
-                            )
-                except Exception as e:
-                    st.error(f"Lỗi khi tạo báo cáo: {e}")
 
 # --- TAB 4: UPLOAD & UPDATE ---
 with tab4:
@@ -942,16 +976,15 @@ with tab6:
         else:
             try:
                 yt_insp = build("youtube", "v3", developerKey=api_key_tab6)
-                cid_insp = get_channel_id_by_handle(yt_insp, pure_inspect) # FIXED TYPO: cid_insp instead of cid_inspect
+                cid_insp = get_channel_id_by_handle(yt_insp, pure_inspect)
                 
                 if not cid_insp:
                     st.error("Không tìm thấy Channel ID cho kênh này!")
                 else:
                     with st.spinner("Đang bóc tách dữ liệu từ YouTube Studio & Tags..."):
-                        ext_data = extract_channel_master_keywords(yt_insp, cid_insp) # FIXED TYPO
+                        ext_data = extract_channel_master_keywords(yt_insp, cid_insp)
                         master_str = ", ".join(ext_data['master_keywords'])
                         
-                        # Safe state storage using pending_keywords
                         st.session_state['pending_keywords'] = master_str
                         st.session_state['last_inspected_data'] = ext_data
                         st.session_state['last_inspected_handle'] = pure_inspect
