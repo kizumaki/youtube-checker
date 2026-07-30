@@ -19,42 +19,140 @@ import json
 from collections import Counter
 from PIL import Image as PILImage
 from supabase import create_client, Client
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Page Config
-st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
+st.set_page_config(
+    page_title="YouTube Master DB & Related Finder Pro", 
+    page_icon="📺", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Inject Global CSS for Card Highlight & Container Styling
+# --- PRO DARK SLATE THEME CSS INJECTION ---
 st.markdown("""
 <style>
-/* Active Inspected Card Highlight */
+/* Main Background & Fonts */
+.stApp {
+    background-color: #0F172A !important;
+    color: #F8FAFC !important;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+}
+
+/* Sidebar Dark Styling */
+section[data-testid="stSidebar"] {
+    background-color: #1E293B !important;
+    border-right: 1px solid #334155 !important;
+}
+
+/* Header & Tabs Styling */
+header[data-testid="stHeader"] {
+    background-color: transparent !important;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background-color: #1E293B;
+    padding: 8px;
+    border-radius: 12px;
+    border: 1px solid #334155;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 42px;
+    white-space: pre-wrap;
+    background-color: transparent;
+    border-radius: 8px;
+    color: #94A3B8;
+    font-weight: 600;
+    border: none !important;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #3B82F6 !important;
+    color: #FFFFFF !important;
+}
+
+/* Standard Bordered Container Card Styling */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #1E293B !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px !important;
+    padding: 6px !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Active Inspected Card Highlight (Dark Cyber Blue) */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker),
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="element-container"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stMarkdownContainer"] {
-    background-color: #EBF5FF !important;
+    background-color: #1E3A8A !important;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
-    border: 3px solid #2B6CB0 !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 16px rgba(43, 108, 176, 0.3) !important;
+    border: 2px solid #60A5FA !important;
+    box-shadow: 0 0 20px rgba(96, 165, 250, 0.35) !important;
 }
 
-/* In-Cart Card Highlight */
+/* In-Cart Card Highlight (Dark Cyber Emerald) */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker),
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="element-container"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stMarkdownContainer"] {
-    background-color: #F0FDF4 !important;
+    background-color: #065F46 !important;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
-    border: 3px solid #059669 !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.25) !important;
+    border: 2px solid #34D399 !important;
+    box-shadow: 0 0 20px rgba(52, 211, 153, 0.3) !important;
 }
+
+/* Input Fields & Text Areas */
+.stTextInput input, .stTextArea textarea, .stSelectbox select {
+    background-color: #0F172A !important;
+    color: #F8FAFC !important;
+    border: 1px solid #475569 !important;
+    border-radius: 8px !important;
+}
+
+/* Buttons */
+.stButton button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.stButton button[kind="primary"] {
+    background-color: #EF4444 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+
+.stButton button[kind="primary"]:hover {
+    background-color: #DC2626 !important;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Custom Status Badges */
+.badge-pro {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.badge-emerald { background-color: #064E3B; color: #34D399; border: 1px solid #059669; }
+.badge-blue { background-color: #1E3A8A; color: #93C5FD; border: 1px solid #3B82F6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -70,7 +168,7 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# --- DATABASE PERSISTENCE HELPERS FOR API KEYS & CART ---
+# --- DATABASE PERSISTENCE HELPERS ---
 def load_api_keys_from_db():
     try:
         res = supabase.table("app_config").select("value").eq("key", "api_keys").execute()
@@ -83,8 +181,7 @@ def save_api_keys_to_db(key_string):
     try:
         supabase.table("app_config").upsert({"key": "api_keys", "value": key_string}, on_conflict="key").execute()
         return True
-    except Exception as e:
-        st.warning(f"⚠️ Chưa tạo bảng 'app_config' trong Supabase. Vui lòng chạy lệnh SQL hướng dẫn! Lỗi: {e}")
+    except Exception:
         return False
 
 def load_cart_from_db():
@@ -116,7 +213,6 @@ def remove_from_cart_db(pure_handle):
 
 def clear_cart_db():
     try:
-        # Delete all records from cart_items table
         supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
     except Exception: pass
 
@@ -149,7 +245,7 @@ if 'video_preview_cache' not in st.session_state:
 if 'active_inspected_handle' not in st.session_state:
     st.session_state['active_inspected_handle'] = None
 
-# --- CALLBACKS ---
+# --- CALLBACKS & HELPERS ---
 def set_active_inspected_channel(pure_handle):
     st.session_state['active_inspected_handle'] = pure_handle
 
@@ -159,24 +255,36 @@ def set_api_keys(key_string):
 
 set_api_keys(st.session_state['global_api_keys'])
 
-# --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
+# --- SIDEBAR BRANDING & CONFIG ---
 with st.sidebar:
-    st.header("⚙️ Cấu Hình Hệ Thống")
-    st.markdown("Nhập danh sách **YouTube API Keys** (mỗi key 1 dòng). Bấm nút **Lưu API Keys** bên dưới để lưu vĩnh viễn!")
+    st.markdown("""
+        <div style="text-align: center; padding: 10px 0;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#FF0000"/>
+            </svg>
+            <h2 style="margin: 5px 0 0 0; font-weight: 800; font-size: 1.3rem; color: #F8FAFC;">MASTER DB PRO</h2>
+            <span class="badge-pro badge-emerald">Supabase Connected</span>
+        </div>
+    """, unsafe_allow_html=True)
+    st.divider()
+
+    st.subheader("⚙️ Cấu Hình API System")
+    active_key_count = len(st.session_state.get('api_keys', []))
+    st.markdown(f"API Keys đang chạy: <span class='badge-pro badge-blue'>{active_key_count} Keys Active</span>", unsafe_allow_html=True)
     
-    keys_input = st.text_area("Danh sách API Keys:", value=st.session_state['global_api_keys'], height=200, key="api_keys_text_area")
+    keys_input = st.text_area("Danh sách API Keys (Mỗi dòng 1 key):", value=st.session_state['global_api_keys'], height=180, key="api_keys_text_area")
     
     if st.button("💾 Lưu API Keys Vĩnh Viễn", type="primary", use_container_width=True):
         st.session_state['global_api_keys'] = keys_input
         set_api_keys(keys_input)
         save_api_keys_to_db(keys_input)
-        st.toast("🎉 Đã lưu vĩnh viễn danh sách API Keys vào Database đám mây!")
+        st.toast("🎉 Đã lưu vĩnh viễn danh sách API Keys vào Supabase!")
         st.rerun()
 
-    st.caption("💡 Mẹo: API Keys đã lưu vĩnh viễn sẽ không bao giờ bị mất khi bấm F5 hay tắt máy!")
-    
+    st.caption("💡 Mẹo: Keys và Giỏ Hàng tự động sao lưu đám mây. Tắt máy hay F5 đều được bảo vệ 100%.")
     st.divider()
-    if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa bảng kết quả hiển thị để làm gọn màn hình (Bảo vệ tuyệt đối API Keys & Giỏ Hàng)"):
+    
+    if st.button("🔄 Làm Mới Màn Hình Display", use_container_width=True, help="Dọn dẹp danh sách hiển thị để màn hình gọn gàng"):
         keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'active_inspected_handle']
         for key in keys_to_clear:
             if key in st.session_state:
@@ -249,10 +357,8 @@ def to_pure_id(raw_val):
 def is_long_form_video(v, min_seconds=180):
     """Strictly filter out YouTube Shorts (under 3 minutes or titled with #shorts)"""
     title = v.get('Title', '').lower()
-    if '#shorts' in title or '#short' in title:
-        return False
-    if v.get('Seconds', 0) <= min_seconds:
-        return False
+    if '#shorts' in title or '#short' in title: return False
+    if v.get('Seconds', 0) <= min_seconds: return False
     return True
 
 def extract_handles_from_text(text_block):
@@ -328,7 +434,8 @@ def clean_and_extract_keywords(text, seed_handle=""):
     filtered = [w for w in words if w not in STOP_WORDS and w not in seed_clean]
     return filtered
 
-# --- YOUTUBE API OPERATIONS ---
+# --- YOUTUBE API OPERATIONS (CACHE OPTIMIZED) ---
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_channel_id_by_handle(handle):
     clean = handle.replace('@', '').split('/')[-1].strip()
     try:
@@ -341,6 +448,7 @@ def get_channel_id_by_handle(handle):
     except Exception: pass
     return None
 
+@st.cache_data(ttl=86400, show_spinner=False)
 def extract_channel_master_keywords(channel_id):
     keywords_pool, channel_keywords, top_tags, categories = [], [], [], []
     try:
@@ -393,7 +501,7 @@ def get_channel_details(channel_id):
         return playlist_id, sub_count, description, joined_date, country_name, country_code, avatar_url
     return None, 0, "", "", "", "", ""
 
-def get_video_details(video_ids, progress_bar=None):
+def get_video_details(video_ids):
     video_data = []
     total = len(video_ids)
     if total == 0: return video_data
@@ -421,14 +529,10 @@ def get_video_details(video_ids, progress_bar=None):
                     'Video ID': item['id']
                 })
         except Exception: pass
-        if progress_bar and total > 0: progress_bar.progress(min(1.0, (i + 50) / total))
     return video_data
 
+@st.cache_data(ttl=43200, show_spinner=False)
 def get_6_recent_videos(pure_handle):
-    if pure_handle in st.session_state['video_preview_cache']:
-        cached = st.session_state['video_preview_cache'][pure_handle]
-        if len(cached) >= 6: return cached[:6]
-    
     long_vids = []
     try:
         cid = get_channel_id_by_handle(pure_handle)
@@ -447,14 +551,11 @@ def get_6_recent_videos(pure_handle):
                             if len(long_vids) >= 6: break
                     next_token = v_res.get('nextPageToken')
                     if not next_token or len(long_vids) >= 6: break
-                
-                st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
                 return long_vids[:6]
     except Exception: pass
-    st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
     return long_vids[:6]
 
-# --- STREAMLIT MODAL DIALOG WITH EXPLICIT CHANNEL NAME HEADER ---
+# --- STREAMLIT MODAL DIALOG ---
 @st.dialog("🎬 6 Video Dài (Long-form) Mới Nhất", width="large")
 def show_video_dialog(pure_handle, pre_fetched_videos=None):
     st.markdown(f"### 📺 Kênh đang xem: `@{pure_handle}`")
@@ -471,11 +572,9 @@ def show_video_dialog(pure_handle, pre_fetched_videos=None):
     
     if vids:
         st.divider()
-        # Grid Layout: 3 Rows x 2 Columns
         for row_idx in range(0, len(vids), 2):
             col1, col2 = st.columns(2)
             
-            # Column 1 Video
             v1 = vids[row_idx]
             with col1:
                 vid_id1 = v1.get('Video ID') or (v1.get('Link', '').split('v=')[-1] if 'v=' in v1.get('Link', '') else '')
@@ -484,7 +583,6 @@ def show_video_dialog(pure_handle, pre_fetched_videos=None):
                 st.markdown(f"**[{v1['Title'][:45]}...]({v1['Link']})**")
                 st.caption(f"👀 {v1.get('Views', 0):,} views | ⏳ {v1.get('Length (Exact)', 'N/A')} | 📅 {v1.get('Published Date', '')}")
             
-            # Column 2 Video (if exists)
             if row_idx + 1 < len(vids):
                 v2 = vids[row_idx + 1]
                 with col2:
@@ -598,6 +696,22 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
+def run_single_channel_audit(pure_handle):
+    cid = get_channel_id_by_handle(pure_handle)
+    if not cid: return None, None
+    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
+    v_ids = []
+    next_token = None
+    while True:
+        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
+        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
+        next_token = res.get('nextPageToken')
+        if not next_token: break
+    v_data = get_video_details(v_ids)
+    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
+    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    return excel_bytes, out_fname
+
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
@@ -633,21 +747,25 @@ def render_shared_cart_ui(key_suffix=""):
     else:
         st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' ở Tab 1 hoặc Tab 3 để nhặt kênh vào giỏ!")
 
-# --- APP UI HEADER ---
-st.title("📺 YouTube Channel Master Database")
-st.caption("Hệ thống tra cứu, cào live, Săn Kênh Đồng Ngách siêu cấp (Chống Quota) & Soi Từ Khóa Kênh 24/7")
+# --- APP HEADER ---
+st.markdown("""
+    <div style="padding: 10px 0 20px 0;">
+        <h1 style="font-weight: 900; color: #F8FAFC; margin-bottom: 0;">📺 YouTube Channel Master Database Pro</h1>
+        <p style="color: #94A3B8; font-size: 1.05rem;">Hệ thống cào live, Săn Kênh Đồng Ngách siêu cấp Đa Luồng (Chống Quota 24/7)</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # Tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Tra cứu Handle Hàng Loạt", 
     "⚡ Cào Live & Tạo Báo Cáo Audit", 
-    "🎯 Săn Kênh Tương Tự (Content-Based)",
+    "🎯 Săn Kênh Tương Tự (Multi-Threaded)",
     "📤 Upload Cập nhật Data", 
     "📊 Xem Database",
     "✨ Soi Từ Khóa Kênh (SEO Inspector)"
 ])
 
-# --- TAB 1: BATCH SEARCH WITH INTEGRATED SHARED CART ---
+# --- TAB 1: BATCH SEARCH ---
 with tab1:
     st.subheader("🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt")
     col_s1, col_s2 = st.columns([2, 1])
@@ -665,7 +783,7 @@ with tab1:
         if not target_list: st.warning("⚠️ Vui lòng dán danh sách Handle hoặc chọn file để kiểm tra!")
         else:
             with st.spinner(f"Đang đối chiếu {len(target_list)} Handle với Database Supabase..."):
-                response = supabase.table("channels").select("handle, youtuber_name, source").in_("handle", target_list).execute()
+                response = supabase.table("channels").select("handle, youtuber_name").in_("handle", target_list).execute()
                 db_matches = {item["handle"].lower(): item for item in response.data} if response.data else {}
                 
                 new_handles, existing_handles = [], []
@@ -713,10 +831,10 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #065F46; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
@@ -762,7 +880,7 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
@@ -796,9 +914,57 @@ with tab2:
                     st.download_button("📥 Tải về File Audit V4.14", data=b_data, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
             except Exception as e: st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONTENT-BASED SMART RELATED FINDER ---
+# --- TAB 3: MULTI-THREADED SMART RELATED FINDER ---
+def process_single_candidate(item, min_subs_choice, min_duration_choice, db_existing_set):
+    c_handle = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
+    c_title = item['snippet']['title']
+    c_desc = item['snippet'].get('description', '')
+    c_country = item['snippet'].get('country', 'N/A')
+    c_subs = int(item['statistics'].get('subscriberCount', 0))
+    c_video_count = int(item['statistics'].get('videoCount', 0))
+    c_url = f"https://www.youtube.com/@{c_handle}"
+    db_status = "❌ Đã có trong DB" if c_handle in db_existing_set else "✅ KÊNH MỚI"
+    
+    c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+    latest_date, has_qualifying_video = "N/A", False
+    recent_vids = []
+    
+    if c_playlist and c_video_count > 0:
+        try:
+            v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50))
+            v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+            if v_ids:
+                v_details = get_video_details(v_ids)
+                long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
+                if long_vids:
+                    latest_date = long_vids[0]['Published Date']
+                    has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in long_vids)
+                    recent_vids = long_vids[:6]
+        except Exception: pass
+
+    base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status, "recent_videos": recent_vids}
+
+    if c_subs < min_subs_choice: 
+        base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"
+        return False, base_data
+    passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
+    if not passes_l1: 
+        base_data["Lý do loại"] = l1_reason
+        return False, base_data
+    if c_video_count == 0 or not c_playlist: 
+        base_data["Lý do loại"] = "Kênh trống"
+        return False, base_data
+    if not is_within_last_90_days(latest_date): 
+        base_data["Lý do loại"] = f"Bỏ trống (Mới nhất: {latest_date})"
+        return False, base_data
+    if not has_qualifying_video: 
+        base_data["Lý do loại"] = "Shorts-only"
+        return False, base_data
+        
+    return True, base_data
+
 with tab3:
-    st.subheader("🎯 Săn Kênh Tương Tự & Giỏ Hàng & Tự Động Đào Sâu")
+    st.subheader("🎯 Săn Kênh Tương Tự & Giỏ Hàng (Multi-threaded Speed)")
     
     if 'audit_success_msg' in st.session_state:
         st.success(st.session_state['audit_success_msg'])
@@ -847,7 +1013,7 @@ with tab3:
                     top_kw_list = ext_info['master_keywords'][:4] if ext_info['master_keywords'] else [pure_seed.replace('_', ' ')]
                     
                 st.write(f"🏷️ **Từ khóa quét:** `{', '.join(top_kw_list)}`")
-                st.info("🌐 Đang quét tự động hàng trăm ứng viên...")
+                st.info("🌐 Đang quét đa luồng tự động hàng trăm ứng viên...")
                 
                 candidate_channel_ids = set()
                 q_chan = " ".join(top_kw_list[:2])
@@ -866,56 +1032,29 @@ with tab3:
                 
                 if not candidate_ids_list: st.warning("Không quét được ứng viên nào!")
                 else:
-                    st.info(f"📊 Lấy dữ liệu gốc cho {len(candidate_ids_list)} kênh ứng viên...")
+                    st.info(f"📊 Đang phân tích siêu tốc {len(candidate_ids_list)} kênh qua luồng xử lý song song...")
                     passed_channels, rejected_channels = [], []
-                    channel_item_map, candidate_handles = {}, []
+                    channel_items, candidate_handles = [], []
                     
                     for i in range(0, len(candidate_ids_list), 50):
                         chan_res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])))
                         for item in chan_res.get('items', []):
                             c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
                             candidate_handles.append(c_h)
-                            channel_item_map[c_h] = item
+                            channel_items.append(item)
 
                     db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
                     db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
                     
-                    for c_handle, item in channel_item_map.items():
-                        c_title = item['snippet']['title']
-                        c_desc = item['snippet'].get('description', '')
-                        c_country = item['snippet'].get('country', 'N/A')
-                        c_subs = int(item['statistics'].get('subscriberCount', 0))
-                        c_video_count = int(item['statistics'].get('videoCount', 0))
-                        c_url = f"https://www.youtube.com/@{c_handle}"
-                        db_status = "❌ Đã có trong DB" if c_handle in db_existing_set else "✅ KÊNH MỚI"
-                        
-                        c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
-                        latest_date, has_qualifying_video = "N/A", False
-                        recent_vids = []
-                        
-                        if c_playlist and c_video_count > 0:
-                            try:
-                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50))
-                                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                                if v_ids:
-                                    v_details = get_video_details(v_ids)
-                                    long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
-                                    if long_vids:
-                                        latest_date = long_vids[0]['Published Date']
-                                        has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in long_vids)
-                                        recent_vids = long_vids[:6]
-                            except Exception: pass
-
-                        base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status, "recent_videos": recent_vids}
-
-                        if c_subs < min_subs_choice: base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; rejected_channels.append(base_data); continue
-                        passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
-                        if not passes_l1: base_data["Lý do loại"] = l1_reason; rejected_channels.append(base_data); continue
-                        if c_video_count == 0 or not c_playlist: base_data["Lý do loại"] = "Kênh trống"; rejected_channels.append(base_data); continue
-                        if not is_within_last_90_days(latest_date): base_data["Lý do loại"] = f"Bỏ trống (Mới nhất: {latest_date})"; rejected_channels.append(base_data); continue
-                        if not has_qualifying_video: base_data["Lý do loại"] = "Shorts-only"; rejected_channels.append(base_data); continue
-                            
-                        passed_channels.append(base_data)
+                    # PARALLEL EXECUTION WITH THREADPOOL
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set) for item in channel_items]
+                        for future in as_completed(futures):
+                            is_pass, res_data = future.result()
+                            if is_pass:
+                                passed_channels.append(res_data)
+                            else:
+                                rejected_channels.append(res_data)
 
                     st.session_state['passed_channels'] = passed_channels
                     st.session_state['rejected_channels'] = rejected_channels
@@ -935,7 +1074,7 @@ with tab3:
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
-        # --- TAB PASSED (CARD LAYOUT WITH DYNAMIC BG) ---
+        # --- TAB PASSED ---
         with tab_pass:
             if passed_list:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
@@ -955,10 +1094,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #065F46; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1014,7 +1153,7 @@ with tab3:
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
-        # --- TAB REJECTED (CARD LAYOUT WITH DYNAMIC BG) ---
+        # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
                 for idx, row in enumerate(rejected_list):
@@ -1025,10 +1164,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #065F46; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1144,7 +1283,7 @@ with tab5:
             with st.container(border=True):
                 if is_active:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                    st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
