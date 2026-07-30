@@ -474,15 +474,6 @@ def extract_handles_from_file(uploaded_file):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return handles
 
-def extract_handle_from_filename(filename):
-    base = os.path.basename(filename)
-    base_no_ext = os.path.splitext(base)[0]
-    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
-    cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
-    cleaned = re.sub(r'[\s]+', '', cleaned)
-    pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
-    return pure_id if pure_id else None
-
 def is_within_last_90_days(date_str):
     if not date_str or date_str == "N/A": return False
     s = str(date_str).strip().lower()
@@ -722,8 +713,7 @@ def compare_channels_dialog(channel_data_list):
         with cols[idx]:
             ch_handle = ch.get('Handle', 'N/A')
             pure_h = to_pure_id(ch_handle)
-            ch_link = ch.get('Link Kênh')
-            if not ch_link: ch_link = f"https://youtube.com/@{pure_h}"
+            ch_link = f"https://youtube.com/@{pure_h}" if pure_h else "javascript:void(0);"
 
             st.markdown(f"<div style='background-color: {card_bg}; padding: 15px; border-radius: 12px; border: 1px solid {border_color}; text-align: center;'>", unsafe_allow_html=True)
             st.markdown(f"<h4 style='color: #47A5D1; font-weight: 800; margin-bottom: 5px;'><a href='{ch_link}' style='text-decoration: none; color: inherit;'>{ch_handle}</a></h4>", unsafe_allow_html=True)
@@ -809,7 +799,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-# --- REUSABLE COMPONENT: RENDER SHARED CART ---
+# --- REUSABLE COMPONENT: RENDER SHARED CART (URL FIX FOR YOUTUBE @ HANDLES) ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
@@ -817,8 +807,9 @@ def render_shared_cart_ui(key_suffix=""):
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
         if 'Handle' in df_cart.columns:
-            df_cart['Tab Videos'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}/videos")
-            df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}")
+            # PROPER YOUTUBE HANDLE URL WITH '@' PREFIX
+            df_cart['Tab Videos'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}/videos" if to_pure_id(h) else "")
+            df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}" if to_pure_id(h) else "")
             
         if 'recent_videos' in df_cart.columns: df_cart = df_cart.drop(columns=['recent_videos'])
 
@@ -924,10 +915,9 @@ with tab1:
                 cart_keys = set(st.session_state['cart'].keys())
                 selected_set = st.session_state['selected_channels']
                 
-                # CHỈ ĐẾM CÁC KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
+                # SEPARATED COUNTS FOR ACCURATE LOGIC
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
-                # TỔNG SỐ ĐANG CHỌN THỰC TẾ
                 cnt_total_sel = len(selected_set)
 
                 tb1, tb2, tb3, tb4, tb5 = st.columns([2.5, 2.5, 2.0, 2.0, 1.0])
