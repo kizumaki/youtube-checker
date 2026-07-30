@@ -46,6 +46,13 @@ if 'app_theme' not in st.session_state:
 if 'selected_channels' not in st.session_state:
     st.session_state['selected_channels'] = set()
 
+# Callback for Selection Sync
+def toggle_select_channel(pure_handle):
+    if pure_handle in st.session_state['selected_channels']:
+        st.session_state['selected_channels'].remove(pure_handle)
+    else:
+        st.session_state['selected_channels'].add(pure_handle)
+
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
 bg_color = "#1E1816" if is_dark else "#F4F2F1"
@@ -287,7 +294,7 @@ def clear_cart_db():
     try: supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
     except Exception: pass
 
-# --- STATE INIT ---
+# --- INITIALIZE PERSISTENT STATE ---
 if 'global_api_keys' not in st.session_state:
     db_keys = load_api_keys_from_db()
     st.session_state['global_api_keys'] = db_keys if db_keys else DEFAULT_API_KEY
@@ -295,6 +302,21 @@ if 'global_api_keys' not in st.session_state:
 if 'cart' not in st.session_state or 'cart_loaded' not in st.session_state:
     st.session_state['cart'] = load_cart_from_db()
     st.session_state['cart_loaded'] = True
+
+# --- AUTOMATIC KEYWORD LINKING LIFECYCLE ---
+if 'pending_seed_input' in st.session_state:
+    st.session_state['seed_input_tab3'] = st.session_state['pending_seed_input']
+    del st.session_state['pending_seed_input']
+
+if 'seed_input_tab3' not in st.session_state:
+    st.session_state['seed_input_tab3'] = "@NickDiGiovanni"
+
+if 'pending_keywords' in st.session_state:
+    st.session_state['custom_kw_tab3'] = st.session_state['pending_keywords']
+    del st.session_state['pending_keywords']
+
+if 'custom_kw_tab3' not in st.session_state:
+    st.session_state['custom_kw_tab3'] = ""
 
 if 'video_preview_cache' not in st.session_state:
     st.session_state['video_preview_cache'] = {}
@@ -346,7 +368,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    # Theme Toggle Switcher
     st.selectbox("🎨 Giao diện App:", options=["Studio Peach (Sáng)", "Studio Espresso (Tối)"], key="app_theme")
     st.divider()
 
@@ -498,7 +519,7 @@ def clean_and_extract_keywords(text, seed_handle=""):
     filtered = [w for w in words if w not in STOP_WORDS and w not in seed_clean]
     return filtered
 
-# --- YOUTUBE API OPERATIONS (ZERO-QUOTA RSS & CACHE OPTIMIZED) ---
+# --- YOUTUBE API OPERATIONS (CACHE OPTIMIZED) ---
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_channel_id_by_handle(handle):
     clean = handle.replace('@', '').split('/')[-1].strip()
@@ -602,7 +623,6 @@ def get_6_recent_videos(pure_handle):
     try:
         cid = get_channel_id_by_handle(pure_handle)
         if cid:
-            # Step 1: Zero-Quota RSS Feed Fetch
             rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
             resp = requests.get(rss_url, timeout=4)
             if resp.status_code == 200:
@@ -616,14 +636,12 @@ def get_6_recent_videos(pure_handle):
                     if len(rss_v_ids) >= 12: break
                 
                 if rss_v_ids:
-                    # Step 2: Fetch exact details via 1 Quota API call
                     v_details = get_video_details(rss_v_ids)
                     for v in v_details:
                         if is_long_form_video(v, min_seconds=180):
                             long_vids.append(v)
                         if len(long_vids) >= 6: break
 
-            # Fallback to Playlist if RSS returned less than 6 long-form videos
             if len(long_vids) < 6:
                 playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
                 if playlist_id:
@@ -779,22 +797,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-def run_single_channel_audit(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
-    v_ids = []
-    next_token = None
-    while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
-        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
-        next_token = res.get('nextPageToken')
-        if not next_token: break
-    v_data = get_video_details(v_ids)
-    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
-    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-    return excel_bytes, out_fname
-
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
@@ -834,7 +836,7 @@ def render_shared_cart_ui(key_suffix=""):
 st.markdown("""
     <div style="padding: 5px 0 15px 0;">
         <h1 style="font-weight: 900; margin-bottom: 5px; font-size: 2.4rem; letter-spacing: -0.03em;">YT CHECKER <span style="color: #D95F26;">PRO</span></h1>
-        <p style="font-size: 1.05rem; font-weight: 500; opacity: 0.8;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc & Tiết kiêm Quota.</p>
+        <p style="font-size: 1.05rem; font-weight: 500; opacity: 0.8;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc & Tiết kiệm Quota.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -909,7 +911,6 @@ with tab1:
         res_tab1, res_tab2 = st.tabs([f"✅ Kênh Mới Chưa Làm ({len(new_handles)})", f"❌ Kênh Đã Tồn Tại ({len(existing_handles)})"])
         with res_tab1:
             if new_handles:
-                # Batch Actions Toolbar
                 tb1, tb2, tb3 = st.columns([3, 2, 2])
                 with tb1:
                     if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", type="primary", key="btn_add_all_t1", use_container_width=True):
@@ -959,9 +960,13 @@ with tab1:
 
                         c0, c1, c2, c3 = st.columns([0.4, 3.1, 3.5, 3.0])
                         with c0:
-                            is_checked = st.checkbox("", key=f"chk_t1_{idx}_{p_id}", value=(p_id in st.session_state['selected_channels']))
-                            if is_checked: st.session_state['selected_channels'].add(p_id)
-                            else: st.session_state['selected_channels'].discard(p_id)
+                            st.checkbox(
+                                "", 
+                                key=f"chk_t1_{idx}_{p_id}", 
+                                value=(p_id in st.session_state['selected_channels']),
+                                on_change=toggle_select_channel,
+                                args=(p_id,)
+                            )
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{item['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
@@ -1195,7 +1200,6 @@ with tab3:
         # --- TAB PASSED ---
         with tab_pass:
             if passed_list:
-                # Live Filter & Sort Toolbar (In-Memory, Zero API Quota)
                 sf_col1, sf_col2, sf_col3 = st.columns([3, 2, 2])
                 with sf_col1:
                     filter_q = st.text_input("⚡ Lọc nhanh tên/handle:", key="filter_pass_q", placeholder="Gõ tên kênh để lọc...")
@@ -1213,10 +1217,8 @@ with tab3:
                         st.success("🎉 Đã thêm tất cả vào giỏ hàng!")
                         st.rerun()
 
-                # Filter and Sort display list
                 display_passed = sort_and_filter_channels(passed_list, filter_q, sort_by)
 
-                # Batch Actions Bar
                 ba1, ba2 = st.columns([2, 2])
                 sel_count = len(st.session_state['selected_channels'])
                 with ba1:
@@ -1257,9 +1259,13 @@ with tab3:
 
                         c0, c1, c2, c3, c4 = st.columns([0.4, 2.2, 3.0, 1.8, 3.0])
                         with c0:
-                            is_checked = st.checkbox("", key=f"chk_p_{p_id}", value=(p_id in st.session_state['selected_channels']))
-                            if is_checked: st.session_state['selected_channels'].add(p_id)
-                            else: st.session_state['selected_channels'].discard(p_id)
+                            st.checkbox(
+                                "", 
+                                key=f"chk_p_{p_id}", 
+                                value=(p_id in st.session_state['selected_channels']),
+                                on_change=toggle_select_channel,
+                                args=(p_id,)
+                            )
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
@@ -1339,9 +1345,13 @@ with tab3:
 
                         c0, c1, c2, c3, c4 = st.columns([0.4, 2.2, 3.0, 1.8, 3.0])
                         with c0:
-                            is_checked = st.checkbox("", key=f"chk_r_{p_id}", value=(p_id in st.session_state['selected_channels']))
-                            if is_checked: st.session_state['selected_channels'].add(p_id)
-                            else: st.session_state['selected_channels'].discard(p_id)
+                            st.checkbox(
+                                "", 
+                                key=f"chk_r_{p_id}", 
+                                value=(p_id in st.session_state['selected_channels']),
+                                on_change=toggle_select_channel,
+                                args=(p_id,)
+                            )
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
