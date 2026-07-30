@@ -79,7 +79,7 @@ header[data-testid="stHeader"] {
 /* Tab Hover Effect */
 .stTabs [data-baseweb="tab"]:hover {
     color: #D95F26 !important; /* Vivid Tangerine */
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 /* Active Tab */
@@ -196,7 +196,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
     transform: translateY(-1px) !important;
 }
 
-/* ARTISTIC PRIMARY BUTTONS (#D95F26 Gradient & Smooth 3D Lift) */
+/* ARTISTIC PRIMARY BUTTONS (#D95F26 Gradient & Soft 1px Lift) */
 .stButton button[kind="primary"],
 .stButton button[kind="primary"] *,
 .stButton button[kind="primary"] p,
@@ -215,8 +215,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
 .stButton button[kind="primary"]:hover div {
     background: linear-gradient(135deg, #C24E18 0%, #D95F26 100%) !important;
     color: #FFFFFF !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 20px rgba(217, 95, 38, 0.38) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(217, 95, 38, 0.32) !important;
 }
 
 .stButton button[kind="primary"]:active {
