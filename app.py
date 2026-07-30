@@ -147,7 +147,7 @@ def extract_handles_from_file(uploaded_file):
 def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
     base_no_ext = os.path.splitext(base)[0]
-    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
+    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
     cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
     cleaned = re.sub(r'[\s]+', '', cleaned)
     pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
@@ -262,13 +262,21 @@ def get_video_details(video_ids, progress_bar=None):
                 duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
                 h, rem = divmod(duration_seconds, 3600)
                 m, s = divmod(rem, 60)
+                
+                # Format to a compact duration string
+                if h > 0:
+                    dur_str = f"{h}:{m:02d}:{s:02d}"
+                else:
+                    dur_str = f"{m}:{s:02d}"
+
                 pub_date = item['snippet']['publishedAt']
-                try: formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
+                try: formatted_date = pd.to_datetime(pub_date).strftime("%d-%m-%Y")
                 except Exception: formatted_date = pub_date[:10]
+                
                 video_data.append({
                     'Title': item['snippet']['title'], 
                     'Link': f"https://youtube.com/watch?v={item['id']}",
-                    'Length (Exact)': f"{h:02d}:{m:02d}:{s:02d}", 
+                    'Length (Exact)': dur_str, 
                     'Seconds': duration_seconds,
                     'Views': int(item['statistics'].get('viewCount', 0)), 
                     'Published Date': formatted_date,
@@ -279,7 +287,6 @@ def get_video_details(video_ids, progress_bar=None):
     return video_data
 
 def get_6_recent_videos(pure_handle):
-    """Fetch and cache 6 recent videos on-demand for Popover preview"""
     if pure_handle in st.session_state['video_preview_cache']:
         return st.session_state['video_preview_cache'][pure_handle]
     
@@ -300,9 +307,9 @@ def get_6_recent_videos(pure_handle):
     return []
 
 def render_popover_preview(pure_handle, pre_fetched_videos=None):
-    """Render 6 Video thumbnails in a clean 2x3 grid inside Popover"""
-    st.markdown(f"🎬 **[Mở thẳng Tab Videos](https://youtube.com/@{pure_handle}/videos)**")
+    st.markdown(f"🎬 **[Mở nhanh Tab Videos](https://youtube.com/@{pure_handle}/videos)**")
     vids = pre_fetched_videos if (pre_fetched_videos is not None and len(pre_fetched_videos) > 0) else get_6_recent_videos(pure_handle)
+    
     if vids:
         st.divider()
         st.caption("📸 6 Video mới nhất của kênh:")
@@ -313,9 +320,11 @@ def render_popover_preview(pure_handle, pre_fetched_videos=None):
                 vid_id = v.get('Video ID') or (v.get('Link', '').split('v=')[-1] if 'v=' in v.get('Link', '') else '')
                 if vid_id:
                     st.image(f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg", use_container_width=True)
-                st.caption(f"**{v['Title'][:30]}...**\n👀 {v.get('Views', 0):,} views")
+                
+                # Enhanced Caption with Length and Date
+                st.caption(f"**{v['Title'][:45]}...**\n\n👀 {v.get('Views', 0):,} views | ⏳ {v.get('Length (Exact)', 'N/A')} | 📅 {v.get('Published Date', '')}")
     else:
-        st.caption("Khó tải video xem trước hoặc kênh không có video.")
+        st.caption("Không có video công khai hoặc lỗi API.")
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -544,6 +553,7 @@ with tab1:
                 for idx, item in enumerate(new_handles):
                     c1, c2, c3, c4 = st.columns([2.0, 0.6, 2.4, 2.0])
                     p_id = to_pure_id(item["Handle"])
+                    
                     c1.markdown(f"[{item['Handle']}]({item['Link Kênh']})")
                     
                     with c2.popover("👁️"):
@@ -764,7 +774,7 @@ with tab3:
                     c3.write(row['Tên Kênh']); c4.write(row['Subscribers']); c5.write(row['Quốc gia']); c6.write(row['Video Gần Nhất']); c7.write(row['Tổng Số Video']); c8.write(row['Trạng Thái DB'].replace("trong DB", ""))
                     
                     if p_id in st.session_state['cart']:
-                        if c9.button("❌ Bỏ", key=f"rm_p_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
+                        if c9.button("❌ Bỏ", key=f"rm_p_{p_id}", help="Bỏ khỏi Giỏ"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
                         if c9.button("🛒 Thêm", key=f"add_p_{p_id}"): 
                             st.session_state['cart'][p_id] = dict(row)
@@ -874,7 +884,6 @@ with tab5:
         df_all = pd.DataFrame(res.data)
         st.write(f"Tổng số kênh hiện có: **{len(df_all)}**")
         
-        # Search & Filter
         search_db = st.text_input("🔍 Tìm kiếm kênh trong Database (Handle hoặc Tên):", "")
         if search_db:
             df_filtered = df_all[
@@ -884,7 +893,6 @@ with tab5:
         else:
             df_filtered = df_all
 
-        # Pagination
         items_per_page = 20
         total_pages = max(1, (len(df_filtered) + items_per_page - 1) // items_per_page)
         page = st.number_input("Trang:", min_value=1, max_value=total_pages, value=1, step=1)
