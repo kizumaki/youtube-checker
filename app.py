@@ -15,6 +15,7 @@ import os
 import re
 import datetime
 import io
+import json
 from collections import Counter
 from PIL import Image as PILImage
 from supabase import create_client, Client
@@ -22,10 +23,10 @@ from supabase import create_client, Client
 # Page Config
 st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
 
-# Inject Global CSS for Full Card Background Highlight
+# Inject Global CSS for Card Highlight & Container Styling
 st.markdown("""
 <style>
-/* Active Inspected Card - Highlight ENTIRE Container #EBF5FF & Dark Blue Border */
+/* Active Inspected Card Highlight */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker),
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stColumn"],
@@ -40,7 +41,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
     box-shadow: 0 4px 16px rgba(43, 108, 176, 0.3) !important;
 }
 
-/* In-Cart Card - Highlight ENTIRE Container #F0FDF4 & Green Border */
+/* In-Cart Card Highlight */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker),
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stColumn"],
@@ -60,7 +61,74 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
 # Global Default API Key
 DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
 
-# --- SAFE STATE LIFECYCLE MANAGEMENT ---
+# Connect to Supabase
+@st.cache_resource
+def init_supabase():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_supabase()
+
+# --- DATABASE PERSISTENCE HELPERS FOR API KEYS & CART ---
+def load_api_keys_from_db():
+    try:
+        res = supabase.table("app_config").select("value").eq("key", "api_keys").execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0]["value"]
+    except Exception: pass
+    return None
+
+def save_api_keys_to_db(key_string):
+    try:
+        supabase.table("app_config").upsert({"key": "api_keys", "value": key_string}, on_conflict="key").execute()
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Chưa tạo bảng 'app_config' trong Supabase. Vui lòng chạy lệnh SQL hướng dẫn! Lỗi: {e}")
+        return False
+
+def load_cart_from_db():
+    cart_dict = {}
+    try:
+        res = supabase.table("cart_items").select("*").execute()
+        if res.data:
+            for row in res.data:
+                h = row["handle"]
+                c_data = row.get("channel_data")
+                if isinstance(c_data, str):
+                    c_data = json.loads(c_data)
+                cart_dict[h] = c_data
+    except Exception: pass
+    return cart_dict
+
+def add_to_cart_db(pure_handle, channel_data):
+    try:
+        data_clean = dict(channel_data)
+        if "recent_videos" in data_clean:
+            del data_clean["recent_videos"]
+        supabase.table("cart_items").upsert({"handle": pure_handle, "channel_data": data_clean}, on_conflict="handle").execute()
+    except Exception: pass
+
+def remove_from_cart_db(pure_handle):
+    try:
+        supabase.table("cart_items").delete().eq("handle", pure_handle).execute()
+    except Exception: pass
+
+def clear_cart_db():
+    try:
+        # Delete all records from cart_items table
+        supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
+    except Exception: pass
+
+# --- INITIALIZE PERSISTENT STATE ---
+if 'global_api_keys' not in st.session_state:
+    db_keys = load_api_keys_from_db()
+    st.session_state['global_api_keys'] = db_keys if db_keys else DEFAULT_API_KEY
+
+if 'cart' not in st.session_state or 'cart_loaded' not in st.session_state:
+    st.session_state['cart'] = load_cart_from_db()
+    st.session_state['cart_loaded'] = True
+
 if 'pending_seed_input' in st.session_state:
     st.session_state['seed_input_tab3'] = st.session_state['pending_seed_input']
     del st.session_state['pending_seed_input']
@@ -75,28 +143,37 @@ if 'pending_keywords' in st.session_state:
 if 'custom_kw_tab3' not in st.session_state:
     st.session_state['custom_kw_tab3'] = ""
 
-if 'cart' not in st.session_state:
-    st.session_state['cart'] = {}
-
 if 'video_preview_cache' not in st.session_state:
     st.session_state['video_preview_cache'] = {}
 
 if 'active_inspected_handle' not in st.session_state:
     st.session_state['active_inspected_handle'] = None
 
-# --- CALLBACK TO INSTANTLY UPDATE ACTIVE CHANNEL BEFORE RERENDER ---
+# --- CALLBACKS ---
 def set_active_inspected_channel(pure_handle):
     st.session_state['active_inspected_handle'] = pure_handle
 
-# --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
-if 'global_api_keys' not in st.session_state:
-    st.session_state['global_api_keys'] = DEFAULT_API_KEY
+def set_api_keys(key_string):
+    keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
+    st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
 
+set_api_keys(st.session_state['global_api_keys'])
+
+# --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
 with st.sidebar:
     st.header("⚙️ Cấu Hình Hệ Thống")
-    st.markdown("Nhập nhiều **YouTube API Keys** (mỗi key 1 dòng). Hệ thống sẽ dùng chung cho mọi Tab và tự động nhảy Key khi hết Quota.")
-    st.text_area("Danh sách API Keys:", key='global_api_keys', height=220)
-    st.caption("💡 Mẹo: Nhập ở thanh bên này sẽ không bao giờ bị mất dữ liệu khi bạn chuyển Tab hay bấm tìm kiếm!")
+    st.markdown("Nhập danh sách **YouTube API Keys** (mỗi key 1 dòng). Bấm nút **Lưu API Keys** bên dưới để lưu vĩnh viễn!")
+    
+    keys_input = st.text_area("Danh sách API Keys:", value=st.session_state['global_api_keys'], height=200, key="api_keys_text_area")
+    
+    if st.button("💾 Lưu API Keys Vĩnh Viễn", type="primary", use_container_width=True):
+        st.session_state['global_api_keys'] = keys_input
+        set_api_keys(keys_input)
+        save_api_keys_to_db(keys_input)
+        st.toast("🎉 Đã lưu vĩnh viễn danh sách API Keys vào Database đám mây!")
+        st.rerun()
+
+    st.caption("💡 Mẹo: API Keys đã lưu vĩnh viễn sẽ không bao giờ bị mất khi bấm F5 hay tắt máy!")
     
     st.divider()
     if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa bảng kết quả hiển thị để làm gọn màn hình (Bảo vệ tuyệt đối API Keys & Giỏ Hàng)"):
@@ -109,21 +186,6 @@ with st.sidebar:
                 del st.session_state[key]
         st.rerun()
 
-def set_api_keys(key_string):
-    keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
-    st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
-
-set_api_keys(st.session_state['global_api_keys'])
-
-# Connect to Supabase
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
-
-supabase = init_supabase()
-
 # --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM ---
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
@@ -131,6 +193,7 @@ def delete_channel_from_system(pure_handle):
         supabase.table("channels").delete().eq("handle", pure_handle).execute()
     except Exception: pass
 
+    remove_from_cart_db(pure_handle)
     if pure_handle in st.session_state.get('cart', {}):
         del st.session_state['cart'][pure_handle]
 
@@ -563,7 +626,9 @@ def render_shared_cart_ui(key_suffix=""):
             supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
             st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
         if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
+            clear_cart_db()
             st.session_state['cart'] = {}
+            st.success("🎉 Đã xóa sạch Giỏ Hàng!")
             st.rerun()
     else:
         st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' ở Tab 1 hoặc Tab 3 để nhặt kênh vào giỏ!")
@@ -628,12 +693,14 @@ with tab1:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", type="primary", key="btn_add_all_t1"):
                     for item in new_handles:
                         p_id = to_pure_id(item["Handle"])
-                        st.session_state['cart'][p_id] = {
+                        item_data = {
                             "Handle": item["Handle"],
                             "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
                             "Link Kênh": f"https://www.youtube.com/@{p_id}",
                             "Trạng Thái DB": "✅ KÊNH MỚI"
                         }
+                        st.session_state['cart'][p_id] = item_data
+                        add_to_cart_db(p_id, item_data)
                     st.success(f"🎉 Đã thêm {len(new_handles)} kênh mới vào Giỏ hàng chung!")
                     st.rerun()
 
@@ -664,16 +731,19 @@ with tab1:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
                                 if bc1.button("❌ Bỏ Giỏ", key=f"rm_t1_{idx}_{p_id}", use_container_width=True):
+                                    remove_from_cart_db(p_id)
                                     del st.session_state['cart'][p_id]
                                     st.rerun()
                             else:
                                 if bc1.button("🛒 Thêm Giỏ", key=f"add_t1_{idx}_{p_id}", use_container_width=True):
-                                    st.session_state['cart'][p_id] = {
+                                    item_data = {
                                         "Handle": item["Handle"],
                                         "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
                                         "Link Kênh": f"https://www.youtube.com/@{p_id}",
                                         "Trạng Thái DB": "✅ KÊNH MỚI"
                                     }
+                                    st.session_state['cart'][p_id] = item_data
+                                    add_to_cart_db(p_id, item_data)
                                     st.rerun()
 
                             if bc2.button("🗑️ Xóa", key=f"del_t1_new_{idx}_{p_id}", use_container_width=True, help="Loại bỏ kênh này khỏi danh sách"):
@@ -873,6 +943,7 @@ with tab3:
                         if "✅" in row["Trạng Thái DB"]: 
                             p_id = to_pure_id(row["Handle"])
                             st.session_state['cart'][p_id] = dict(row)
+                            add_to_cart_db(p_id, dict(row))
                     st.rerun()
                 st.divider()
 
@@ -904,11 +975,13 @@ with tab3:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
                                 if bc1.button("❌ Bỏ Giỏ", key=f"rm_p_{p_id}", use_container_width=True):
+                                    remove_from_cart_db(p_id)
                                     del st.session_state['cart'][p_id]
                                     st.rerun()
                             else:
                                 if bc1.button("🛒 Thêm Giỏ", key=f"add_p_{p_id}", use_container_width=True):
                                     st.session_state['cart'][p_id] = dict(row)
+                                    add_to_cart_db(p_id, dict(row))
                                     st.rerun()
                                     
                             audit_key = f"audit_file_{p_id}"
@@ -973,11 +1046,13 @@ with tab3:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
                                 if bc1.button("❌ Bỏ Giỏ", key=f"rm_r_{p_id}", use_container_width=True):
+                                    remove_from_cart_db(p_id)
                                     del st.session_state['cart'][p_id]
                                     st.rerun()
                             else:
                                 if bc1.button("🛒 Thêm Giỏ", key=f"add_r_{p_id}", use_container_width=True):
                                     st.session_state['cart'][p_id] = dict(row)
+                                    add_to_cart_db(p_id, dict(row))
                                     st.rerun()
 
                             audit_key = f"audit_file_{p_id}"
