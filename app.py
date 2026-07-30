@@ -319,22 +319,33 @@ def get_video_details(video_ids, progress_bar=None):
 def get_6_recent_videos(pure_handle):
     if pure_handle in st.session_state['video_preview_cache']:
         cached = st.session_state['video_preview_cache'][pure_handle]
-        if len(cached) >= 6: return cached
+        if len(cached) >= 6: return cached[:6]
+    
+    long_vids = []
     try:
         cid = get_channel_id_by_handle(pure_handle)
         if cid:
             playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
             if playlist_id:
-                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50))
-                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                if v_ids:
-                    v_details = get_video_details(v_ids)
-                    long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
-                    st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
-                    return long_vids[:6]
+                next_token = None
+                # Dig up to 100 items (2 pages) to strictly guarantee 6 long-form videos
+                for _ in range(2):
+                    v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
+                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                    if v_ids:
+                        v_details = get_video_details(v_ids)
+                        for v in v_details:
+                            if is_long_form_video(v, min_seconds=180) and v not in long_vids:
+                                long_vids.append(v)
+                            if len(long_vids) >= 6: break
+                    next_token = v_res.get('nextPageToken')
+                    if not next_token or len(long_vids) >= 6: break
+                
+                st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
+                return long_vids[:6]
     except Exception: pass
-    st.session_state['video_preview_cache'][pure_handle] = []
-    return []
+    st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
+    return long_vids[:6]
 
 def render_popover_preview(pure_handle, pre_fetched_videos=None):
     st.markdown(f"🎬 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
@@ -352,7 +363,7 @@ def render_popover_preview(pure_handle, pre_fetched_videos=None):
         st.divider()
         st.caption(f"📸 {len(vids)} Video Dài (Long-form) mới nhất:")
         
-        # Grid Layout: 3 Rows x 2 Columns
+        # Grid Layout: 3 Rows x 2 Columns (Standardized Uniform Format)
         for row_idx in range(0, len(vids), 2):
             col1, col2 = st.columns(2)
             
@@ -475,6 +486,22 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+def run_single_channel_audit(pure_handle):
+    cid = get_channel_id_by_handle(pure_handle)
+    if not cid: return None, None
+    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
+    v_ids = []
+    next_token = None
+    while True:
+        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
+        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
+        next_token = res.get('nextPageToken')
+        if not next_token: break
+    v_data = get_video_details(v_ids)
+    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
+    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    return excel_bytes, out_fname
 
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
