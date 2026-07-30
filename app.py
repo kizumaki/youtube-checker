@@ -24,99 +24,98 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Page Config
 st.set_page_config(
     page_title="YT CHECKER PRO", 
-    page_icon="🚀", 
+    page_icon="🎙️", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- MODERN ARTISTIC LIGHT THEME (PALETA COLOR PRO SYSTEM) ---
-# Palette: #D95F26 (Tangerine), #3D2F29 (Espresso), #F4F2F1 (Warm White), #47A5D1 (Ocean), #FFFFFF (White), #6B7280 (Ash)
+# --- BACKSTREET VOICE STUDIO THEME (ARTISTIC & MINIMALIST) ---
 st.markdown("""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+
 /* Base Theme */
 .stApp {
-    background-color: #F4F2F1 !important; 
-    color: #3D2F29 !important; 
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    background-color: #F4F2F1 !important; /* Luminous Peach */
+    color: #3D2F29 !important; /* Intense Amber / Espresso */
+    font-family: 'Montserrat', sans-serif !important;
+}
+
+/* Typography Overrides */
+h1, h2, h3, h4, h5, h6, p, span, div {
+    color: #3D2F29 !important;
+}
+p, span, div {
+    font-weight: 500 !important;
 }
 
 /* Sidebar Styling */
 section[data-testid="stSidebar"] {
     background-color: #FFFFFF !important;
     border-right: 1px solid #E5E7EB !important;
-    box-shadow: 2px 0 10px rgba(61, 47, 41, 0.03) !important;
+    box-shadow: 4px 0 15px rgba(61, 47, 41, 0.03) !important;
 }
 
-section[data-testid="stSidebar"] .stMarkdown {
-    color: #3D2F29 !important;
-}
-
-/* Header & Tab Area */
+/* Header */
 header[data-testid="stHeader"] {
     background-color: transparent !important;
 }
 
-/* HIGH-END ARTISTIC TABS DESIGN */
+/* HIGH-END ARTISTIC TABS (Minimalist Underline Style) */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 12px;
-    background-color: #FFFFFF;
-    padding: 10px 14px;
-    border-radius: 16px;
-    border: 1px solid #E5E7EB;
-    box-shadow: 0 4px 20px rgba(61, 47, 41, 0.05);
+    gap: 32px;
+    background-color: transparent;
+    padding: 0 0 4px 0;
+    border-bottom: 2px solid #D1D5DB;
 }
 
 .stTabs [data-baseweb="tab"] {
-    background-color: #F4F2F1;
-    border: 1px solid transparent !important;
-    border-radius: 10px;
-    color: #3D2F29 !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: 3px solid transparent !important;
+    border-radius: 0 !important;
+    color: #6B7280 !important;
     font-weight: 700;
-    font-size: 0.92rem;
-    padding: 10px 22px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-size: 0.9rem;
+    padding: 10px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: all 0.3s ease !important;
     cursor: pointer !important;
 }
 
-/* Tab Hover Effect (Artistic Lift & Glow) */
+/* Tab Hover Effect */
 .stTabs [data-baseweb="tab"]:hover {
-    background-color: #FFFFFF !important;
-    color: #D95F26 !important;
-    border: 1px solid #D95F26 !important;
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 6px 16px rgba(217, 95, 38, 0.18) !important;
+    color: #D95F26 !important; /* Vivid Tangerine */
+    transform: translateY(-2px);
 }
 
-/* Active Tab (Gradient Tangerine) */
+/* Active Tab */
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, #D95F26 0%, #B84A1A 100%) !important;
-    color: #FFFFFF !important;
-    border: none !important;
-    transform: translateY(-1px) scale(1.03);
-    box-shadow: 0 6px 18px rgba(217, 95, 38, 0.35) !important;
+    color: #D95F26 !important;
+    border-bottom: 3px solid #D95F26 !important;
+    transform: translateY(0);
 }
 
 /* Standard Card Container Styling */
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background-color: #FFFFFF !important;
     border: 1px solid #E5E7EB !important;
-    border-radius: 14px !important;
-    padding: 10px !important;
-    box-shadow: 0 2px 8px rgba(61, 47, 41, 0.04) !important;
+    border-radius: 12px !important;
+    padding: 12px !important;
+    box-shadow: 0 2px 10px rgba(61, 47, 41, 0.03) !important;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-    box-shadow: 0 6px 18px rgba(61, 47, 41, 0.08) !important;
+    box-shadow: 0 8px 24px rgba(61, 47, 41, 0.06) !important;
 }
 
-/* Active Inspected Card Highlight (Vivid Ocean Accent) */
+/* ACTIVE INSPECTED CARD (TANGERINE) */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
-    background-color: #EBF8FF !important; 
-    border: 2.5px solid #47A5D1 !important; 
-    box-shadow: 0 6px 20px rgba(71, 165, 209, 0.25) !important;
+    border: 2px solid #D95F26 !important; 
+    box-shadow: 0 8px 24px rgba(217, 95, 38, 0.15) !important;
 }
-
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="element-container"],
@@ -124,13 +123,11 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[
     background-color: transparent !important;
 }
 
-/* In-Cart Card Highlight (Emerald Soft Green) */
+/* IN-CART CARD (OCEAN BLUE) */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
-    background-color: #F0FDF4 !important;
-    border: 2.5px solid #10B981 !important;
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.2) !important;
+    border: 2px solid #47A5D1 !important;
+    box-shadow: 0 8px 24px rgba(71, 165, 209, 0.15) !important;
 }
-
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="element-container"],
@@ -144,15 +141,24 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
     color: #3D2F29 !important;
     border: 1px solid #D1D5DB !important;
     border-radius: 8px !important;
+    font-family: 'Montserrat', sans-serif !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: #D95F26 !important;
+    box-shadow: 0 0 0 1px #D95F26 !important;
 }
 
 /* Buttons */
 .stButton button {
     border-radius: 8px !important;
     font-weight: 700 !important;
+    font-family: 'Montserrat', sans-serif !important;
     border: 1px solid #D1D5DB !important;
     background-color: #FFFFFF !important;
     color: #3D2F29 !important;
+    text-transform: uppercase;
+    font-size: 0.8rem !important;
+    letter-spacing: 0.05em;
     transition: all 0.2s ease !important;
 }
 
@@ -178,17 +184,17 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
 /* Badges */
 .badge-pro {
     display: inline-block;
-    padding: 4px 12px;
+    padding: 6px 12px;
     border-radius: 9999px;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
 }
 
-.badge-emerald { background-color: #D1FAE5; color: #065F46; border: 1px solid #10B981; }
-.badge-tangerine { background-color: #FFEDD5; color: #9A3412; border: 1px solid #D95F26; }
-.badge-ocean { background-color: #E0F2FE; color: #0369A1; border: 1px solid #47A5D1; }
+.badge-tangerine { background-color: #FFF2EB; color: #D95F26; border: 1px solid #D95F26; }
+.badge-ocean { background-color: #E6F4FA; color: #47A5D1; border: 1px solid #47A5D1; }
+.badge-espresso { background-color: #F4F2F1; color: #3D2F29; border: 1px solid #3D2F29; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -293,38 +299,38 @@ set_api_keys(st.session_state['global_api_keys'])
 
 # --- SIDEBAR BRANDING & CONFIG ---
 with st.sidebar:
-    col1, col2, col3 = st.columns([1, 6, 1])
+    col1, col2, col3 = st.columns([0.5, 8, 0.5])
     with col2:
         try:
-            st.image("logo.png", use_container_width=True)
+            st.image("logo_2.png", use_container_width=True)
         except Exception:
-            st.markdown("<h2 style='text-align: center; color: #D95F26;'>🚀 LOGO</h2>", unsafe_allow_html=True)
+            st.markdown("<h2 style='text-align: center; color: #D95F26;'>🎙️ LOGO</h2>", unsafe_allow_html=True)
             
     st.markdown("""
-        <div style="text-align: center; padding-bottom: 12px;">
-            <h2 style="margin: 6px 0 4px 0; font-weight: 900; font-size: 1.3rem; color: #3D2F29; letter-spacing: -0.02em;">YT CHECKER PRO</h2>
-            <span class="badge-pro badge-emerald">Supabase Live</span>
+        <div style="text-align: center; padding-bottom: 12px; margin-top: 10px;">
+            <h2 style="margin: 0 0 6px 0; font-weight: 800; font-size: 1.2rem; color: #3D2F29; letter-spacing: -0.02em;">YT CHECKER PRO</h2>
+            <span class="badge-pro badge-ocean">Supabase Live</span>
         </div>
     """, unsafe_allow_html=True)
     st.divider()
 
-    st.subheader("⚙️ Cấu Hình API Keys")
+    st.markdown("<h4 style='font-weight: 700; font-size: 1rem; color: #3D2F29;'>⚙️ Cấu Hình API Keys</h4>", unsafe_allow_html=True)
     active_key_count = len(st.session_state.get('api_keys', []))
-    st.markdown(f"API Keys đang hoạt động: <span class='badge-pro badge-tangerine'>{active_key_count} Keys Active</span>", unsafe_allow_html=True)
+    st.markdown(f"Đang hoạt động: <span class='badge-pro badge-tangerine' style='margin-left:5px;'>{active_key_count} Keys</span>", unsafe_allow_html=True)
     
-    keys_input = st.text_area("Danh sách API Keys (Mỗi dòng 1 key):", value=st.session_state['global_api_keys'], height=180, key="api_keys_text_area")
+    keys_input = st.text_area("Danh sách API Keys (Mỗi dòng 1 key):", value=st.session_state['global_api_keys'], height=150, key="api_keys_text_area")
     
-    if st.button("💾 Lưu API Keys Vĩnh Viễn", type="primary", use_container_width=True):
+    if st.button("💾 Lưu Cấu Hình", type="primary", use_container_width=True):
         st.session_state['global_api_keys'] = keys_input
         set_api_keys(keys_input)
         save_api_keys_to_db(keys_input)
         st.toast("🎉 Đã lưu vĩnh viễn danh sách API Keys vào Supabase!")
         st.rerun()
 
-    st.caption("💡 Mẹo: Keys và Giỏ Hàng lưu đám mây vĩnh viễn, không bao giờ bị mất khi F5 hay tắt máy.")
+    st.caption("💡 Mẹo: Dữ liệu tự động đồng bộ đám mây, an toàn 100% khi refresh trình duyệt.")
     st.divider()
     
-    if st.button("🔄 Làm Mới Màn Hình Display", use_container_width=True, help="Dọn dẹp danh sách hiển thị để màn hình gọn gàng"):
+    if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Dọn dẹp danh sách hiển thị để màn hình gọn gàng"):
         keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'active_inspected_handle']
         for key in keys_to_clear:
             if key in st.session_state:
@@ -597,7 +603,7 @@ def get_6_recent_videos(pure_handle):
 # --- STREAMLIT MODAL DIALOG ---
 @st.dialog("🎬 6 Video Dài (Long-form) Mới Nhất", width="large")
 def show_video_dialog(pure_handle, pre_fetched_videos=None):
-    st.markdown(f"### 📺 Kênh đang xem: `@{pure_handle}`")
+    st.markdown(f"<h3 style='color: #3D2F29; font-weight: 800;'>📺 Kênh đang xem: <span style='color: #D95F26;'>@{pure_handle}</span></h3>", unsafe_allow_html=True)
     st.markdown(f"🔗 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
     
     vids = []
@@ -652,7 +658,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     ws.merge_cells('A1:E1')
     ws['A1'] = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {date_str}"
     ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
-    ws['A1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ws['A1'].fill = PatternFill(start_color="D95F26", end_color="D95F26", fill_type="solid")
     ws['A1'].alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
 
@@ -686,7 +692,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=12, column=col_num, value=header)
         cell.font = Font(bold=True)
-        cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        cell.fill = PatternFill(start_color="D1D5DB", end_color="D1D5DB", fill_type="solid")
         cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[12].height = 24
 
@@ -694,7 +700,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
         r = idx + 13
         cA = ws.cell(row=r, column=1, value=v['Title']); cA.font = Font(name="Calibri", size=11)
         cB = ws.cell(row=r, column=2, value=v['Link'])
-        if v.get('Link'): cB.hyperlink = v['Link']; cB.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
+        if v.get('Link'): cB.hyperlink = v['Link']; cB.font = Font(name="Calibri", size=11, color="47A5D1", underline="single")
         ws.cell(row=r, column=3, value=v['Length (Exact)']).alignment = Alignment(horizontal="center", vertical="center")
         cD = ws.cell(row=r, column=4, value=v['Views']); cD.number_format = '#,##0'
         ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center", vertical="center")
@@ -705,13 +711,13 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     ws_charts = wb.create_sheet(title="Top 10 Video Title")
     top_10_videos = sorted(video_data, key=lambda x: x['Views'], reverse=True)[:10]
 
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid"); header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="D95F26", end_color="D95F26", fill_type="solid"); header_font = Font(bold=True, color="FFFFFF")
     ws_charts['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"; ws_charts['A1'].font, ws_charts['A1'].fill = header_font, header_fill
     ws_charts['B1'] = "Views"; ws_charts['B1'].font, ws_charts['B1'].fill = header_font, header_fill
 
-    PALETTE = [{"fill": "2F5597", "font": "FFFFFF"}, {"fill": "C00000", "font": "FFFFFF"}, {"fill": "70AD47", "font": "FFFFFF"}, {"fill": "7030A0", "font": "FFFFFF"}, {"fill": "00C0C0", "font": "FFFFFF"}, {"fill": "E37222", "font": "FFFFFF"}, {"fill": "41536B", "font": "FFFFFF"}, {"fill": "A04000", "font": "FFFFFF"}, {"fill": "385723", "font": "FFFFFF"}, {"fill": "626262", "font": "FFFFFF"}]
+    PALETTE = [{"fill": "D95F26", "font": "FFFFFF"}, {"fill": "3D2F29", "font": "FFFFFF"}, {"fill": "47A5D1", "font": "FFFFFF"}, {"fill": "6B7280", "font": "FFFFFF"}, {"fill": "D4AF37", "font": "FFFFFF"}]
     ws_charts['D1'] = f"📊 Top 10 Most Viewed Videos - {clean_handle}"
-    ws_charts['D1'].font = Font(bold=True, size=14, color="1F4E78")
+    ws_charts['D1'].font = Font(bold=True, size=14, color="D95F26")
 
     for row_idx, video in enumerate(top_10_videos, start=2):
         color_idx = (row_idx - 2) % len(PALETTE); style = PALETTE[color_idx]
@@ -727,7 +733,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
         chart.add_data(Reference(ws_charts, min_col=2, min_row=1, max_col=2, max_row=len(top_10_videos)+1), titles_from_data=True)
         chart.set_categories(Reference(ws_charts, min_col=1, min_row=2, max_col=1, max_row=len(top_10_videos)+1))
         chart.legend = None
-        for idx in range(len(top_10_videos)): chart.series[0].dPt.append(DataPoint(idx=idx, graphicalProperties={"solidFill": PALETTE[idx]["fill"]}))
+        for idx in range(len(top_10_videos)): chart.series[0].dPt.append(DataPoint(idx=idx, graphicalProperties={"solidFill": PALETTE[idx % len(PALETTE)]["fill"]}))
         chart.width = 22; chart.height = 14
         ws_charts.add_chart(chart, "D3")
 
@@ -735,11 +741,27 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
+def run_single_channel_audit(pure_handle):
+    cid = get_channel_id_by_handle(pure_handle)
+    if not cid: return None, None
+    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
+    v_ids = []
+    next_token = None
+    while True:
+        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
+        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
+        next_token = res.get('nextPageToken')
+        if not next_token: break
+    v_data = get_video_details(v_ids)
+    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
+    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    return excel_bytes, out_fname
+
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
-    st.subheader(f"🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)")
+    st.markdown(f"<h3 style='font-weight: 800; color: #3D2F29;'>🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)</h3>", unsafe_allow_html=True)
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
         if 'Handle' in df_cart.columns:
@@ -772,9 +794,9 @@ def render_shared_cart_ui(key_suffix=""):
 
 # --- APP HEADER ---
 st.markdown("""
-    <div style="padding: 5px 0 15px 0;">
-        <h1 style="font-weight: 900; color: #3D2F29; margin-bottom: 0; letter-spacing: -0.03em;">YT CHECKER PRO</h1>
-        <p style="color: #6B7280; font-size: 1.05rem;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc.</p>
+    <div style="padding: 10px 0 20px 0;">
+        <h1 style="font-weight: 900; color: #3D2F29; margin-bottom: 5px; font-size: 2.4rem; letter-spacing: -0.03em;">YT CHECKER <span style="color: #D95F26;">PRO</span></h1>
+        <p style="color: #6B7280; font-size: 1.1rem; font-weight: 500;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -790,7 +812,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
 # --- TAB 1: BATCH SEARCH ---
 with tab1:
-    st.subheader("🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt")
+    st.markdown("<h3 style='font-weight: 700; color: #3D2F29; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt</h3>", unsafe_allow_html=True)
     col_s1, col_s2 = st.columns([2, 1])
     with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):", height=180)
     with col_s2: file_input_check = st.file_uploader("Hoặc Upload file danh sách (.txt, .csv, .xlsx):")
@@ -854,19 +876,19 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
-                            st.markdown(f"### [{item['Handle']}]({item['Link Kênh']})")
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{item['Link Kênh']}' style='color:#47A5D1; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
                         with c2:
-                            st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
+                            st.markdown(f"**Trạng thái:** <span style='color:#10B981;'>{item['Trạng thái']}</span>", unsafe_allow_html=True)
                         with c3:
                             st.write("**Thao tác:**")
                             bc1, bc2 = st.columns(2)
@@ -903,16 +925,16 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
-                            st.markdown(f"### [{item['Handle']}](https://youtube.com/@{p_id})")
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='https://youtube.com/@{p_id}' style='color:#3D2F29; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_ext_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
                         with c2:
-                            st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
+                            st.markdown(f"**Trạng thái:** <span style='color:#D95F26;'>{item['Trạng thái']}</span>", unsafe_allow_html=True)
                         with c3:
                             if st.button("🗑️ Xóa DB", key=f"del_t1_ext_{idx}_{p_id}", use_container_width=True):
                                 delete_channel_from_system(p_id)
@@ -923,7 +945,7 @@ with tab1:
 
 # --- TAB 2: LIVE API SCRAPER ---
 with tab2:
-    st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14")
+    st.markdown("<h3 style='font-weight: 700; color: #3D2F29; margin-top: 15px;'>⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14</h3>", unsafe_allow_html=True)
     channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
 
     if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14", type="primary"):
@@ -987,7 +1009,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     return True, base_data
 
 with tab3:
-    st.subheader("🎯 Săn Kênh Tương Tự & Giỏ Hàng (Multi-threaded Speed)")
+    st.markdown("<h3 style='font-weight: 700; color: #3D2F29; margin-top: 15px;'>🎯 Săn Kênh Tương Tự & Giỏ Hàng (Multi-threaded Speed)</h3>", unsafe_allow_html=True)
     
     if 'audit_success_msg' in st.session_state:
         st.success(st.session_state['audit_success_msg'])
@@ -1116,14 +1138,14 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
-                            st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_pass_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
@@ -1131,7 +1153,7 @@ with tab3:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
                             st.write(f"🎬 **Tổng Video:** `{row['Tổng Số Video']}` | 📅 **Mới nhất:** `{row['Video Gần Nhất']}`")
                         with c3:
-                            st.write(f"**Database:**\n{row['Trạng Thái DB']}")
+                            st.write(f"**Database:**\n<span style='color:#10B981; font-weight:700;'>{row['Trạng Thái DB']}</span>", unsafe_allow_html=True)
                         with c4:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
@@ -1186,14 +1208,14 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
-                            st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='color:#3D2F29; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
@@ -1202,7 +1224,7 @@ with tab3:
                             st.write(f"🎬 **Tổng Video:** `{row.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{row.get('Video Gần Nhất', '')}`")
                         with c3:
                             st.write(f"**Database:** {row.get('Trạng Thái DB', '')}")
-                            st.write(f"❌ **Lý do:** `{row['Lý do loại']}`")
+                            st.markdown(f"❌ **Lý do:** <span style='color:#EF4444; font-weight:700;'>{row['Lý do loại']}</span>", unsafe_allow_html=True)
                         with c4:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
@@ -1248,7 +1270,7 @@ with tab3:
 
 # --- TAB 4, TAB 5, TAB 6 ---
 with tab4:
-    st.subheader("Upload file .ZIP hoặc .TXT để cập nhật Database")
+    st.markdown("<h3 style='font-weight: 700; color: #3D2F29; margin-top: 15px;'>📤 Upload file .ZIP hoặc .TXT để cập nhật Database</h3>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo Excel) hoặc file `.txt` vào đây:", type=["zip", "txt", "xlsx"], accept_multiple_files=True)
     if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database", type="primary"):
         new_handles_to_insert = []
@@ -1274,11 +1296,11 @@ with tab4:
             st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle vào Database đám mây!")
 
 with tab5:
-    st.subheader("📊 Danh sách toàn bộ Channel trong Database")
+    st.markdown("<h3 style='font-weight: 700; color: #3D2F29; margin-top: 15px;'>📊 Danh sách toàn bộ Channel trong Database</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
     if res.data:
         df_all = pd.DataFrame(res.data)
-        st.write(f"Tổng số kênh hiện có: **{len(df_all)}**")
+        st.markdown(f"Tổng số kênh hiện có: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
         
         search_db = st.text_input("🔍 Tìm kiếm kênh trong Database (Handle hoặc Tên):", "")
         if search_db:
@@ -1305,11 +1327,11 @@ with tab5:
             with st.container(border=True):
                 if is_active:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                    st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
-                    st.markdown(f"### [@{p_id}](https://youtube.com/@{p_id})")
+                    st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='https://youtube.com/@{p_id}' style='color:#3D2F29; text-decoration:none;'>@{p_id}</a></h3>", unsafe_allow_html=True)
                     st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
                     if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                         show_video_dialog(p_id)
@@ -1323,10 +1345,10 @@ with tab5:
 
         st.divider()
         csv = df_all.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv")
+        st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv", type="primary")
 
 with tab6:
-    st.subheader("✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
+    st.markdown("<h3 style='font-weight: 700; color: #3D2F29; margin-top: 15px;'>✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)</h3>", unsafe_allow_html=True)
     inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi:", value="@NickDiGiovanni")
     if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay", type="primary"):
         pure_inspect = to_pure_id(inspect_handle_input)
