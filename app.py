@@ -23,82 +23,100 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Page Config
 st.set_page_config(
-    page_title="Voiceover & Channel Master DB", 
-    page_icon="🎙️", 
+    page_title="YT CHECKER PRO", 
+    page_icon="🚀", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- MODERN LIGHT THEME (BACKSTREET VOICE INSPIRED) ---
+# --- MODERN ARTISTIC LIGHT THEME (PALETA COLOR PRO SYSTEM) ---
+# Palette: #D95F26 (Tangerine), #3D2F29 (Espresso), #F4F2F1 (Warm White), #47A5D1 (Ocean), #FFFFFF (White), #6B7280 (Ash)
 st.markdown("""
 <style>
-/* Base Theme: Light, Clean, High Contrast */
+/* Base Theme */
 .stApp {
-    background-color: #F9FAFB !important; /* Very Light Gray/White */
-    color: #1F2937 !important; /* Deep Charcoal Text */
-    font-family: 'Helvetica Neue', Arial, sans-serif !important;
+    background-color: #F4F2F1 !important; 
+    color: #3D2F29 !important; 
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
 /* Sidebar Styling */
 section[data-testid="stSidebar"] {
     background-color: #FFFFFF !important;
     border-right: 1px solid #E5E7EB !important;
-}
-section[data-testid="stSidebar"] .stMarkdown {
-    color: #374151 !important;
+    box-shadow: 2px 0 10px rgba(61, 47, 41, 0.03) !important;
 }
 
-/* Header & Tabs Styling */
+section[data-testid="stSidebar"] .stMarkdown {
+    color: #3D2F29 !important;
+}
+
+/* Header & Tab Area */
 header[data-testid="stHeader"] {
     background-color: transparent !important;
 }
 
+/* HIGH-END ARTISTIC TABS DESIGN */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-    background-color: transparent;
-    padding: 0;
+    gap: 12px;
+    background-color: #FFFFFF;
+    padding: 10px 14px;
+    border-radius: 16px;
+    border: 1px solid #E5E7EB;
+    box-shadow: 0 4px 20px rgba(61, 47, 41, 0.05);
 }
 
 .stTabs [data-baseweb="tab"] {
-    background-color: #FFFFFF;
-    border: 1px solid #E5E7EB !important;
-    border-radius: 6px;
-    color: #6B7280;
-    font-weight: 600;
-    padding: 8px 16px;
-    transition: all 0.2s ease;
+    background-color: #F4F2F1;
+    border: 1px solid transparent !important;
+    border-radius: 10px;
+    color: #3D2F29 !important;
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 10px 22px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    cursor: pointer !important;
 }
 
-/* The Gold Brand Color from Logo */
+/* Tab Hover Effect (Artistic Lift & Glow) */
+.stTabs [data-baseweb="tab"]:hover {
+    background-color: #FFFFFF !important;
+    color: #D95F26 !important;
+    border: 1px solid #D95F26 !important;
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 6px 16px rgba(217, 95, 38, 0.18) !important;
+}
+
+/* Active Tab (Gradient Tangerine) */
 .stTabs [aria-selected="true"] {
-    background-color: #D4AF37 !important; /* Brand Gold */
+    background: linear-gradient(135deg, #D95F26 0%, #B84A1A 100%) !important;
     color: #FFFFFF !important;
-    border: 1px solid #D4AF37 !important;
-    box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3) !important;
+    border: none !important;
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 6px 18px rgba(217, 95, 38, 0.35) !important;
 }
 
-/* Standard Bordered Container Card Styling */
+/* Standard Card Container Styling */
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background-color: #FFFFFF !important;
     border: 1px solid #E5E7EB !important;
-    border-radius: 10px !important;
-    padding: 8px !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+    border-radius: 14px !important;
+    padding: 10px !important;
+    box-shadow: 0 2px 8px rgba(61, 47, 41, 0.04) !important;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 0 6px 18px rgba(61, 47, 41, 0.08) !important;
 }
 
-/* Active Inspected Card Highlight (Soft Gold Background) */
+/* Active Inspected Card Highlight (Vivid Ocean Accent) */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
-    background-color: #FFFCF2 !important; /* Very soft yellow/gold */
-    border: 2px solid #D4AF37 !important; /* Solid Gold Border */
-    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2) !important;
+    background-color: #EBF8FF !important; 
+    border: 2.5px solid #47A5D1 !important; 
+    box-shadow: 0 6px 20px rgba(71, 165, 209, 0.25) !important;
 }
 
-/* Force children of active card to have transparent background */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="element-container"],
@@ -106,14 +124,13 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[
     background-color: transparent !important;
 }
 
-/* In-Cart Card Highlight (Soft Green) */
+/* In-Cart Card Highlight (Emerald Soft Green) */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
     background-color: #F0FDF4 !important;
-    border: 2px solid #10B981 !important;
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.15) !important;
+    border: 2.5px solid #10B981 !important;
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.2) !important;
 }
 
-/* Force children of cart card to have transparent background */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="element-container"],
@@ -121,54 +138,57 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
     background-color: transparent !important;
 }
 
-/* Input Fields & Text Areas */
+/* Inputs & Selectboxes */
 .stTextInput input, .stTextArea textarea, .stSelectbox select {
     background-color: #FFFFFF !important;
-    color: #1F2937 !important;
+    color: #3D2F29 !important;
     border: 1px solid #D1D5DB !important;
-    border-radius: 6px !important;
+    border-radius: 8px !important;
 }
 
 /* Buttons */
 .stButton button {
-    border-radius: 6px !important;
-    font-weight: 600 !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
     border: 1px solid #D1D5DB !important;
     background-color: #FFFFFF !important;
-    color: #374151 !important;
+    color: #3D2F29 !important;
     transition: all 0.2s ease !important;
 }
 
 .stButton button:hover {
-    border-color: #9CA3AF !important;
-    background-color: #F3F4F6 !important;
+    border-color: #D95F26 !important;
+    color: #D95F26 !important;
+    background-color: #FFFBF9 !important;
 }
 
-/* Primary Button (Brand Gold) */
+/* Primary Button (Tangerine CTA) */
 .stButton button[kind="primary"] {
-    background-color: #D4AF37 !important;
+    background-color: #D95F26 !important;
     color: #FFFFFF !important;
     border: none !important;
 }
 
 .stButton button[kind="primary"]:hover {
-    background-color: #B5952F !important;
-    box-shadow: 0 4px 10px rgba(212, 175, 55, 0.4) !important;
+    background-color: #B84A1A !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 4px 14px rgba(217, 95, 38, 0.4) !important;
 }
 
-/* Custom Status Badges */
+/* Badges */
 .badge-pro {
     display: inline-block;
-    padding: 4px 10px;
+    padding: 4px 12px;
     border-radius: 9999px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .badge-emerald { background-color: #D1FAE5; color: #065F46; border: 1px solid #10B981; }
-.badge-gold { background-color: #FEF3C7; color: #92400E; border: 1px solid #F59E0B; }
+.badge-tangerine { background-color: #FFEDD5; color: #9A3412; border: 1px solid #D95F26; }
+.badge-ocean { background-color: #E0F2FE; color: #0369A1; border: 1px solid #47A5D1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -273,25 +293,24 @@ set_api_keys(st.session_state['global_api_keys'])
 
 # --- SIDEBAR BRANDING & CONFIG ---
 with st.sidebar:
-    # Custom Logo Injection
     col1, col2, col3 = st.columns([1, 6, 1])
     with col2:
         try:
             st.image("logo.png", use_container_width=True)
-        except:
-            st.markdown("<h2 style='text-align: center; color: #D4AF37;'>🎙️ LOGO</h2>", unsafe_allow_html=True)
+        except Exception:
+            st.markdown("<h2 style='text-align: center; color: #D95F26;'>🚀 LOGO</h2>", unsafe_allow_html=True)
             
     st.markdown("""
-        <div style="text-align: center; padding-bottom: 10px;">
-            <h3 style="margin: 5px 0 5px 0; font-weight: 800; font-size: 1.2rem; color: #1F2937;">VOICEOVER DB PRO</h3>
-            <span class="badge-pro badge-emerald">Supabase Connected</span>
+        <div style="text-align: center; padding-bottom: 12px;">
+            <h2 style="margin: 6px 0 4px 0; font-weight: 900; font-size: 1.3rem; color: #3D2F29; letter-spacing: -0.02em;">YT CHECKER PRO</h2>
+            <span class="badge-pro badge-emerald">Supabase Live</span>
         </div>
     """, unsafe_allow_html=True)
     st.divider()
 
-    st.subheader("⚙️ Cấu Hình API System")
+    st.subheader("⚙️ Cấu Hình API Keys")
     active_key_count = len(st.session_state.get('api_keys', []))
-    st.markdown(f"API Keys đang chạy: <span class='badge-pro badge-gold'>{active_key_count} Keys Active</span>", unsafe_allow_html=True)
+    st.markdown(f"API Keys đang hoạt động: <span class='badge-pro badge-tangerine'>{active_key_count} Keys Active</span>", unsafe_allow_html=True)
     
     keys_input = st.text_area("Danh sách API Keys (Mỗi dòng 1 key):", value=st.session_state['global_api_keys'], height=180, key="api_keys_text_area")
     
@@ -302,7 +321,7 @@ with st.sidebar:
         st.toast("🎉 Đã lưu vĩnh viễn danh sách API Keys vào Supabase!")
         st.rerun()
 
-    st.caption("💡 Mẹo: Keys và Giỏ Hàng tự động sao lưu đám mây. Tắt máy hay F5 đều được bảo vệ 100%.")
+    st.caption("💡 Mẹo: Keys và Giỏ Hàng lưu đám mây vĩnh viễn, không bao giờ bị mất khi F5 hay tắt máy.")
     st.divider()
     
     if st.button("🔄 Làm Mới Màn Hình Display", use_container_width=True, help="Dọn dẹp danh sách hiển thị để màn hình gọn gàng"):
@@ -754,7 +773,7 @@ def render_shared_cart_ui(key_suffix=""):
 # --- APP HEADER ---
 st.markdown("""
     <div style="padding: 5px 0 15px 0;">
-        <h1 style="font-weight: 800; color: #1F2937; margin-bottom: 0;">VOICEOVER MASTER DB PRO</h1>
+        <h1 style="font-weight: 900; color: #3D2F29; margin-bottom: 0; letter-spacing: -0.03em;">YT CHECKER PRO</h1>
         <p style="color: #6B7280; font-size: 1.05rem;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc.</p>
     </div>
 """, unsafe_allow_html=True)
@@ -835,10 +854,10 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
@@ -884,7 +903,7 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
@@ -1050,7 +1069,6 @@ with tab3:
                     db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
                     db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
                     
-                    # PARALLEL EXECUTION WITH THREADPOOL
                     with ThreadPoolExecutor(max_workers=8) as executor:
                         futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set) for item in channel_items]
                         for future in as_completed(futures):
@@ -1098,10 +1116,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1168,10 +1186,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1287,7 +1305,7 @@ with tab5:
             with st.container(border=True):
                 if is_active:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                    st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
