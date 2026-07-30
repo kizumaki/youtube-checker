@@ -301,10 +301,10 @@ set_api_keys(st.session_state['global_api_keys'])
 with st.sidebar:
     col1, col2, col3 = st.columns([0.5, 8, 0.5])
     with col2:
-        try:
-            st.image("logo_2.png", use_container_width=True)
-        except Exception:
-            st.markdown("<h2 style='text-align: center; color: #D95F26;'>🎙️ LOGO</h2>", unsafe_allow_html=True)
+        if os.path.exists("logo.png"):
+            st.image("logo.png", use_container_width=True)
+        else:
+            st.warning("⚠️ Không tìm thấy file 'logo.png'. Vui lòng kiểm tra lại tên file trên GitHub!")
             
     st.markdown("""
         <div style="text-align: center; padding-bottom: 12px; margin-top: 10px;">
@@ -741,22 +741,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-def run_single_channel_audit(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
-    v_ids = []
-    next_token = None
-    while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
-        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
-        next_token = res.get('nextPageToken')
-        if not next_token: break
-    v_data = get_video_details(v_ids)
-    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
-    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-    return excel_bytes, out_fname
-
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
@@ -794,9 +778,9 @@ def render_shared_cart_ui(key_suffix=""):
 
 # --- APP HEADER ---
 st.markdown("""
-    <div style="padding: 10px 0 20px 0;">
+    <div style="padding: 5px 0 15px 0;">
         <h1 style="font-weight: 900; color: #3D2F29; margin-bottom: 5px; font-size: 2.4rem; letter-spacing: -0.03em;">YT CHECKER <span style="color: #D95F26;">PRO</span></h1>
-        <p style="color: #6B7280; font-size: 1.1rem; font-weight: 500;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc.</p>
+        <p style="color: #6B7280; font-size: 1.05rem; font-weight: 500;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -876,19 +860,19 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D95F26; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
-                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{item['Link Kênh']}' style='color:#47A5D1; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{item['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
                         with c2:
-                            st.markdown(f"**Trạng thái:** <span style='color:#10B981;'>{item['Trạng thái']}</span>", unsafe_allow_html=True)
+                            st.markdown(f"**Trạng thái:** <span style='color:#47A5D1;'>{item['Trạng thái']}</span>", unsafe_allow_html=True)
                         with c3:
                             st.write("**Thao tác:**")
                             bc1, bc2 = st.columns(2)
@@ -925,7 +909,7 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D95F26; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
@@ -1138,10 +1122,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D95F26; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1153,7 +1137,7 @@ with tab3:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
                             st.write(f"🎬 **Tổng Video:** `{row['Tổng Số Video']}` | 📅 **Mới nhất:** `{row['Video Gần Nhất']}`")
                         with c3:
-                            st.write(f"**Database:**\n<span style='color:#10B981; font-weight:700;'>{row['Trạng Thái DB']}</span>", unsafe_allow_html=True)
+                            st.write(f"**Database:**\n<span style='color:#47A5D1; font-weight:700;'>{row['Trạng Thái DB']}</span>", unsafe_allow_html=True)
                         with c4:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
@@ -1208,10 +1192,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D95F26; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #10B981; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1224,7 +1208,7 @@ with tab3:
                             st.write(f"🎬 **Tổng Video:** `{row.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{row.get('Video Gần Nhất', '')}`")
                         with c3:
                             st.write(f"**Database:** {row.get('Trạng Thái DB', '')}")
-                            st.markdown(f"❌ **Lý do:** <span style='color:#EF4444; font-weight:700;'>{row['Lý do loại']}</span>", unsafe_allow_html=True)
+                            st.markdown(f"❌ **Lý do:** <span style='color:#D95F26; font-weight:700;'>{row['Lý do loại']}</span>", unsafe_allow_html=True)
                         with c4:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
@@ -1327,7 +1311,7 @@ with tab5:
             with st.container(border=True):
                 if is_active:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                    st.markdown('<div style="background-color: #47A5D1; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="background-color: #D95F26; color: white; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
