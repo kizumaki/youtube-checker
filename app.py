@@ -22,35 +22,37 @@ from supabase import create_client, Client
 # Page Config
 st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
 
-# Inject Global CSS for Card Highlight & Inner Transparent Backgrounds
+# Inject Global CSS for Full Card Background Highlight
 st.markdown("""
 <style>
-/* Active Inspected Card Highlight */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
+/* Active Inspected Card - Highlight ENTIRE Container #EBF5FF & Dark Blue Border */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stVerticalBlock"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stColumn"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="element-container"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stMarkdownContainer"] {
     background-color: #EBF5FF !important;
-    border: 2.5px solid #2B6CB0 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
+    border: 3px solid #2B6CB0 !important;
     border-radius: 12px !important;
-    box-shadow: 0 4px 14px rgba(43, 108, 176, 0.25) !important;
+    box-shadow: 0 4px 16px rgba(43, 108, 176, 0.3) !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div,
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) [data-testid="stMarkdownContainer"],
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) [data-testid="stVerticalBlock"] {
-    background-color: transparent !important;
-}
-
-/* In-Cart Card Highlight */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
+/* In-Cart Card - Highlight ENTIRE Container #F0FDF4 & Green Border */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stVerticalBlock"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stColumn"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="element-container"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stMarkdownContainer"] {
     background-color: #F0FDF4 !important;
-    border: 2.5px solid #059669 !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.2) !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div,
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) [data-testid="stMarkdownContainer"],
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) [data-testid="stVerticalBlock"] {
-    background-color: transparent !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
+    border: 3px solid #059669 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.25) !important;
 }
 </style>
 """, unsafe_allow_html=True)
