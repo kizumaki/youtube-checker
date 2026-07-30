@@ -138,6 +138,15 @@ def to_pure_id(raw_val):
     s = re.sub(r'^@+', '', s).strip().lower()
     return s if s else None
 
+def is_long_form_video(v, min_seconds=180):
+    """Strictly filter out YouTube Shorts (under 3 minutes or titled with #shorts)"""
+    title = v.get('Title', '').lower()
+    if '#shorts' in title or '#short' in title:
+        return False
+    if v.get('Seconds', 0) <= min_seconds:
+        return False
+    return True
+
 def extract_handles_from_text(text_block):
     if not text_block: return []
     lines = re.split(r'[\n,\t\r]+', str(text_block))
@@ -320,7 +329,7 @@ def get_6_recent_videos(pure_handle):
                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                 if v_ids:
                     v_details = get_video_details(v_ids)
-                    long_vids = [v for v in v_details if v.get('Seconds', 0) > 60]
+                    long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
                     st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
                     return long_vids[:6]
     except Exception: pass
@@ -332,7 +341,7 @@ def render_popover_preview(pure_handle, pre_fetched_videos=None):
     
     vids = []
     if pre_fetched_videos:
-        vids = [v for v in pre_fetched_videos if v.get('Seconds', 0) > 60]
+        vids = [v for v in pre_fetched_videos if is_long_form_video(v, min_seconds=180)]
         
     if len(vids) < 6:
         vids = get_6_recent_videos(pure_handle)
@@ -368,7 +377,7 @@ def render_popover_preview(pure_handle, pre_fetched_videos=None):
             
             st.markdown("---")
     else:
-        st.caption("Không tìm thấy video dài (Kênh này chỉ đăng Shorts hoặc chưa có video dài).")
+        st.caption("Không tìm thấy video dài (Kênh này chỉ đăng Shorts hoặc chưa có video dài trên 3 phút).")
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -466,22 +475,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
-def run_single_channel_audit(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
-    v_ids = []
-    next_token = None
-    while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
-        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
-        next_token = res.get('nextPageToken')
-        if not next_token: break
-    v_data = get_video_details(v_ids)
-    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
-    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-    return excel_bytes, out_fname
 
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
@@ -761,7 +754,7 @@ with tab3:
                                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                                 if v_ids:
                                     v_details = get_video_details(v_ids)
-                                    long_vids = [v for v in v_details if v.get('Seconds', 0) > 60]
+                                    long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
                                     if long_vids:
                                         latest_date = long_vids[0]['Published Date']
                                         has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in long_vids)
