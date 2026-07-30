@@ -25,10 +25,22 @@ st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="�
 # Inject Global CSS for Card Highlight & Container Styling
 st.markdown("""
 <style>
-/* Highlight Card Container when channel is in cart */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-flag) {
+/* Highlight active inspected card */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker),
+div[data-testid="stContainer"]:has(div.active-card-marker),
+div[data-testid="element-container"]:has(div.active-card-marker) {
     background-color: #EBF5FF !important;
     border: 2px solid #2B6CB0 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 12px rgba(43, 108, 176, 0.2) !important;
+}
+
+/* Highlight card in cart */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker),
+div[data-testid="stContainer"]:has(div.in-cart-marker),
+div[data-testid="element-container"]:has(div.in-cart-marker) {
+    background-color: #F0FDF4 !important;
+    border: 2px solid #059669 !important;
     border-radius: 12px !important;
 }
 </style>
@@ -58,6 +70,9 @@ if 'cart' not in st.session_state:
 if 'video_preview_cache' not in st.session_state:
     st.session_state['video_preview_cache'] = {}
 
+if 'active_inspected_handle' not in st.session_state:
+    st.session_state['active_inspected_handle'] = None
+
 # --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
 if 'global_api_keys' not in st.session_state:
     st.session_state['global_api_keys'] = DEFAULT_API_KEY
@@ -70,7 +85,7 @@ with st.sidebar:
     
     st.divider()
     if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa bảng kết quả hiển thị để làm gọn màn hình (Bảo vệ tuyệt đối API Keys & Giỏ Hàng)"):
-        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing']
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'active_inspected_handle']
         for key in keys_to_clear:
             if key in st.session_state:
                 del st.session_state[key]
@@ -103,6 +118,9 @@ def delete_channel_from_system(pure_handle):
 
     if pure_handle in st.session_state.get('cart', {}):
         del st.session_state['cart'][pure_handle]
+
+    if st.session_state.get('active_inspected_handle') == pure_handle:
+        st.session_state['active_inspected_handle'] = None
 
     if 'passed_channels' in st.session_state:
         st.session_state['passed_channels'] = [ch for ch in st.session_state['passed_channels'] if to_pure_id(ch.get('Handle')) != pure_handle]
@@ -358,7 +376,7 @@ def get_6_recent_videos(pure_handle):
     st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
     return long_vids[:6]
 
-# --- NATIVE STREAMLIT MODAL DIALOG FOR PREVIEW (GUARANTEES 100% WORKING CLOSE BUTTON) ---
+# --- STREAMLIT MODAL DIALOG FOR PREVIEW (GUARANTEES 100% WORKING CLOSE BUTTON) ---
 @st.dialog("🎬 6 Video Dài (Long-form) Mới Nhất", width="large")
 def show_video_dialog(pure_handle, pre_fetched_videos=None):
     st.markdown(f"🔗 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
@@ -501,22 +519,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-def run_single_channel_audit(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
-    v_ids = []
-    next_token = None
-    while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
-        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
-        next_token = res.get('nextPageToken')
-        if not next_token: break
-    v_data = get_video_details(v_ids)
-    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
-    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-    return excel_bytes, out_fname
-
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
@@ -622,18 +624,23 @@ with tab1:
                 st.divider()
                 for idx, item in enumerate(new_handles):
                     p_id = to_pure_id(item["Handle"])
+                    is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
                     
                     with st.container(border=True):
-                        if is_in_cart:
-                            st.markdown('<div class="in-cart-flag"></div>', unsafe_allow_html=True)
-                            st.info("🛒 **ĐÃ CÓ TRONG GIỎ HÀNG**")
+                        if is_active:
+                            st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                        elif is_in_cart:
+                            st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
                             st.markdown(f"### [{item['Handle']}]({item['Link Kênh']})")
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_{idx}_{p_id}"):
+                                st.session_state['active_inspected_handle'] = p_id
                                 show_video_dialog(p_id)
                         with c2:
                             st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
@@ -665,12 +672,19 @@ with tab1:
             if existing_handles:
                 for idx, item in enumerate(existing_handles):
                     p_id = to_pure_id(item["Handle"])
+                    is_active = (p_id == st.session_state.get('active_inspected_handle'))
+                    
                     with st.container(border=True):
+                        if is_active:
+                            st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
                             st.markdown(f"### [{item['Handle']}](https://youtube.com/@{p_id})")
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_ext_{idx}_{p_id}"):
+                                st.session_state['active_inspected_handle'] = p_id
                                 show_video_dialog(p_id)
                         with c2:
                             st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
@@ -837,7 +851,7 @@ with tab3:
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
-        # --- TAB PASSED (BORDERED CARD LAYOUT WITH HIGHLIGHT BG) ---
+        # --- TAB PASSED (CARD LAYOUT WITH DYNAMIC BG) ---
         with tab_pass:
             if passed_list:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
@@ -850,18 +864,23 @@ with tab3:
 
                 for idx, row in enumerate(passed_list):
                     p_id = to_pure_id(row['Handle'])
+                    is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
-                    
+
                     with st.container(border=True):
-                        if is_in_cart:
-                            st.markdown('<div class="in-cart-flag"></div>', unsafe_allow_html=True)
-                            st.info("🛒 **ĐÃ CÓ TRONG GIỎ HÀNG**")
+                        if is_active:
+                            st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                        elif is_in_cart:
+                            st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
                             st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_pass_{p_id}"):
+                                st.session_state['active_inspected_handle'] = p_id
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
@@ -909,23 +928,28 @@ with tab3:
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
-        # --- TAB REJECTED (BORDERED CARD LAYOUT WITH HIGHLIGHT BG) ---
+        # --- TAB REJECTED (CARD LAYOUT WITH DYNAMIC BG) ---
         with tab_rej:
             if rejected_list:
                 for idx, row in enumerate(rejected_list):
                     p_id = to_pure_id(row['Handle'])
+                    is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
                     
                     with st.container(border=True):
-                        if is_in_cart:
-                            st.markdown('<div class="in-cart-flag"></div>', unsafe_allow_html=True)
-                            st.info("🛒 **ĐÃ CÓ TRONG GIỎ HÀNG**")
+                        if is_active:
+                            st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                        elif is_in_cart:
+                            st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
                             st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}"):
+                                st.session_state['active_inspected_handle'] = p_id
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row.get('Quốc gia', '')}`")
@@ -1028,12 +1052,19 @@ with tab5:
         st.divider()
         for idx, row in page_data.iterrows():
             p_id = to_pure_id(row['handle'])
+            is_active = (p_id == st.session_state.get('active_inspected_handle'))
+            
             with st.container(border=True):
+                if is_active:
+                    st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="background-color: #2B6CB0; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
                     st.markdown(f"### [@{p_id}](https://youtube.com/@{p_id})")
                     st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
                     if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}"):
+                        st.session_state['active_inspected_handle'] = p_id
                         show_video_dialog(p_id)
                 with c2:
                     st.write(f"**Nguồn dữ liệu:** {row.get('source', 'N/A')}")
