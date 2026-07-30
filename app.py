@@ -23,26 +23,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Page Config
 st.set_page_config(
-    page_title="YouTube Master DB & Related Finder Pro", 
-    page_icon="📺", 
+    page_title="Voiceover & Channel Master DB", 
+    page_icon="🎙️", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- PRO DARK SLATE THEME CSS INJECTION ---
+# --- MODERN LIGHT THEME (BACKSTREET VOICE INSPIRED) ---
 st.markdown("""
 <style>
-/* Main Background & Fonts */
+/* Base Theme: Light, Clean, High Contrast */
 .stApp {
-    background-color: #0F172A !important;
-    color: #F8FAFC !important;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    background-color: #F9FAFB !important; /* Very Light Gray/White */
+    color: #1F2937 !important; /* Deep Charcoal Text */
+    font-family: 'Helvetica Neue', Arial, sans-serif !important;
 }
 
-/* Sidebar Dark Styling */
+/* Sidebar Styling */
 section[data-testid="stSidebar"] {
-    background-color: #1E293B !important;
-    border-right: 1px solid #334155 !important;
+    background-color: #FFFFFF !important;
+    border-right: 1px solid #E5E7EB !important;
+}
+section[data-testid="stSidebar"] .stMarkdown {
+    color: #374151 !important;
 }
 
 /* Header & Tabs Styling */
@@ -52,92 +55,105 @@ header[data-testid="stHeader"] {
 
 .stTabs [data-baseweb="tab-list"] {
     gap: 8px;
-    background-color: #1E293B;
-    padding: 8px;
-    border-radius: 12px;
-    border: 1px solid #334155;
+    background-color: transparent;
+    padding: 0;
 }
 
 .stTabs [data-baseweb="tab"] {
-    height: 42px;
-    white-space: pre-wrap;
-    background-color: transparent;
-    border-radius: 8px;
-    color: #94A3B8;
+    background-color: #FFFFFF;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 6px;
+    color: #6B7280;
     font-weight: 600;
-    border: none !important;
+    padding: 8px 16px;
+    transition: all 0.2s ease;
 }
 
+/* The Gold Brand Color from Logo */
 .stTabs [aria-selected="true"] {
-    background-color: #3B82F6 !important;
+    background-color: #D4AF37 !important; /* Brand Gold */
     color: #FFFFFF !important;
+    border: 1px solid #D4AF37 !important;
+    box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3) !important;
 }
 
 /* Standard Bordered Container Card Styling */
 div[data-testid="stVerticalBlockBorderWrapper"] {
-    background-color: #1E293B !important;
-    border: 1px solid #334155 !important;
-    border-radius: 12px !important;
-    padding: 6px !important;
+    background-color: #FFFFFF !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 10px !important;
+    padding: 8px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 
-/* Active Inspected Card Highlight (Dark Cyber Blue) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker),
+/* Active Inspected Card Highlight (Soft Gold Background) */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
+    background-color: #FFFCF2 !important; /* Very soft yellow/gold */
+    border: 2px solid #D4AF37 !important; /* Solid Gold Border */
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2) !important;
+}
+
+/* Force children of active card to have transparent background */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="element-container"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div[data-testid="stMarkdownContainer"] {
-    background-color: #1E3A8A !important;
+    background-color: transparent !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
-    border: 2px solid #60A5FA !important;
-    box-shadow: 0 0 20px rgba(96, 165, 250, 0.35) !important;
+/* In-Cart Card Highlight (Soft Green) */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
+    background-color: #F0FDF4 !important;
+    border: 2px solid #10B981 !important;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.15) !important;
 }
 
-/* In-Cart Card Highlight (Dark Cyber Emerald) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker),
+/* Force children of cart card to have transparent background */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stVerticalBlock"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stColumn"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="element-container"],
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data-testid="stMarkdownContainer"] {
-    background-color: #065F46 !important;
-}
-
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
-    border: 2px solid #34D399 !important;
-    box-shadow: 0 0 20px rgba(52, 211, 153, 0.3) !important;
+    background-color: transparent !important;
 }
 
 /* Input Fields & Text Areas */
 .stTextInput input, .stTextArea textarea, .stSelectbox select {
-    background-color: #0F172A !important;
-    color: #F8FAFC !important;
-    border: 1px solid #475569 !important;
-    border-radius: 8px !important;
+    background-color: #FFFFFF !important;
+    color: #1F2937 !important;
+    border: 1px solid #D1D5DB !important;
+    border-radius: 6px !important;
 }
 
 /* Buttons */
 .stButton button {
-    border-radius: 8px !important;
+    border-radius: 6px !important;
     font-weight: 600 !important;
+    border: 1px solid #D1D5DB !important;
+    background-color: #FFFFFF !important;
+    color: #374151 !important;
     transition: all 0.2s ease !important;
 }
 
+.stButton button:hover {
+    border-color: #9CA3AF !important;
+    background-color: #F3F4F6 !important;
+}
+
+/* Primary Button (Brand Gold) */
 .stButton button[kind="primary"] {
-    background-color: #EF4444 !important;
+    background-color: #D4AF37 !important;
     color: #FFFFFF !important;
     border: none !important;
 }
 
 .stButton button[kind="primary"]:hover {
-    background-color: #DC2626 !important;
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
+    background-color: #B5952F !important;
+    box-shadow: 0 4px 10px rgba(212, 175, 55, 0.4) !important;
 }
 
 /* Custom Status Badges */
@@ -151,8 +167,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
     letter-spacing: 0.05em;
 }
 
-.badge-emerald { background-color: #064E3B; color: #34D399; border: 1px solid #059669; }
-.badge-blue { background-color: #1E3A8A; color: #93C5FD; border: 1px solid #3B82F6; }
+.badge-emerald { background-color: #D1FAE5; color: #065F46; border: 1px solid #10B981; }
+.badge-gold { background-color: #FEF3C7; color: #92400E; border: 1px solid #F59E0B; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -257,12 +273,17 @@ set_api_keys(st.session_state['global_api_keys'])
 
 # --- SIDEBAR BRANDING & CONFIG ---
 with st.sidebar:
+    # Custom Logo Injection
+    col1, col2, col3 = st.columns([1, 6, 1])
+    with col2:
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            st.markdown("<h2 style='text-align: center; color: #D4AF37;'>🎙️ LOGO</h2>", unsafe_allow_html=True)
+            
     st.markdown("""
-        <div style="text-align: center; padding: 10px 0;">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#FF0000"/>
-            </svg>
-            <h2 style="margin: 5px 0 0 0; font-weight: 800; font-size: 1.3rem; color: #F8FAFC;">MASTER DB PRO</h2>
+        <div style="text-align: center; padding-bottom: 10px;">
+            <h3 style="margin: 5px 0 5px 0; font-weight: 800; font-size: 1.2rem; color: #1F2937;">VOICEOVER DB PRO</h3>
             <span class="badge-pro badge-emerald">Supabase Connected</span>
         </div>
     """, unsafe_allow_html=True)
@@ -270,7 +291,7 @@ with st.sidebar:
 
     st.subheader("⚙️ Cấu Hình API System")
     active_key_count = len(st.session_state.get('api_keys', []))
-    st.markdown(f"API Keys đang chạy: <span class='badge-pro badge-blue'>{active_key_count} Keys Active</span>", unsafe_allow_html=True)
+    st.markdown(f"API Keys đang chạy: <span class='badge-pro badge-gold'>{active_key_count} Keys Active</span>", unsafe_allow_html=True)
     
     keys_input = st.text_area("Danh sách API Keys (Mỗi dòng 1 key):", value=st.session_state['global_api_keys'], height=180, key="api_keys_text_area")
     
@@ -355,7 +376,6 @@ def to_pure_id(raw_val):
     return s if s else None
 
 def is_long_form_video(v, min_seconds=180):
-    """Strictly filter out YouTube Shorts (under 3 minutes or titled with #shorts)"""
     title = v.get('Title', '').lower()
     if '#shorts' in title or '#short' in title: return False
     if v.get('Seconds', 0) <= min_seconds: return False
@@ -696,22 +716,6 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-def run_single_channel_audit(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
-    v_ids = []
-    next_token = None
-    while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
-        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
-        next_token = res.get('nextPageToken')
-        if not next_token: break
-    v_data = get_video_details(v_ids)
-    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
-    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-    return excel_bytes, out_fname
-
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
@@ -749,9 +753,9 @@ def render_shared_cart_ui(key_suffix=""):
 
 # --- APP HEADER ---
 st.markdown("""
-    <div style="padding: 10px 0 20px 0;">
-        <h1 style="font-weight: 900; color: #F8FAFC; margin-bottom: 0;">📺 YouTube Channel Master Database Pro</h1>
-        <p style="color: #94A3B8; font-size: 1.05rem;">Hệ thống cào live, Săn Kênh Đồng Ngách siêu cấp Đa Luồng (Chống Quota 24/7)</p>
+    <div style="padding: 5px 0 15px 0;">
+        <h1 style="font-weight: 800; color: #1F2937; margin-bottom: 0;">VOICEOVER MASTER DB PRO</h1>
+        <p style="color: #6B7280; font-size: 1.05rem;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -831,10 +835,10 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #065F46; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
@@ -880,7 +884,7 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
@@ -903,7 +907,7 @@ with tab2:
     st.subheader("⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14")
     channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
 
-    if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14"):
+    if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14", type="primary"):
         pure_h = to_pure_id(channel_url_input)
         if pure_h:
             try:
@@ -1094,10 +1098,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #065F46; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1164,10 +1168,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #065F46; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="background-color: #10B981; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1228,7 +1232,7 @@ with tab3:
 with tab4:
     st.subheader("Upload file .ZIP hoặc .TXT để cập nhật Database")
     uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo Excel) hoặc file `.txt` vào đây:", type=["zip", "txt", "xlsx"], accept_multiple_files=True)
-    if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database"):
+    if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database", type="primary"):
         new_handles_to_insert = []
         for file in uploaded_files:
             file_name = file.name
@@ -1283,7 +1287,7 @@ with tab5:
             with st.container(border=True):
                 if is_active:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                    st.markdown('<div style="background-color: #1E3A8A; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="background-color: #D4AF37; color: #1F2937; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 10px; border: 1px solid #B5952F;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
@@ -1306,7 +1310,7 @@ with tab5:
 with tab6:
     st.subheader("✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)")
     inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi:", value="@NickDiGiovanni")
-    if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay"):
+    if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay", type="primary"):
         pure_inspect = to_pure_id(inspect_handle_input)
         if pure_inspect:
             try:
