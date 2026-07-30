@@ -55,7 +55,6 @@ with st.sidebar:
     
     st.divider()
     if st.button("🔄 Làm Mới Giao Diện", use_container_width=True, help="Xóa bảng kết quả hiển thị để làm gọn màn hình (Bảo vệ tuyệt đối API Keys & Giỏ Hàng)"):
-        # Explicitly protect 'cart' and 'global_api_keys', only clear search view states
         keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing']
         for key in keys_to_clear:
             if key in st.session_state:
@@ -264,9 +263,13 @@ def get_video_details(video_ids, progress_bar=None):
                 try: formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
                 except Exception: formatted_date = pub_date[:10]
                 video_data.append({
-                    'Title': item['snippet']['title'], 'Link': f"https://youtube.com/watch?v={item['id']}",
-                    'Length (Exact)': f"{h:02d}:{m:02d}:{s:02d}", 'Seconds': duration_seconds,
-                    'Views': int(item['statistics'].get('viewCount', 0)), 'Published Date': formatted_date
+                    'Title': item['snippet']['title'], 
+                    'Link': f"https://youtube.com/watch?v={item['id']}",
+                    'Length (Exact)': f"{h:02d}:{m:02d}:{s:02d}", 
+                    'Seconds': duration_seconds,
+                    'Views': int(item['statistics'].get('viewCount', 0)), 
+                    'Published Date': formatted_date,
+                    'Video ID': item['id'] # Added ID for rendering thumbnails later
                 })
         except Exception: pass
         if progress_bar and total > 0: progress_bar.progress(min(1.0, (i + 50) / total))
@@ -392,7 +395,21 @@ def render_shared_cart_ui(key_suffix=""):
     st.subheader(f"🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)")
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
-        st.dataframe(df_cart, use_container_width=True, column_config={"Link Kênh": st.column_config.LinkColumn("Link Kênh", display_text="Xem 🔗")})
+        
+        # Inject custom 'Tab Videos' URL for Cart display
+        if 'Handle' in df_cart.columns:
+            df_cart['Tab Videos'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}/videos")
+            df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}")
+            
+        # Hide internal recent_videos list if it exists to keep table clean
+        if 'recent_videos' in df_cart.columns:
+            df_cart = df_cart.drop(columns=['recent_videos'])
+
+        st.dataframe(df_cart, use_container_width=True, column_config={
+            "Link Kênh": st.column_config.LinkColumn("Trang Chủ", display_text="🏠 Kênh"),
+            "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
+        })
+        
         c1, c2, c3, c4 = st.columns(4)
         c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True, key=f"dl_txt_cart_{key_suffix}")
         buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
@@ -467,7 +484,6 @@ with tab1:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ Hàng", type="primary", key="btn_add_all_t1"):
                     for item in new_handles:
                         p_id = to_pure_id(item["Handle"])
-                        # Deep copy dict to decouple from search results
                         st.session_state['cart'][p_id] = {
                             "Handle": item["Handle"],
                             "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
@@ -478,24 +494,31 @@ with tab1:
                     st.rerun()
 
                 st.divider()
-                h1, h2, h3 = st.columns([3, 3, 2])
+                h1, h2, h3, h4 = st.columns([2.0, 0.6, 2.4, 2.0])
                 h1.markdown("**Handle**")
-                h2.markdown("**Trạng Thái**")
-                h3.markdown("**🛒 Thao Tác Giỏ Hàng**")
+                h2.markdown("**Xem**")
+                h3.markdown("**Trạng Thái**")
+                h4.markdown("**🛒 Thao Tác Giỏ Hàng**")
                 st.divider()
 
                 for idx, item in enumerate(new_handles):
-                    c1, c2, c3 = st.columns([3, 3, 2])
+                    c1, c2, c3, c4 = st.columns([2.0, 0.6, 2.4, 2.0])
                     p_id = to_pure_id(item["Handle"])
+                    
                     c1.markdown(f"[{item['Handle']}]({item['Link Kênh']})")
-                    c2.write(item["Trạng thái"])
+                    
+                    with c2.popover("👁️"):
+                        st.markdown(f"🎬 **[Mở nhanh Tab Videos](https://youtube.com/@{p_id}/videos)**")
+                        st.caption("Truy cập nhanh trang Video của kênh mà không cần tải qua trang chủ.")
+                        
+                    c3.write(item["Trạng thái"])
                     
                     if p_id in st.session_state['cart']:
-                        if c3.button("❌ Bỏ", key=f"rm_t1_{idx}_{p_id}"):
+                        if c4.button("❌ Bỏ", key=f"rm_t1_{idx}_{p_id}"):
                             del st.session_state['cart'][p_id]
                             st.rerun()
                     else:
-                        if c3.button("🛒 Thêm", key=f"add_t1_{idx}_{p_id}"):
+                        if c4.button("🛒 Thêm", key=f"add_t1_{idx}_{p_id}"):
                             st.session_state['cart'][p_id] = {
                                 "Handle": item["Handle"],
                                 "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
@@ -510,7 +533,6 @@ with tab1:
             if existing_handles:
                 st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
 
-    # Render Shared Cart UI in Tab 1
     render_shared_cart_ui(key_suffix="tab1")
 
 # --- TAB 2: LIVE API SCRAPER ---
@@ -624,6 +646,7 @@ with tab3:
                         
                         c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
                         latest_date, has_qualifying_video = "N/A", False
+                        recent_vids = []
                         
                         if c_playlist and c_video_count > 0:
                             try:
@@ -634,9 +657,11 @@ with tab3:
                                     if v_details:
                                         latest_date = v_details[0]['Published Date']
                                         has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
+                                        # SAVE TOP 3 VIDEOS FOR PREVIEW UI
+                                        recent_vids = v_details[:3]
                             except Exception: pass
 
-                        base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status}
+                        base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status, "recent_videos": recent_vids}
 
                         if c_subs < min_subs_choice: base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; rejected_channels.append(base_data); continue
                         passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
@@ -672,32 +697,43 @@ with tab3:
                     for row in passed_list:
                         if "✅" in row["Trạng Thái DB"]: 
                             p_id = to_pure_id(row["Handle"])
-                            # Store independent copy of row dictionary
                             st.session_state['cart'][p_id] = dict(row)
                     st.rerun()
                 st.divider()
                 
-                h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns([1.2, 1.8, 0.8, 0.7, 1.1, 1.1, 1.2, 0.8, 1.0, 1.0])
-                h1.markdown("**Handle**"); h2.markdown("**Tên Kênh**"); h3.markdown("**Subs**"); h4.markdown("**Q.Gia**"); h5.markdown("**Video Mới**"); h6.markdown("**Tổng Video**"); h7.markdown("**DB**"); h8.markdown("**🛒 Giỏ**"); h9.markdown("**📄 Audit**"); h10.markdown("**🎯 Tìm Tiếp**")
+                h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11 = st.columns([1.2, 0.5, 1.6, 0.8, 0.6, 1.0, 0.9, 1.1, 0.8, 0.8, 0.9])
+                h1.markdown("**Handle**"); h2.markdown("**👁️**"); h3.markdown("**Tên Kênh**"); h4.markdown("**Subs**"); h5.markdown("**Q.Gia**"); h6.markdown("**Video Mới**"); h7.markdown("**Tổng Video**"); h8.markdown("**DB**"); h9.markdown("**🛒 Giỏ**"); h10.markdown("**📄 Audit**"); h11.markdown("**🎯 Tìm Tiếp**")
                 st.divider()
 
                 for idx, row in enumerate(passed_list):
-                    c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([1.2, 1.8, 0.8, 0.7, 1.1, 1.1, 1.2, 0.8, 1.0, 1.0])
-                    c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); c2.write(row['Tên Kênh']); c3.write(row['Subscribers']); c4.write(row['Quốc gia']); c5.write(row['Video Gần Nhất']); c6.write(row['Tổng Số Video']); c7.write(row['Trạng Thái DB'].replace("trong DB", ""))
-                    
+                    c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([1.2, 0.5, 1.6, 0.8, 0.6, 1.0, 0.9, 1.1, 0.8, 0.8, 0.9])
                     p_id = to_pure_id(row['Handle'])
+                    
+                    c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
+                    
+                    with c2.popover("👁️"):
+                        st.markdown(f"🎬 **[Mở thẳng Tab Videos](https://youtube.com/@{p_id}/videos)**")
+                        if row.get('recent_videos'):
+                            st.divider()
+                            st.caption("Tải trước 3 Video mới nhất:")
+                            for v in row['recent_videos']:
+                                st.image(f"https://img.youtube.com/vi/{v['Video ID']}/mqdefault.jpg", use_container_width=True)
+                                st.caption(f"**{v['Title']}**\n👀 {v['Views']:,} views")
+                                
+                    c3.write(row['Tên Kênh']); c4.write(row['Subscribers']); c5.write(row['Quốc gia']); c6.write(row['Video Gần Nhất']); c7.write(row['Tổng Số Video']); c8.write(row['Trạng Thái DB'].replace("trong DB", ""))
+                    
                     if p_id in st.session_state['cart']:
-                        if c8.button("❌ Bỏ", key=f"rm_p_{p_id}", help="Bỏ khỏi Giỏ"): del st.session_state['cart'][p_id]; st.rerun()
+                        if c9.button("❌ Bỏ", key=f"rm_p_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if c8.button("🛒 Thêm", key=f"add_p_{p_id}"): 
+                        if c9.button("🛒 Thêm", key=f"add_p_{p_id}"): 
                             st.session_state['cart'][p_id] = dict(row)
                             st.rerun()
                             
                     audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
-                        c9.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_p_{p_id}")
+                        c10.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_p_{p_id}")
                     else:
-                        if c9.button("📄 Tạo", key=f"btn_p_{p_id}"):
+                        if c10.button("📄 Tạo", key=f"btn_p_{p_id}"):
                             with st.spinner(f"Đang dựng Audit..."):
                                 b_data, f_name = run_single_channel_audit(p_id)
                                 if b_data:
@@ -706,7 +742,7 @@ with tab3:
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
                                     
-                    if c10.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary"):
+                    if c11.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary"):
                         cid_deep = get_channel_id_by_handle(p_id)
                         if cid_deep:
                             ext_deep = extract_channel_master_keywords(cid_deep)
@@ -720,27 +756,36 @@ with tab3:
         # --- TAB REJECTED ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.8, 0.8])
-                rh1.markdown("**Handle**"); rh2.markdown("**Tên Kênh**"); rh3.markdown("**Subs**"); rh4.markdown("**Q.Gia**"); rh5.markdown("**Video Mới**"); rh6.markdown("**Tổng Video**"); rh7.markdown("**DB**"); rh8.markdown("**Lý Do**"); rh9.markdown("**🛒 Giỏ**"); rh10.markdown("**📄 Audit**"); rh11.markdown("**🎯 Tìm Tiếp**")
+                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11, rh12 = st.columns([1.1, 0.5, 1.3, 0.7, 0.5, 0.9, 0.8, 1.0, 1.5, 0.6, 0.8, 0.8])
+                rh1.markdown("**Handle**"); rh2.markdown("**👁️**"); rh3.markdown("**Tên Kênh**"); rh4.markdown("**Subs**"); rh5.markdown("**Q.Gia**"); rh6.markdown("**Video Mới**"); rh7.markdown("**Tổng Video**"); rh8.markdown("**DB**"); rh9.markdown("**Lý Do**"); rh10.markdown("**🛒 Giỏ**"); rh11.markdown("**📄 Audit**"); rh12.markdown("**🎯 Đào Sâu**")
                 st.divider()
 
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11 = st.columns([1.2, 1.6, 0.8, 0.6, 0.9, 0.9, 1.2, 1.6, 0.7, 0.8, 0.8])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})"); rc2.write(row['Tên Kênh']); rc3.write(row['Subscribers']); rc4.write(row.get('Quốc gia', '')); rc5.write(row.get('Video Gần Nhất', '')); rc6.write(row.get('Tổng Số Video', '')); rc7.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc8.write(f"❌ {row['Lý do loại']}")
-                    
+                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12 = st.columns([1.1, 0.5, 1.3, 0.7, 0.5, 0.9, 0.8, 1.0, 1.5, 0.6, 0.8, 0.8])
                     p_id = to_pure_id(row['Handle'])
+                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
+                    
+                    with rc2.popover("👁️"):
+                        st.markdown(f"🎬 **[Mở thẳng Tab Videos](https://youtube.com/@{p_id}/videos)**")
+                        if row.get('recent_videos'):
+                            st.divider()
+                            st.caption("Tải trước 3 Video mới nhất:")
+                            for v in row['recent_videos']:
+                                st.image(f"https://img.youtube.com/vi/{v['Video ID']}/mqdefault.jpg", use_container_width=True)
+                                st.caption(f"**{v['Title']}**\n👀 {v['Views']:,} views")
+                                
+                    rc3.write(row['Tên Kênh']); rc4.write(row['Subscribers']); rc5.write(row.get('Quốc gia', '')); rc6.write(row.get('Video Gần Nhất', '')); rc7.write(row.get('Tổng Số Video', '')); rc8.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc9.write(f"❌ {row['Lý do loại']}")
+                    
                     if p_id in st.session_state['cart']:
-                        if rc9.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
+                        if rc10.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
                     else:
-                        if rc9.button("🛒 Thêm", key=f"add_r_{p_id}"): 
-                            st.session_state['cart'][p_id] = dict(row)
-                            st.rerun()
+                        if rc10.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = dict(row); st.rerun()
 
                     audit_key = f"audit_file_{p_id}"
                     if audit_key in st.session_state:
-                        rc10.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
+                        rc11.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
                     else:
-                        if rc10.button("📄 Tạo", key=f"btn_r_{p_id}"):
+                        if rc11.button("📄 Tạo", key=f"btn_r_{p_id}"):
                             with st.spinner(f"Đang dựng Audit..."):
                                 b_data, f_name = run_single_channel_audit(p_id)
                                 if b_data:
@@ -749,7 +794,7 @@ with tab3:
                                     st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                     st.rerun()
 
-                    if rc11.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
+                    if rc12.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
                         cid_deep = get_channel_id_by_handle(p_id)
                         if cid_deep:
                             ext_deep = extract_channel_master_keywords(cid_deep)
@@ -758,7 +803,6 @@ with tab3:
                             st.session_state['trigger_deep_search_now'] = True
                             st.rerun()
 
-    # Render Shared Cart UI in Tab 3
     render_shared_cart_ui(key_suffix="tab3")
 
 # --- TAB 4, TAB 5, TAB 6 ---
@@ -793,8 +837,18 @@ with tab5:
     res = supabase.table("channels").select("*").execute()
     if res.data:
         df_all = pd.DataFrame(res.data)
+        if 'handle' in df_all.columns:
+            df_all['Link Kênh'] = df_all['handle'].apply(lambda x: f"https://youtube.com/@{x.replace('@', '')}")
+            df_all['Tab Videos'] = df_all['handle'].apply(lambda x: f"https://youtube.com/@{x.replace('@', '')}/videos")
         st.write(f"Tổng số kênh hiện có: **{len(df_all)}**")
-        st.dataframe(df_all, use_container_width=True)
+        st.dataframe(
+            df_all, 
+            use_container_width=True,
+            column_config={
+                "Link Kênh": st.column_config.LinkColumn("Trang Chủ", display_text="🏠 Kênh"),
+                "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
+            }
+        )
         csv = df_all.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv")
 
