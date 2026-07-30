@@ -43,6 +43,9 @@ if 'custom_kw_tab3' not in st.session_state:
 if 'cart' not in st.session_state:
     st.session_state['cart'] = {}
 
+if 'video_preview_cache' not in st.session_state:
+    st.session_state['video_preview_cache'] = {}
+
 # --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
 if 'global_api_keys' not in st.session_state:
     st.session_state['global_api_keys'] = DEFAULT_API_KEY
@@ -144,7 +147,7 @@ def extract_handles_from_file(uploaded_file):
 def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
     base_no_ext = os.path.splitext(base)[0]
-    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
+    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
     cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
     cleaned = re.sub(r'[\s]+', '', cleaned)
     pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
@@ -269,11 +272,50 @@ def get_video_details(video_ids, progress_bar=None):
                     'Seconds': duration_seconds,
                     'Views': int(item['statistics'].get('viewCount', 0)), 
                     'Published Date': formatted_date,
-                    'Video ID': item['id'] # Added ID for rendering thumbnails later
+                    'Video ID': item['id']
                 })
         except Exception: pass
         if progress_bar and total > 0: progress_bar.progress(min(1.0, (i + 50) / total))
     return video_data
+
+def get_6_recent_videos(pure_handle):
+    """Fetch and cache 6 recent videos on-demand for Popover preview"""
+    if pure_handle in st.session_state['video_preview_cache']:
+        return st.session_state['video_preview_cache'][pure_handle]
+    
+    try:
+        cid = get_channel_id_by_handle(pure_handle)
+        if cid:
+            playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
+            if playlist_id:
+                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=6))
+                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                if v_ids:
+                    v_details = get_video_details(v_ids)
+                    st.session_state['video_preview_cache'][pure_handle] = v_details[:6]
+                    return v_details[:6]
+    except Exception:
+        pass
+    st.session_state['video_preview_cache'][pure_handle] = []
+    return []
+
+def render_popover_preview(pure_handle, pre_fetched_videos=None):
+    """Render 6 Video thumbnails in a clean 2x3 grid inside Popover"""
+    st.markdown(f"🎬 **[Mở thẳng Tab Videos](https://youtube.com/@{pure_handle}/videos)**")
+    vids = pre_fetched_videos if (pre_fetched_videos is not None and len(pre_fetched_videos) > 0) else get_6_recent_videos(pure_handle)
+    if vids:
+        st.divider()
+        st.caption("📸 6 Video mới nhất của kênh:")
+        col_a, col_b = st.columns(2)
+        for idx, v in enumerate(vids[:6]):
+            target_col = col_a if idx % 2 == 0 else col_b
+            with target_col:
+                vid_id = v.get('Video ID') or (v.get('Link', '').split('v=')[-1] if 'v=' in v.get('Link', '') else '')
+                if vid_id:
+                    st.image(f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg", use_container_width=True)
+                st.caption(f"**{v['Title'][:30]}...**\n👀 {v.get('Views', 0):,} views")
+    else:
+        st.caption("Khó tải video xem trước hoặc kênh không có video.")
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -396,12 +438,10 @@ def render_shared_cart_ui(key_suffix=""):
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
         
-        # Inject custom 'Tab Videos' URL for Cart display
         if 'Handle' in df_cart.columns:
             df_cart['Tab Videos'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}/videos")
             df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}")
             
-        # Hide internal recent_videos list if it exists to keep table clean
         if 'recent_videos' in df_cart.columns:
             df_cart = df_cart.drop(columns=['recent_videos'])
 
@@ -496,7 +536,7 @@ with tab1:
                 st.divider()
                 h1, h2, h3, h4 = st.columns([2.0, 0.6, 2.4, 2.0])
                 h1.markdown("**Handle**")
-                h2.markdown("**Xem**")
+                h2.markdown("**👁️**")
                 h3.markdown("**Trạng Thái**")
                 h4.markdown("**🛒 Thao Tác Giỏ Hàng**")
                 st.divider()
@@ -504,12 +544,10 @@ with tab1:
                 for idx, item in enumerate(new_handles):
                     c1, c2, c3, c4 = st.columns([2.0, 0.6, 2.4, 2.0])
                     p_id = to_pure_id(item["Handle"])
-                    
                     c1.markdown(f"[{item['Handle']}]({item['Link Kênh']})")
                     
                     with c2.popover("👁️"):
-                        st.markdown(f"🎬 **[Mở nhanh Tab Videos](https://youtube.com/@{p_id}/videos)**")
-                        st.caption("Truy cập nhanh trang Video của kênh mà không cần tải qua trang chủ.")
+                        render_popover_preview(p_id)
                         
                     c3.write(item["Trạng thái"])
                     
@@ -531,7 +569,17 @@ with tab1:
 
         with res_tab2:
             if existing_handles:
-                st.dataframe(pd.DataFrame(existing_handles), use_container_width=True)
+                h1, h2, h3, h4 = st.columns([2.0, 0.6, 2.4, 2.0])
+                h1.markdown("**Handle**"); h2.markdown("**👁️**"); h3.markdown("**Tên Kênh**"); h4.markdown("**Trạng Thái**")
+                st.divider()
+                for idx, item in enumerate(existing_handles):
+                    c1, c2, c3, c4 = st.columns([2.0, 0.6, 2.4, 2.0])
+                    p_id = to_pure_id(item["Handle"])
+                    c1.markdown(f"[{item['Handle']}](https://youtube.com/@{p_id})")
+                    with c2.popover("👁️"):
+                        render_popover_preview(p_id)
+                    c3.write(item.get("Tên Kênh", "N/A"))
+                    c4.write(item["Trạng thái"])
 
     render_shared_cart_ui(key_suffix="tab1")
 
@@ -657,8 +705,8 @@ with tab3:
                                     if v_details:
                                         latest_date = v_details[0]['Published Date']
                                         has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
-                                        # SAVE TOP 3 VIDEOS FOR PREVIEW UI
-                                        recent_vids = v_details[:3]
+                                        # SAVE TOP 6 VIDEOS FOR PREVIEW UI
+                                        recent_vids = v_details[:6]
                             except Exception: pass
 
                         base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status, "recent_videos": recent_vids}
@@ -708,17 +756,10 @@ with tab3:
                 for idx, row in enumerate(passed_list):
                     c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([1.2, 0.5, 1.6, 0.8, 0.6, 1.0, 0.9, 1.1, 0.8, 0.8, 0.9])
                     p_id = to_pure_id(row['Handle'])
-                    
                     c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
                     
                     with c2.popover("👁️"):
-                        st.markdown(f"🎬 **[Mở thẳng Tab Videos](https://youtube.com/@{p_id}/videos)**")
-                        if row.get('recent_videos'):
-                            st.divider()
-                            st.caption("Tải trước 3 Video mới nhất:")
-                            for v in row['recent_videos']:
-                                st.image(f"https://img.youtube.com/vi/{v['Video ID']}/mqdefault.jpg", use_container_width=True)
-                                st.caption(f"**{v['Title']}**\n👀 {v['Views']:,} views")
+                        render_popover_preview(p_id, pre_fetched_videos=row.get('recent_videos'))
                                 
                     c3.write(row['Tên Kênh']); c4.write(row['Subscribers']); c5.write(row['Quốc gia']); c6.write(row['Video Gần Nhất']); c7.write(row['Tổng Số Video']); c8.write(row['Trạng Thái DB'].replace("trong DB", ""))
                     
@@ -766,13 +807,7 @@ with tab3:
                     rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
                     
                     with rc2.popover("👁️"):
-                        st.markdown(f"🎬 **[Mở thẳng Tab Videos](https://youtube.com/@{p_id}/videos)**")
-                        if row.get('recent_videos'):
-                            st.divider()
-                            st.caption("Tải trước 3 Video mới nhất:")
-                            for v in row['recent_videos']:
-                                st.image(f"https://img.youtube.com/vi/{v['Video ID']}/mqdefault.jpg", use_container_width=True)
-                                st.caption(f"**{v['Title']}**\n👀 {v['Views']:,} views")
+                        render_popover_preview(p_id, pre_fetched_videos=row.get('recent_videos'))
                                 
                     rc3.write(row['Tên Kênh']); rc4.write(row['Subscribers']); rc5.write(row.get('Quốc gia', '')); rc6.write(row.get('Video Gần Nhất', '')); rc7.write(row.get('Tổng Số Video', '')); rc8.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc9.write(f"❌ {row['Lý do loại']}")
                     
@@ -833,22 +868,49 @@ with tab4:
             st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle vào Database đám mây!")
 
 with tab5:
-    st.subheader("Danh sách toàn bộ Channel trong Database")
+    st.subheader("📊 Danh sách toàn bộ Channel trong Database")
     res = supabase.table("channels").select("*").execute()
     if res.data:
         df_all = pd.DataFrame(res.data)
-        if 'handle' in df_all.columns:
-            df_all['Link Kênh'] = df_all['handle'].apply(lambda x: f"https://youtube.com/@{x.replace('@', '')}")
-            df_all['Tab Videos'] = df_all['handle'].apply(lambda x: f"https://youtube.com/@{x.replace('@', '')}/videos")
         st.write(f"Tổng số kênh hiện có: **{len(df_all)}**")
-        st.dataframe(
-            df_all, 
-            use_container_width=True,
-            column_config={
-                "Link Kênh": st.column_config.LinkColumn("Trang Chủ", display_text="🏠 Kênh"),
-                "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
-            }
-        )
+        
+        # Search & Filter
+        search_db = st.text_input("🔍 Tìm kiếm kênh trong Database (Handle hoặc Tên):", "")
+        if search_db:
+            df_filtered = df_all[
+                df_all['handle'].str.contains(search_db, case=False, na=False) | 
+                df_all['youtuber_name'].str.contains(search_db, case=False, na=False)
+            ]
+        else:
+            df_filtered = df_all
+
+        # Pagination
+        items_per_page = 20
+        total_pages = max(1, (len(df_filtered) + items_per_page - 1) // items_per_page)
+        page = st.number_input("Trang:", min_value=1, max_value=total_pages, value=1, step=1)
+        
+        start_idx = (int(page) - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        page_data = df_filtered.iloc[start_idx:end_idx]
+
+        st.divider()
+        dh1, dh2, dh3, dh4 = st.columns([2.0, 0.6, 2.5, 2.5])
+        dh1.markdown("**Handle**")
+        dh2.markdown("**👁️ Xem**")
+        dh3.markdown("**Tên YouTuber**")
+        dh4.markdown("**Nguồn Dữ Liệu**")
+        st.divider()
+
+        for idx, row in page_data.iterrows():
+            dc1, dc2, dc3, dc4 = st.columns([2.0, 0.6, 2.5, 2.5])
+            p_id = to_pure_id(row['handle'])
+            dc1.markdown(f"[@{p_id}](https://youtube.com/@{p_id})")
+            with dc2.popover("👁️"):
+                render_popover_preview(p_id)
+            dc3.write(row.get('youtuber_name', 'N/A'))
+            dc4.write(row.get('source', 'N/A'))
+
+        st.divider()
         csv = df_all.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv")
 
