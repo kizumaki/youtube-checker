@@ -474,6 +474,15 @@ def extract_handles_from_file(uploaded_file):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return handles
 
+def extract_handle_from_filename(filename):
+    base = os.path.basename(filename)
+    base_no_ext = os.path.splitext(base)[0]
+    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
+    cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
+    cleaned = re.sub(r'[\s]+', '', cleaned)
+    pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
+    return pure_id if pure_id else None
+
 def is_within_last_90_days(date_str):
     if not date_str or date_str == "N/A": return False
     s = str(date_str).strip().lower()
@@ -687,7 +696,6 @@ def compare_channels_dialog(channel_data_list):
         return
     st.markdown("<h3 style='text-align: center; color: #D95F26; font-weight: 800; margin-bottom: 20px;'>📊 SO SÁNH CHỈ SỐ KÊNH</h3>", unsafe_allow_html=True)
     
-    # ENRICH DATA LIVE IF METRICS ARE N/A (E.G. FROM TAB 1)
     enriched_list = []
     with st.spinner("Đang kết nối API cào dữ liệu chi tiết để so sánh..."):
         for ch in channel_data_list:
@@ -699,12 +707,10 @@ def compare_channels_dialog(channel_data_list):
                     playlist_id, sub_count, channel_desc, channel_joined, country_name, country_code, avatar_url = get_channel_details(cid)
                     recent_vids = get_6_recent_videos(pure_h)
                     latest_date = recent_vids[0]['Published Date'] if recent_vids else 'N/A'
-                    
                     try:
                         c_res = yt_execute(lambda yt: yt.channels().list(part="statistics", id=cid))
                         video_count = int(c_res['items'][0]['statistics'].get('videoCount', 0)) if (c_res.get('items') and len(c_res['items']) > 0) else 0
                     except Exception: video_count = 0
-
                     c_dict['Subscribers'] = f"{sub_count:,}"
                     c_dict['Tổng Số Video'] = f"{video_count:,}"
                     c_dict['Quốc gia'] = country_name if country_name else 'N/A'
@@ -714,8 +720,13 @@ def compare_channels_dialog(channel_data_list):
     cols = st.columns(len(enriched_list))
     for idx, ch in enumerate(enriched_list):
         with cols[idx]:
+            ch_handle = ch.get('Handle', 'N/A')
+            pure_h = to_pure_id(ch_handle)
+            ch_link = ch.get('Link Kênh')
+            if not ch_link: ch_link = f"https://youtube.com/@{pure_h}"
+
             st.markdown(f"<div style='background-color: {card_bg}; padding: 15px; border-radius: 12px; border: 1px solid {border_color}; text-align: center;'>", unsafe_allow_html=True)
-            st.markdown(f"<h4 style='color: #47A5D1; font-weight: 800; margin-bottom: 5px;'><a href='{ch.get('Link Kênh', f'https://youtube.com/@{to_pure_id(ch.get(\"Handle\"))}')}' style='text-decoration: none; color: inherit;'>{ch.get('Handle')}</a></h4>", unsafe_allow_html=True)
+            st.markdown(f"<h4 style='color: #47A5D1; font-weight: 800; margin-bottom: 5px;'><a href='{ch_link}' style='text-decoration: none; color: inherit;'>{ch_handle}</a></h4>", unsafe_allow_html=True)
             st.markdown(f"<p style='font-size: 0.9rem; color: #6B7280; font-weight: 600;'>{ch.get('Tên Kênh', 'N/A')}</p>", unsafe_allow_html=True)
             st.divider()
             st.markdown(f"<p style='font-size: 0.8rem; color: #6B7280; margin-bottom: 0;'>👥 SUBSCRIBERS</p><p style='font-size: 1.5rem; font-weight: 800; color: #D95F26; margin-top: 0;'>{ch.get('Subscribers', 'N/A')}</p>", unsafe_allow_html=True)
@@ -913,9 +924,10 @@ with tab1:
                 cart_keys = set(st.session_state['cart'].keys())
                 selected_set = st.session_state['selected_channels']
                 
-                # SEPARATED COUNTS FOR ACCURATE LOGIC
+                # CHỈ ĐẾM CÁC KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
+                # TỔNG SỐ ĐANG CHỌN THỰC TẾ
                 cnt_total_sel = len(selected_set)
 
                 tb1, tb2, tb3, tb4, tb5 = st.columns([2.5, 2.5, 2.0, 2.0, 1.0])
@@ -1245,9 +1257,10 @@ with tab3:
                 cart_keys = set(st.session_state['cart'].keys())
                 selected_set = st.session_state['selected_channels']
                 
-                # SEPARATED COUNTS FOR ACCURATE LOGIC
+                # CHỈ ĐẾM KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
+                # ĐẾM TỔNG SỐ ĐANG TICK
                 cnt_total_sel = len(selected_set)
 
                 ba1, ba2, ba3, ba4, ba5 = st.columns([2.5, 2.5, 2.0, 2.0, 1.0])
