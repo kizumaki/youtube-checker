@@ -53,8 +53,12 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
+# FIX: CLEAR BOTH THE SET AND ALL INDIVIDUAL CHECKBOX WIDGET STATES
 def clear_selected_channels():
     st.session_state['selected_channels'].clear()
+    for key in list(st.session_state.keys()):
+        if key.startswith("chk_"):
+            st.session_state[key] = False
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -384,7 +388,8 @@ with st.sidebar:
 
     st.divider()
     if st.button("🔄 Làm Mới Màn Hình", use_container_width=True):
-        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'active_inspected_handle', 'selected_channels']
+        clear_selected_channels()
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'active_inspected_handle']
         for key in keys_to_clear:
             if key in st.session_state: del st.session_state[key]
         for key in list(st.session_state.keys()):
@@ -401,6 +406,9 @@ def delete_channel_from_system(pure_handle):
     if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
+    if f"chk_t1_{pure_handle}" in st.session_state: st.session_state[f"chk_t1_{pure_handle}"] = False
+    if f"chk_p_{pure_handle}" in st.session_state: st.session_state[f"chk_p_{pure_handle}"] = False
+    if f"chk_r_{pure_handle}" in st.session_state: st.session_state[f"chk_r_{pure_handle}"] = False
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing']:
         if key_list in st.session_state:
@@ -715,15 +723,23 @@ def compare_channels_dialog(channel_data_list):
             pure_h = to_pure_id(ch_handle)
             ch_link = f"https://youtube.com/@{pure_h}" if pure_h else "javascript:void(0);"
 
-            st.markdown(f"<div style='background-color: {card_bg}; padding: 15px; border-radius: 12px; border: 1px solid {border_color}; text-align: center;'>", unsafe_allow_html=True)
-            st.markdown(f"<h4 style='color: #47A5D1; font-weight: 800; margin-bottom: 5px;'><a href='{ch_link}' style='text-decoration: none; color: inherit;'>{ch_handle}</a></h4>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size: 0.9rem; color: #6B7280; font-weight: 600;'>{ch.get('Tên Kênh', 'N/A')}</p>", unsafe_allow_html=True)
-            st.divider()
-            st.markdown(f"<p style='font-size: 0.8rem; color: #6B7280; margin-bottom: 0;'>👥 SUBSCRIBERS</p><p style='font-size: 1.5rem; font-weight: 800; color: #D95F26; margin-top: 0;'>{ch.get('Subscribers', 'N/A')}</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size: 0.8rem; color: #6B7280; margin-bottom: 0;'>🎬 TỔNG VIDEO</p><p style='font-size: 1.3rem; font-weight: 700; color: #3D2F29; margin-top: 0;'>{ch.get('Tổng Số Video', 'N/A')}</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size: 0.8rem; color: #6B7280; margin-bottom: 0;'>🌍 QUỐC GIA</p><p style='font-size: 1.1rem; font-weight: 600; color: #3D2F29; margin-top: 0;'>{ch.get('Quốc gia', 'N/A')}</p>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size: 0.8rem; color: #6B7280; margin-bottom: 0;'>📅 GẦN NHẤT</p><p style='font-size: 1.1rem; font-weight: 600; color: #47A5D1; margin-top: 0;'>{ch.get('Video Gần Nhất', 'N/A')}</p>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            card_html = f"""
+            <div style='background-color: {card_bg}; padding: 18px 12px; border-radius: 12px; border: 1px solid {border_color}; text-align: center; margin-bottom: 10px;'>
+                <h4 style='color: #47A5D1; font-weight: 800; margin-bottom: 5px;'><a href='{ch_link}' style='text-decoration: none; color: inherit;'>{ch_handle}</a></h4>
+                <p style='font-size: 0.85rem; color: #6B7280; font-weight: 600; margin-bottom: 12px;'>{ch.get('Tên Kênh', 'N/A')}</p>
+                <hr style='border: none; border-top: 1px solid {border_color}; margin: 10px 0;'>
+                <p style='font-size: 0.75rem; color: #6B7280; margin-bottom: 2px; font-weight: 700;'>👥 SUBSCRIBERS</p>
+                <p style='font-size: 1.4rem; font-weight: 800; color: #D95F26; margin-top: 0; margin-bottom: 12px;'>{ch.get('Subscribers', 'N/A')}</p>
+                <p style='font-size: 0.75rem; color: #6B7280; margin-bottom: 2px; font-weight: 700;'>🎬 TỔNG VIDEO</p>
+                <p style='font-size: 1.2rem; font-weight: 700; color: {text_color}; margin-top: 0; margin-bottom: 12px;'>{ch.get('Tổng Số Video', 'N/A')}</p>
+                <p style='font-size: 0.75rem; color: #6B7280; margin-bottom: 2px; font-weight: 700;'>🌍 QUỐC GIA</p>
+                <p style='font-size: 1.0rem; font-weight: 600; color: {text_color}; margin-top: 0; margin-bottom: 12px;'>{ch.get('Quốc gia', 'N/A')}</p>
+                <p style='font-size: 0.75rem; color: #6B7280; margin-bottom: 2px; font-weight: 700;'>📅 GẦN NHẤT</p>
+                <p style='font-size: 1.0rem; font-weight: 600; color: #47A5D1; margin-top: 0; margin-bottom: 0;'>{ch.get('Video Gần Nhất', 'N/A')}</p>
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+
     st.write("")
     if st.button("❌ Đóng Cửa Sổ So Sánh", type="primary", use_container_width=True): st.rerun()
 
@@ -807,7 +823,6 @@ def render_shared_cart_ui(key_suffix=""):
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
         if 'Handle' in df_cart.columns:
-            # PROPER YOUTUBE HANDLE URL WITH '@' PREFIX
             df_cart['Tab Videos'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}/videos" if to_pure_id(h) else "")
             df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}" if to_pure_id(h) else "")
             
@@ -915,7 +930,7 @@ with tab1:
                 cart_keys = set(st.session_state['cart'].keys())
                 selected_set = st.session_state['selected_channels']
                 
-                # SEPARATED COUNTS FOR ACCURATE LOGIC
+                # CHỈ ĐẾM CÁC KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
@@ -1250,7 +1265,6 @@ with tab3:
                 # CHỈ ĐẾM KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
-                # ĐẾM TỔNG SỐ ĐANG TICK
                 cnt_total_sel = len(selected_set)
 
                 ba1, ba2, ba3, ba4, ba5 = st.columns([2.5, 2.5, 2.0, 2.0, 1.0])
