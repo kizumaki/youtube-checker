@@ -84,6 +84,10 @@ if 'video_preview_cache' not in st.session_state:
 if 'active_inspected_handle' not in st.session_state:
     st.session_state['active_inspected_handle'] = None
 
+# --- CALLBACK TO INSTANTLY UPDATE ACTIVE CHANNEL BEFORE RERENDER ---
+def set_active_inspected_channel(pure_handle):
+    st.session_state['active_inspected_handle'] = pure_handle
+
 # --- GLOBAL SIDEBAR FOR API KEYS & REFRESH ---
 if 'global_api_keys' not in st.session_state:
     st.session_state['global_api_keys'] = DEFAULT_API_KEY
@@ -387,9 +391,10 @@ def get_6_recent_videos(pure_handle):
     st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
     return long_vids[:6]
 
-# --- STREAMLIT MODAL DIALOG FOR PREVIEW (GUARANTEES 100% WORKING CLOSE BUTTON) ---
+# --- STREAMLIT MODAL DIALOG WITH EXPLICIT CHANNEL NAME HEADER ---
 @st.dialog("🎬 6 Video Dài (Long-form) Mới Nhất", width="large")
 def show_video_dialog(pure_handle, pre_fetched_videos=None):
+    st.markdown(f"### 📺 Kênh đang xem: `@{pure_handle}`")
     st.markdown(f"🔗 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
     
     vids = []
@@ -650,8 +655,7 @@ with tab1:
                         with c1:
                             st.markdown(f"### [{item['Handle']}]({item['Link Kênh']})")
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
-                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_{idx}_{p_id}"):
-                                st.session_state['active_inspected_handle'] = p_id
+                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
                         with c2:
                             st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
@@ -694,8 +698,7 @@ with tab1:
                         with c1:
                             st.markdown(f"### [{item['Handle']}](https://youtube.com/@{p_id})")
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
-                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_ext_{idx}_{p_id}"):
-                                st.session_state['active_inspected_handle'] = p_id
+                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_ext_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
                         with c2:
                             st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
@@ -890,8 +893,7 @@ with tab3:
                         with c1:
                             st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
                             st.write(f"**{row['Tên Kênh']}**")
-                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_pass_{p_id}"):
-                                st.session_state['active_inspected_handle'] = p_id
+                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_pass_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
@@ -959,8 +961,7 @@ with tab3:
                         with c1:
                             st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
                             st.write(f"**{row['Tên Kênh']}**")
-                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}"):
-                                st.session_state['active_inspected_handle'] = p_id
+                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row.get('Quốc gia', '')}`")
@@ -1074,8 +1075,7 @@ with tab5:
                 with c1:
                     st.markdown(f"### [@{p_id}](https://youtube.com/@{p_id})")
                     st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
-                    if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}"):
-                        st.session_state['active_inspected_handle'] = p_id
+                    if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                         show_video_dialog(p_id)
                 with c2:
                     st.write(f"**Nguồn dữ liệu:** {row.get('source', 'N/A')}")
