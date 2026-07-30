@@ -309,13 +309,14 @@ def get_video_details(video_ids, progress_bar=None):
 
 def get_6_recent_videos(pure_handle):
     if pure_handle in st.session_state['video_preview_cache']:
-        return st.session_state['video_preview_cache'][pure_handle]
+        cached = st.session_state['video_preview_cache'][pure_handle]
+        if len(cached) >= 6: return cached
     try:
         cid = get_channel_id_by_handle(pure_handle)
         if cid:
             playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
             if playlist_id:
-                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=25))
+                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50))
                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                 if v_ids:
                     v_details = get_video_details(v_ids)
@@ -328,18 +329,43 @@ def get_6_recent_videos(pure_handle):
 
 def render_popover_preview(pure_handle, pre_fetched_videos=None):
     st.markdown(f"🎬 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
-    raw_vids = pre_fetched_videos if (pre_fetched_videos is not None and len(pre_fetched_videos) > 0) else get_6_recent_videos(pure_handle)
-    vids = [v for v in raw_vids if v.get('Seconds', 0) > 60]
+    
+    vids = []
+    if pre_fetched_videos:
+        vids = [v for v in pre_fetched_videos if v.get('Seconds', 0) > 60]
+        
+    if len(vids) < 6:
+        vids = get_6_recent_videos(pure_handle)
+        
+    vids = vids[:6]
     
     if vids:
         st.divider()
-        st.caption("📸 6 Video Dài (Long-form) mới nhất:")
-        for idx, v in enumerate(vids[:6]):
-            vid_id = v.get('Video ID') or (v.get('Link', '').split('v=')[-1] if 'v=' in v.get('Link', '') else '')
-            if vid_id:
-                st.image(f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg", use_container_width=True)
-            st.markdown(f"**[{v['Title']}]({v['Link']})**")
-            st.caption(f"👀 {v.get('Views', 0):,} views | ⏳ {v.get('Length (Exact)', 'N/A')} | 📅 {v.get('Published Date', '')}")
+        st.caption(f"📸 {len(vids)} Video Dài (Long-form) mới nhất:")
+        
+        # Grid Layout: 3 Rows x 2 Columns
+        for row_idx in range(0, len(vids), 2):
+            col1, col2 = st.columns(2)
+            
+            # Column 1 Video
+            v1 = vids[row_idx]
+            with col1:
+                vid_id1 = v1.get('Video ID') or (v1.get('Link', '').split('v=')[-1] if 'v=' in v1.get('Link', '') else '')
+                if vid_id1:
+                    st.image(f"https://img.youtube.com/vi/{vid_id1}/hqdefault.jpg", use_container_width=True)
+                st.markdown(f"**[{v1['Title'][:40]}...]({v1['Link']})**")
+                st.caption(f"👀 {v1.get('Views', 0):,} views\n\n⏳ {v1.get('Length (Exact)', 'N/A')} | 📅 {v1.get('Published Date', '')}")
+            
+            # Column 2 Video (if exists)
+            if row_idx + 1 < len(vids):
+                v2 = vids[row_idx + 1]
+                with col2:
+                    vid_id2 = v2.get('Video ID') or (v2.get('Link', '').split('v=')[-1] if 'v=' in v2.get('Link', '') else '')
+                    if vid_id2:
+                        st.image(f"https://img.youtube.com/vi/{vid_id2}/hqdefault.jpg", use_container_width=True)
+                    st.markdown(f"**[{v2['Title'][:40]}...]({v2['Link']})**")
+                    st.caption(f"👀 {v2.get('Views', 0):,} views\n\n⏳ {v2.get('Length (Exact)', 'N/A')} | 📅 {v2.get('Published Date', '')}")
+            
             st.markdown("---")
     else:
         st.caption("Không tìm thấy video dài (chỉ có Shorts hoặc kênh chưa đăng video).")
@@ -731,7 +757,7 @@ with tab3:
                         
                         if c_playlist and c_video_count > 0:
                             try:
-                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=25))
+                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=30))
                                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                                 if v_ids:
                                     v_details = get_video_details(v_ids)
