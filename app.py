@@ -84,51 +84,29 @@ supabase = init_supabase()
 
 # --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM ---
 def delete_channel_from_system(pure_handle):
-    if not pure_handle:
-        return
-    
-    # 1. Delete from Supabase Database
+    if not pure_handle: return
     try:
         supabase.table("channels").delete().eq("handle", pure_handle).execute()
-    except Exception:
-        pass
+    except Exception: pass
 
-    # 2. Remove from Shopping Cart
     if pure_handle in st.session_state.get('cart', {}):
         del st.session_state['cart'][pure_handle]
 
-    # 3. Remove from Active Session Search Results
     if 'passed_channels' in st.session_state:
-        st.session_state['passed_channels'] = [
-            ch for ch in st.session_state['passed_channels'] 
-            if to_pure_id(ch.get('Handle')) != pure_handle
-        ]
+        st.session_state['passed_channels'] = [ch for ch in st.session_state['passed_channels'] if to_pure_id(ch.get('Handle')) != pure_handle]
 
     if 'rejected_channels' in st.session_state:
-        st.session_state['rejected_channels'] = [
-            ch for ch in st.session_state['rejected_channels'] 
-            if to_pure_id(ch.get('Handle')) != pure_handle
-        ]
+        st.session_state['rejected_channels'] = [ch for ch in st.session_state['rejected_channels'] if to_pure_id(ch.get('Handle')) != pure_handle]
 
     if 'batch_check_new' in st.session_state:
-        st.session_state['batch_check_new'] = [
-            ch for ch in st.session_state['batch_check_new']
-            if to_pure_id(ch.get('Handle')) != pure_handle
-        ]
+        st.session_state['batch_check_new'] = [ch for ch in st.session_state['batch_check_new'] if to_pure_id(ch.get('Handle')) != pure_handle]
 
     if 'batch_check_existing' in st.session_state:
-        st.session_state['batch_check_existing'] = [
-            ch for ch in st.session_state['batch_check_existing']
-            if to_pure_id(ch.get('Handle')) != pure_handle
-        ]
+        st.session_state['batch_check_existing'] = [ch for ch in st.session_state['batch_check_existing'] if to_pure_id(ch.get('Handle')) != pure_handle]
 
-    # 4. Clear Caches
     audit_key = f"audit_file_{pure_handle}"
-    if audit_key in st.session_state:
-        del st.session_state[audit_key]
-        
-    if pure_handle in st.session_state.get('video_preview_cache', {}):
-        del st.session_state['video_preview_cache'][pure_handle]
+    if audit_key in st.session_state: del st.session_state[audit_key]
+    if pure_handle in st.session_state.get('video_preview_cache', {}): del st.session_state['video_preview_cache'][pure_handle]
 
 # --- API QUOTA ROTATION MANAGER ---
 def yt_execute(request_func):
@@ -310,11 +288,7 @@ def get_video_details(video_ids, progress_bar=None):
                 duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
                 h, rem = divmod(duration_seconds, 3600)
                 m, s = divmod(rem, 60)
-                
-                if h > 0:
-                    dur_str = f"{h}:{m:02d}:{s:02d}"
-                else:
-                    dur_str = f"{m}:{s:02d}"
+                dur_str = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
 
                 pub_date = item['snippet']['publishedAt']
                 try: formatted_date = pd.to_datetime(pub_date).strftime("%d-%m-%Y")
@@ -336,7 +310,6 @@ def get_video_details(video_ids, progress_bar=None):
 def get_6_recent_videos(pure_handle):
     if pure_handle in st.session_state['video_preview_cache']:
         return st.session_state['video_preview_cache'][pure_handle]
-    
     try:
         cid = get_channel_id_by_handle(pure_handle)
         if cid:
@@ -348,15 +321,13 @@ def get_6_recent_videos(pure_handle):
                     v_details = get_video_details(v_ids)
                     st.session_state['video_preview_cache'][pure_handle] = v_details[:6]
                     return v_details[:6]
-    except Exception:
-        pass
+    except Exception: pass
     st.session_state['video_preview_cache'][pure_handle] = []
     return []
 
 def render_popover_preview(pure_handle, pre_fetched_videos=None):
     st.markdown(f"🎬 **[Mở nhanh Tab Videos](https://youtube.com/@{pure_handle}/videos)**")
     vids = pre_fetched_videos if (pre_fetched_videos is not None and len(pre_fetched_videos) > 0) else get_6_recent_videos(pure_handle)
-    
     if vids:
         st.divider()
         st.caption("📸 6 Video mới nhất của kênh:")
@@ -491,7 +462,6 @@ def render_shared_cart_ui(key_suffix=""):
     st.subheader(f"🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)")
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
-        
         if 'Handle' in df_cart.columns:
             df_cart['Tab Videos'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}/videos")
             df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/{to_pure_id(h)}")
@@ -588,62 +558,59 @@ with tab1:
                     st.rerun()
 
                 st.divider()
-                h1, h2, h3, h4, h5 = st.columns([2.0, 0.5, 2.0, 1.8, 0.8])
-                h1.markdown("**Handle**")
-                h2.markdown("**👁️**")
-                h3.markdown("**Trạng Thái**")
-                h4.markdown("**🛒 Giỏ Hàng**")
-                h5.markdown("**🗑️ Xóa**")
-                st.divider()
-
                 for idx, item in enumerate(new_handles):
-                    c1, c2, c3, c4, c5 = st.columns([2.0, 0.5, 2.0, 1.8, 0.8])
                     p_id = to_pure_id(item["Handle"])
-                    c1.markdown(f"[{item['Handle']}]({item['Link Kênh']})")
-                    
-                    with c2.popover("👁️"):
-                        render_popover_preview(p_id)
-                        
-                    c3.write(item["Trạng thái"])
-                    
-                    if p_id in st.session_state['cart']:
-                        if c4.button("❌ Bỏ", key=f"rm_t1_{idx}_{p_id}"):
-                            del st.session_state['cart'][p_id]
-                            st.rerun()
-                    else:
-                        if c4.button("🛒 Thêm", key=f"add_t1_{idx}_{p_id}"):
-                            st.session_state['cart'][p_id] = {
-                                "Handle": item["Handle"],
-                                "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
-                                "Link Kênh": f"https://www.youtube.com/@{p_id}",
-                                "Trạng Thái DB": "✅ KÊNH MỚI"
-                            }
-                            st.rerun()
+                    with st.container(border=True):
+                        c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
+                        with c1:
+                            st.markdown(f"### [{item['Handle']}]({item['Link Kênh']})")
+                            st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
+                            with st.popover("👁️ Xem 6 Video Mới"):
+                                render_popover_preview(p_id)
+                        with c2:
+                            st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
+                        with c3:
+                            st.write("**Thao tác:**")
+                            bc1, bc2 = st.columns(2)
+                            if p_id in st.session_state['cart']:
+                                if bc1.button("❌ Bỏ Giỏ", key=f"rm_t1_{idx}_{p_id}", use_container_width=True):
+                                    del st.session_state['cart'][p_id]
+                                    st.rerun()
+                            else:
+                                if bc1.button("🛒 Thêm Giỏ", key=f"add_t1_{idx}_{p_id}", use_container_width=True):
+                                    st.session_state['cart'][p_id] = {
+                                        "Handle": item["Handle"],
+                                        "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
+                                        "Link Kênh": f"https://www.youtube.com/@{p_id}",
+                                        "Trạng Thái DB": "✅ KÊNH MỚI"
+                                    }
+                                    st.rerun()
 
-                    if c5.button("🗑️", key=f"del_t1_new_{idx}_{p_id}", help="Loại bỏ kênh này khỏi danh sách"):
-                        delete_channel_from_system(p_id)
-                        st.toast(f"🗑️ Đã xóa kênh @{p_id}!")
-                        st.rerun()
+                            if bc2.button("🗑️ Xóa", key=f"del_t1_new_{idx}_{p_id}", use_container_width=True, help="Loại bỏ kênh này khỏi danh sách"):
+                                delete_channel_from_system(p_id)
+                                st.toast(f"🗑️ Đã xóa kênh @{p_id}!")
+                                st.rerun()
             else:
                 st.info("Tất cả kênh đều đã tồn tại trong Database!")
 
         with res_tab2:
             if existing_handles:
-                h1, h2, h3, h4, h5 = st.columns([2.0, 0.5, 2.0, 1.8, 0.8])
-                h1.markdown("**Handle**"); h2.markdown("**👁️**"); h3.markdown("**Tên Kênh**"); h4.markdown("**Trạng Thái**"); h5.markdown("**🗑️ Xóa DB**")
-                st.divider()
                 for idx, item in enumerate(existing_handles):
-                    c1, c2, c3, c4, c5 = st.columns([2.0, 0.5, 2.0, 1.8, 0.8])
                     p_id = to_pure_id(item["Handle"])
-                    c1.markdown(f"[{item['Handle']}](https://youtube.com/@{p_id})")
-                    with c2.popover("👁️"):
-                        render_popover_preview(p_id)
-                    c3.write(item.get("Tên Kênh", "N/A"))
-                    c4.write(item["Trạng thái"])
-                    if c5.button("🗑️", key=f"del_t1_ext_{idx}_{p_id}", help="Xóa kênh này khỏi Database đám mây"):
-                        delete_channel_from_system(p_id)
-                        st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi DB!")
-                        st.rerun()
+                    with st.container(border=True):
+                        c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                        with c1:
+                            st.markdown(f"### [{item['Handle']}](https://youtube.com/@{p_id})")
+                            st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
+                            with st.popover("👁️ Xem 6 Video Mới"):
+                                render_popover_preview(p_id)
+                        with c2:
+                            st.markdown(f"**Trạng thái:** {item['Trạng thái']}")
+                        with c3:
+                            if st.button("🗑️ Xóa DB", key=f"del_t1_ext_{idx}_{p_id}", use_container_width=True):
+                                delete_channel_from_system(p_id)
+                                st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi DB!")
+                                st.rerun()
 
     render_shared_cart_ui(key_suffix="tab1")
 
@@ -801,7 +768,7 @@ with tab3:
         
         tab_pass, tab_rej = st.tabs([f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", f"❌ Kênh Bị Loại ({len(rejected_list)})"])
         
-        # --- TAB PASSED ---
+        # --- TAB PASSED (BORDERED CARD LAYOUT) ---
         with tab_pass:
             if passed_list:
                 if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary"):
@@ -811,105 +778,118 @@ with tab3:
                             st.session_state['cart'][p_id] = dict(row)
                     st.rerun()
                 st.divider()
-                
-                h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12 = st.columns([1.1, 0.4, 1.4, 0.7, 0.5, 0.9, 0.8, 0.9, 0.7, 0.7, 0.8, 0.7])
-                h1.markdown("**Handle**"); h2.markdown("**👁️**"); h3.markdown("**Tên Kênh**"); h4.markdown("**Subs**"); h5.markdown("**Q.Gia**"); h6.markdown("**Video Mới**"); h7.markdown("**Tổng Video**"); h8.markdown("**DB**"); h9.markdown("**🛒 Giỏ**"); h10.markdown("**📄 Audit**"); h11.markdown("**🎯 Tìm Tiếp**"); h12.markdown("**🗑️ Xóa**")
-                st.divider()
 
                 for idx, row in enumerate(passed_list):
-                    c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12 = st.columns([1.1, 0.4, 1.4, 0.7, 0.5, 0.9, 0.8, 0.9, 0.7, 0.7, 0.8, 0.7])
                     p_id = to_pure_id(row['Handle'])
-                    c1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
-                    
-                    with c2.popover("👁️"):
-                        render_popover_preview(p_id, pre_fetched_videos=row.get('recent_videos'))
-                                
-                    c3.write(row['Tên Kênh']); c4.write(row['Subscribers']); c5.write(row['Quốc gia']); c6.write(row['Video Gần Nhất']); c7.write(row['Tổng Số Video']); c8.write(row['Trạng Thái DB'].replace("trong DB", ""))
-                    
-                    if p_id in st.session_state['cart']:
-                        if c9.button("❌ Bỏ", key=f"rm_p_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
-                    else:
-                        if c9.button("🛒 Thêm", key=f"add_p_{p_id}"): 
-                            st.session_state['cart'][p_id] = dict(row)
-                            st.rerun()
-                            
-                    audit_key = f"audit_file_{p_id}"
-                    if audit_key in st.session_state:
-                        c10.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_p_{p_id}")
-                    else:
-                        if c10.button("📄 Tạo", key=f"btn_p_{p_id}"):
-                            with st.spinner(f"Đang dựng Audit..."):
-                                b_data, f_name = run_single_channel_audit(p_id)
-                                if b_data:
-                                    supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
-                                    st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
-                                    st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
+                    with st.container(border=True):
+                        c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
+                        with c1:
+                            st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
+                            st.write(f"**{row['Tên Kênh']}**")
+                            with st.popover("👁️ Xem 6 Video Mới"):
+                                render_popover_preview(p_id, pre_fetched_videos=row.get('recent_videos'))
+                        with c2:
+                            st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
+                            st.write(f"🎬 **Tổng Video:** `{row['Tổng Số Video']}` | 📅 **Mới nhất:** `{row['Video Gần Nhất']}`")
+                        with c3:
+                            st.write(f"**Database:**\n{row['Trạng Thái DB']}")
+                        with c4:
+                            bc1, bc2 = st.columns(2)
+                            if p_id in st.session_state['cart']:
+                                if bc1.button("❌ Bỏ Giỏ", key=f"rm_p_{p_id}", use_container_width=True):
+                                    del st.session_state['cart'][p_id]
+                                    st.rerun()
+                            else:
+                                if bc1.button("🛒 Thêm Giỏ", key=f"add_p_{p_id}", use_container_width=True):
+                                    st.session_state['cart'][p_id] = dict(row)
                                     st.rerun()
                                     
-                    if c11.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary"):
-                        cid_deep = get_channel_id_by_handle(p_id)
-                        if cid_deep:
-                            ext_deep = extract_channel_master_keywords(cid_deep)
-                            st.session_state['pending_keywords'] = ", ".join(ext_deep['master_keywords'][:6])
-                            st.session_state['pending_seed_input'] = f"@{p_id}"
-                            st.session_state['trigger_deep_search_now'] = True
-                            st.rerun()
+                            audit_key = f"audit_file_{p_id}"
+                            if audit_key in st.session_state:
+                                bc2.download_button("📥 Tải Audit", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_p_{p_id}", use_container_width=True)
+                            else:
+                                if bc2.button("📄 Tạo Audit", key=f"btn_p_{p_id}", use_container_width=True):
+                                    with st.spinner("Đang dựng Audit..."):
+                                        b_data, f_name = run_single_channel_audit(p_id)
+                                        if b_data:
+                                            supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                            st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
+                                            st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
+                                            st.rerun()
 
-                    if c12.button("🗑️", key=f"del_p_{p_id}", help="Loại bỏ kênh này khỏi hệ thống & danh sách"):
-                        delete_channel_from_system(p_id)
-                        st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi hệ thống!")
-                        st.rerun()
+                            bc3, bc4 = st.columns(2)
+                            if bc3.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary", use_container_width=True):
+                                cid_deep = get_channel_id_by_handle(p_id)
+                                if cid_deep:
+                                    ext_deep = extract_channel_master_keywords(cid_deep)
+                                    st.session_state['pending_keywords'] = ", ".join(ext_deep['master_keywords'][:6])
+                                    st.session_state['pending_seed_input'] = f"@{p_id}"
+                                    st.session_state['trigger_deep_search_now'] = True
+                                    st.rerun()
+
+                            if bc4.button("🗑️ Xóa", key=f"del_p_{p_id}", use_container_width=True, help="Loại bỏ kênh này khỏi hệ thống & danh sách"):
+                                delete_channel_from_system(p_id)
+                                st.toast(f"🗑️ Đã xóa kênh @{p_id}!")
+                                st.rerun()
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
-        # --- TAB REJECTED ---
+        # --- TAB REJECTED (BORDERED CARD LAYOUT) ---
         with tab_rej:
             if rejected_list:
-                rh1, rh2, rh3, rh4, rh5, rh6, rh7, rh8, rh9, rh10, rh11, rh12, rh13 = st.columns([1.0, 0.4, 1.2, 0.6, 0.5, 0.8, 0.7, 0.9, 1.3, 0.6, 0.7, 0.8, 0.6])
-                rh1.markdown("**Handle**"); rh2.markdown("**👁️**"); rh3.markdown("**Tên Kênh**"); rh4.markdown("**Subs**"); rh5.markdown("**Q.Gia**"); rh6.markdown("**Video Mới**"); rh7.markdown("**Tổng Video**"); rh8.markdown("**DB**"); rh9.markdown("**Lý Do**"); rh10.markdown("**🛒 Giỏ**"); rh11.markdown("**📄 Audit**"); rh12.markdown("**🎯 Đào Sâu**"); rh13.markdown("**🗑️ Xóa**")
-                st.divider()
-
                 for idx, row in enumerate(rejected_list):
-                    rc1, rc2, rc3, rc4, rc5, rc6, rc7, rc8, rc9, rc10, rc11, rc12, rc13 = st.columns([1.0, 0.4, 1.2, 0.6, 0.5, 0.8, 0.7, 0.9, 1.3, 0.6, 0.7, 0.8, 0.6])
                     p_id = to_pure_id(row['Handle'])
-                    rc1.markdown(f"[{row['Handle']}]({row['Link Kênh']})")
-                    
-                    with rc2.popover("👁️"):
-                        render_popover_preview(p_id, pre_fetched_videos=row.get('recent_videos'))
-                                
-                    rc3.write(row['Tên Kênh']); rc4.write(row['Subscribers']); rc5.write(row.get('Quốc gia', '')); rc6.write(row.get('Video Gần Nhất', '')); rc7.write(row.get('Tổng Số Video', '')); rc8.write(row.get('Trạng Thái DB', '').replace("trong DB", "")); rc9.write(f"❌ {row['Lý do loại']}")
-                    
-                    if p_id in st.session_state['cart']:
-                        if rc10.button("❌ Bỏ", key=f"rm_r_{p_id}"): del st.session_state['cart'][p_id]; st.rerun()
-                    else:
-                        if rc10.button("🛒 Thêm", key=f"add_r_{p_id}"): st.session_state['cart'][p_id] = dict(row); st.rerun()
-
-                    audit_key = f"audit_file_{p_id}"
-                    if audit_key in st.session_state:
-                        rc11.download_button("📥 Tải", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}")
-                    else:
-                        if rc11.button("📄 Tạo", key=f"btn_r_{p_id}"):
-                            with st.spinner(f"Đang dựng Audit..."):
-                                b_data, f_name = run_single_channel_audit(p_id)
-                                if b_data:
-                                    supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
-                                    st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
-                                    st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
+                    with st.container(border=True):
+                        c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
+                        with c1:
+                            st.markdown(f"### [{row['Handle']}]({row['Link Kênh']})")
+                            st.write(f"**{row['Tên Kênh']}**")
+                            with st.popover("👁️ Xem 6 Video Mới"):
+                                render_popover_preview(p_id, pre_fetched_videos=row.get('recent_videos'))
+                        with c2:
+                            st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row.get('Quốc gia', '')}`")
+                            st.write(f"🎬 **Tổng Video:** `{row.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{row.get('Video Gần Nhất', '')}`")
+                        with c3:
+                            st.write(f"**Database:** {row.get('Trạng Thái DB', '')}")
+                            st.write(f"❌ **Lý do:** `{row['Lý do loại']}`")
+                        with c4:
+                            bc1, bc2 = st.columns(2)
+                            if p_id in st.session_state['cart']:
+                                if bc1.button("❌ Bỏ Giỏ", key=f"rm_r_{p_id}", use_container_width=True):
+                                    del st.session_state['cart'][p_id]
+                                    st.rerun()
+                            else:
+                                if bc1.button("🛒 Thêm Giỏ", key=f"add_r_{p_id}", use_container_width=True):
+                                    st.session_state['cart'][p_id] = dict(row)
                                     st.rerun()
 
-                    if rc12.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary"):
-                        cid_deep = get_channel_id_by_handle(p_id)
-                        if cid_deep:
-                            ext_deep = extract_channel_master_keywords(cid_deep)
-                            st.session_state['pending_keywords'] = ", ".join(ext_deep['master_keywords'][:6])
-                            st.session_state['pending_seed_input'] = f"@{p_id}"
-                            st.session_state['trigger_deep_search_now'] = True
-                            st.rerun()
+                            audit_key = f"audit_file_{p_id}"
+                            if audit_key in st.session_state:
+                                bc2.download_button("📥 Tải Audit", data=st.session_state[audit_key]["bytes"], file_name=st.session_state[audit_key]["filename"], mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_r_{p_id}", use_container_width=True)
+                            else:
+                                if bc2.button("📄 Tạo Audit", key=f"btn_r_{p_id}", use_container_width=True):
+                                    with st.spinner("Đang dựng Audit..."):
+                                        b_data, f_name = run_single_channel_audit(p_id)
+                                        if b_data:
+                                            supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                            st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
+                                            st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
+                                            st.rerun()
 
-                    if rc13.button("🗑️", key=f"del_r_{p_id}", help="Loại bỏ kênh này khỏi hệ thống & danh sách"):
-                        delete_channel_from_system(p_id)
-                        st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi hệ thống!")
-                        st.rerun()
+                            bc3, bc4 = st.columns(2)
+                            if bc3.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary", use_container_width=True):
+                                cid_deep = get_channel_id_by_handle(p_id)
+                                if cid_deep:
+                                    ext_deep = extract_channel_master_keywords(cid_deep)
+                                    st.session_state['pending_keywords'] = ", ".join(ext_deep['master_keywords'][:6])
+                                    st.session_state['pending_seed_input'] = f"@{p_id}"
+                                    st.session_state['trigger_deep_search_now'] = True
+                                    st.rerun()
+
+                            if bc4.button("🗑️ Xóa", key=f"del_r_{p_id}", use_container_width=True, help="Loại bỏ kênh này khỏi hệ thống & danh sách"):
+                                delete_channel_from_system(p_id)
+                                st.toast(f"🗑️ Đã xóa kênh @{p_id}!")
+                                st.rerun()
 
     render_shared_cart_ui(key_suffix="tab3")
 
@@ -965,26 +945,22 @@ with tab5:
         page_data = df_filtered.iloc[start_idx:end_idx]
 
         st.divider()
-        dh1, dh2, dh3, dh4, dh5 = st.columns([2.0, 0.6, 2.5, 2.0, 1.0])
-        dh1.markdown("**Handle**")
-        dh2.markdown("**👁️ Xem**")
-        dh3.markdown("**Tên YouTuber**")
-        dh4.markdown("**Nguồn Dữ Liệu**")
-        dh5.markdown("**🗑️ Xóa DB**")
-        st.divider()
-
         for idx, row in page_data.iterrows():
-            dc1, dc2, dc3, dc4, dc5 = st.columns([2.0, 0.6, 2.5, 2.0, 1.0])
             p_id = to_pure_id(row['handle'])
-            dc1.markdown(f"[@{p_id}](https://youtube.com/@{p_id})")
-            with dc2.popover("👁️"):
-                render_popover_preview(p_id)
-            dc3.write(row.get('youtuber_name', 'N/A'))
-            dc4.write(row.get('source', 'N/A'))
-            if dc5.button("🗑️ Xóa", key=f"del_db_{idx}_{p_id}", help="Xóa vĩnh viễn khỏi Database"):
-                delete_channel_from_system(p_id)
-                st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi Database!")
-                st.rerun()
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                with c1:
+                    st.markdown(f"### [@{p_id}](https://youtube.com/@{p_id})")
+                    st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
+                    with st.popover("👁️ Xem 6 Video Mới"):
+                        render_popover_preview(p_id)
+                with c2:
+                    st.write(f"**Nguồn dữ liệu:** {row.get('source', 'N/A')}")
+                with c3:
+                    if st.button("🗑️ Xóa DB", key=f"del_db_{idx}_{p_id}", use_container_width=True):
+                        delete_channel_from_system(p_id)
+                        st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi Database!")
+                        st.rerun()
 
         st.divider()
         csv = df_all.to_csv(index=False).encode('utf-8')
