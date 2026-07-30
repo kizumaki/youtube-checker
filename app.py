@@ -37,16 +37,8 @@ st.markdown("""
 /* Base Theme */
 .stApp {
     background-color: #F4F2F1 !important; /* Luminous Peach */
-    color: #3D2F29 !important; /* Intense Amber / Espresso */
+    color: #3D2F29; 
     font-family: 'Montserrat', sans-serif !important;
-}
-
-/* Typography Overrides */
-h1, h2, h3, h4, h5, h6, p, span, div {
-    color: #3D2F29;
-}
-p, span, div {
-    font-weight: 500;
 }
 
 /* Sidebar Styling */
@@ -135,6 +127,41 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
     background-color: transparent !important;
 }
 
+/* Active Banner Tag Styling (Forced 100% White Text) */
+.active-banner-tag {
+    background-color: #D95F26 !important;
+    color: #FFFFFF !important;
+    padding: 6px 14px !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    margin-bottom: 12px !important;
+    font-size: 0.85rem !important;
+    letter-spacing: 0.05em !important;
+    display: inline-block !important;
+    box-shadow: 0 3px 10px rgba(217, 95, 38, 0.25) !important;
+}
+
+.active-banner-tag * {
+    color: #FFFFFF !important;
+}
+
+.in-cart-banner-tag {
+    background-color: #47A5D1 !important;
+    color: #FFFFFF !important;
+    padding: 6px 14px !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    margin-bottom: 12px !important;
+    font-size: 0.85rem !important;
+    letter-spacing: 0.05em !important;
+    display: inline-block !important;
+    box-shadow: 0 3px 10px rgba(71, 165, 209, 0.25) !important;
+}
+
+.in-cart-banner-tag * {
+    color: #FFFFFF !important;
+}
+
 /* Inputs & Selectboxes */
 .stTextInput input, .stTextArea textarea, .stSelectbox select {
     background-color: #FFFFFF !important;
@@ -148,7 +175,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
     box-shadow: 0 0 0 1px #D95F26 !important;
 }
 
-/* Buttons Default */
+/* Default Buttons */
 .stButton button {
     border-radius: 8px !important;
     font-weight: 700 !important;
@@ -159,24 +186,26 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
     text-transform: uppercase;
     font-size: 0.8rem !important;
     letter-spacing: 0.05em;
-    transition: all 0.2s ease !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .stButton button:hover {
     border-color: #D95F26 !important;
     color: #D95F26 !important;
     background-color: #FFFBF9 !important;
+    transform: translateY(-1px) !important;
 }
 
-/* PRIMARY BUTTONS (#D95F26) - STRICT 100% WHITE FONT */
+/* ARTISTIC PRIMARY BUTTONS (#D95F26 Gradient & Smooth 3D Lift) */
 .stButton button[kind="primary"],
 .stButton button[kind="primary"] *,
 .stButton button[kind="primary"] p,
 .stButton button[kind="primary"] span,
 .stButton button[kind="primary"] div {
-    background-color: #D95F26 !important;
+    background: linear-gradient(135deg, #D95F26 0%, #E66A32 100%) !important;
     color: #FFFFFF !important;
     border: none !important;
+    box-shadow: 0 3px 10px rgba(217, 95, 38, 0.22) !important;
 }
 
 .stButton button[kind="primary"]:hover,
@@ -184,12 +213,18 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div[data
 .stButton button[kind="primary"]:hover p,
 .stButton button[kind="primary"]:hover span,
 .stButton button[kind="primary"]:hover div {
-    background-color: #B84A1A !important;
+    background: linear-gradient(135deg, #C24E18 0%, #D95F26 100%) !important;
     color: #FFFFFF !important;
-    box-shadow: 0 4px 14px rgba(217, 95, 38, 0.4) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(217, 95, 38, 0.38) !important;
 }
 
-/* BADGES - STRICT 100% WHITE FONT FOR COLORED BADGES */
+.stButton button[kind="primary"]:active {
+    transform: translateY(0px) !important;
+    box-shadow: 0 2px 8px rgba(217, 95, 38, 0.3) !important;
+}
+
+/* Badges */
 .badge-pro {
     display: inline-block;
     padding: 6px 12px;
@@ -333,7 +368,7 @@ with st.sidebar:
         if found_logo:
             st.image(found_logo, use_container_width=True)
         else:
-            # Fallback Native Gold Soundwave Logo SVG (No error box)
+            # Fallback Native Soundwave Logo SVG
             st.markdown("""
             <div style="text-align: center; padding: 10px 0;">
                 <svg width="70" height="70" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -902,10 +937,10 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D95F26; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="in-cart-banner-tag">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([3.5, 3.5, 3.0])
                         with c1:
@@ -951,7 +986,7 @@ with tab1:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D95F26; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
@@ -1164,10 +1199,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D95F26; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="in-cart-banner-tag">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1234,10 +1269,10 @@ with tab3:
                     with st.container(border=True):
                         if is_active:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #D95F26; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
                         elif is_in_cart:
                             st.markdown('<div class="in-cart-marker"></div>', unsafe_allow_html=True)
-                            st.markdown('<div style="background-color: #47A5D1; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="in-cart-banner-tag">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
 
                         c1, c2, c3, c4 = st.columns([2.2, 3.0, 1.8, 3.0])
                         with c1:
@@ -1353,7 +1388,7 @@ with tab5:
             with st.container(border=True):
                 if is_active:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
-                    st.markdown('<div style="background-color: #D95F26; color: #FFFFFF !important; padding: 6px 12px; border-radius: 8px; font-weight: 800; margin-bottom: 12px; font-size: 0.85rem; letter-spacing: 0.05em; display: inline-block;">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
