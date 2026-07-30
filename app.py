@@ -315,32 +315,34 @@ def get_6_recent_videos(pure_handle):
         if cid:
             playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
             if playlist_id:
-                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=6))
+                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=25))
                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                 if v_ids:
                     v_details = get_video_details(v_ids)
-                    st.session_state['video_preview_cache'][pure_handle] = v_details[:6]
-                    return v_details[:6]
+                    long_vids = [v for v in v_details if v.get('Seconds', 0) > 60]
+                    st.session_state['video_preview_cache'][pure_handle] = long_vids[:6]
+                    return long_vids[:6]
     except Exception: pass
     st.session_state['video_preview_cache'][pure_handle] = []
     return []
 
 def render_popover_preview(pure_handle, pre_fetched_videos=None):
-    st.markdown(f"🎬 **[Mở nhanh Tab Videos](https://youtube.com/@{pure_handle}/videos)**")
-    vids = pre_fetched_videos if (pre_fetched_videos is not None and len(pre_fetched_videos) > 0) else get_6_recent_videos(pure_handle)
+    st.markdown(f"🎬 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
+    raw_vids = pre_fetched_videos if (pre_fetched_videos is not None and len(pre_fetched_videos) > 0) else get_6_recent_videos(pure_handle)
+    vids = [v for v in raw_vids if v.get('Seconds', 0) > 60]
+    
     if vids:
         st.divider()
-        st.caption("📸 6 Video mới nhất của kênh:")
-        col_a, col_b = st.columns(2)
+        st.caption("📸 6 Video Dài (Long-form) mới nhất:")
         for idx, v in enumerate(vids[:6]):
-            target_col = col_a if idx % 2 == 0 else col_b
-            with target_col:
-                vid_id = v.get('Video ID') or (v.get('Link', '').split('v=')[-1] if 'v=' in v.get('Link', '') else '')
-                if vid_id:
-                    st.image(f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg", use_container_width=True)
-                st.caption(f"**{v['Title'][:45]}...**\n\n👀 {v.get('Views', 0):,} views | ⏳ {v.get('Length (Exact)', 'N/A')} | 📅 {v.get('Published Date', '')}")
+            vid_id = v.get('Video ID') or (v.get('Link', '').split('v=')[-1] if 'v=' in v.get('Link', '') else '')
+            if vid_id:
+                st.image(f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg", use_container_width=True)
+            st.markdown(f"**[{v['Title']}]({v['Link']})**")
+            st.caption(f"👀 {v.get('Views', 0):,} views | ⏳ {v.get('Length (Exact)', 'N/A')} | 📅 {v.get('Published Date', '')}")
+            st.markdown("---")
     else:
-        st.caption("Không có video công khai hoặc lỗi API.")
+        st.caption("Không tìm thấy video dài (chỉ có Shorts hoặc kênh chưa đăng video).")
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -729,14 +731,15 @@ with tab3:
                         
                         if c_playlist and c_video_count > 0:
                             try:
-                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=10))
+                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=25))
                                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                                 if v_ids:
                                     v_details = get_video_details(v_ids)
                                     if v_details:
                                         latest_date = v_details[0]['Published Date']
                                         has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
-                                        recent_vids = v_details[:6]
+                                        long_vids = [v for v in v_details if v.get('Seconds', 0) > 60]
+                                        recent_vids = long_vids[:6]
                             except Exception: pass
 
                         base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status, "recent_videos": recent_vids}
