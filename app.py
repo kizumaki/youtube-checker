@@ -291,7 +291,7 @@ def clear_cart_db():
     try: supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
     except Exception: pass
 
-# --- STATE INIT ---
+# --- INITIALIZE PERSISTENT STATE ---
 if 'global_api_keys' not in st.session_state:
     db_keys = load_api_keys_from_db()
     st.session_state['global_api_keys'] = db_keys if db_keys else DEFAULT_API_KEY
@@ -322,18 +322,13 @@ def set_api_keys(key_string):
 
 set_api_keys(st.session_state['global_api_keys'])
 
-# --- CUSTOM KPI RENDERER ---
+# --- CLEAN & ROBUST CUSTOM KPI RENDERER ---
 def render_kpi_cards(kpi_data):
-    html = '<div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">'
+    cards_html = ""
     for title, val, color in kpi_data:
-        html += f'''
-        <div style="flex: 1; min-width: 200px; background-color: {card_bg}; border: 1px solid {border_color}; border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.04);">
-            <div style="font-size: 0.85rem; color: #6B7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">{title}</div>
-            <div style="font-size: 2.2rem; font-weight: 900; color: {color};">{val}</div>
-        </div>
-        '''
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
+        cards_html += f'<div style="flex: 1; min-width: 200px; background-color: {card_bg}; border: 1px solid {border_color}; border-radius: 12px; padding: 18px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.04);"><div style="font-size: 0.8rem; color: #6B7280; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">{title}</div><div style="font-size: 2.2rem; font-weight: 900; color: {color};">{val}</div></div>'
+    full_html = f'<div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">{cards_html}</div>'
+    st.markdown(full_html, unsafe_allow_html=True)
 
 # --- SIDEBAR BRANDING & CONFIG ---
 with st.sidebar:
@@ -1047,9 +1042,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     
     if c_playlist and c_video_count > 0:
         try:
-            # Optimize: use the same fast RSS fetch for candidates too if needed, but search().list is already used. 
-            # We just need to get latest video date. 1 API call per candidate.
-            v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=30))
+            v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50))
             v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
             if v_ids:
                 v_details = get_video_details(v_ids)
