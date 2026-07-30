@@ -368,7 +368,7 @@ def render_popover_preview(pure_handle, pre_fetched_videos=None):
             
             st.markdown("---")
     else:
-        st.caption("Không tìm thấy video dài (chỉ có Shorts hoặc kênh chưa đăng video).")
+        st.caption("Không tìm thấy video dài (Kênh này chỉ đăng Shorts hoặc chưa có video dài).")
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -757,14 +757,14 @@ with tab3:
                         
                         if c_playlist and c_video_count > 0:
                             try:
-                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=30))
+                                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50))
                                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                                 if v_ids:
                                     v_details = get_video_details(v_ids)
-                                    if v_details:
-                                        latest_date = v_details[0]['Published Date']
-                                        has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in v_details)
-                                        long_vids = [v for v in v_details if v.get('Seconds', 0) > 60]
+                                    long_vids = [v for v in v_details if v.get('Seconds', 0) > 60]
+                                    if long_vids:
+                                        latest_date = long_vids[0]['Published Date']
+                                        has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in long_vids)
                                         recent_vids = long_vids[:6]
                             except Exception: pass
 
