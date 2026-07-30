@@ -22,26 +22,35 @@ from supabase import create_client, Client
 # Page Config
 st.set_page_config(page_title="YouTube Master DB & Related Finder", page_icon="📺", layout="wide")
 
-# Inject Global CSS for Card Highlight & Container Styling
+# Inject Global CSS for Card Highlight & Inner Transparent Backgrounds
 st.markdown("""
 <style>
-/* Highlight active inspected card */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker),
-div[data-testid="stContainer"]:has(div.active-card-marker),
-div[data-testid="element-container"]:has(div.active-card-marker) {
+/* Active Inspected Card Highlight */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {
     background-color: #EBF5FF !important;
-    border: 2px solid #2B6CB0 !important;
+    border: 2.5px solid #2B6CB0 !important;
     border-radius: 12px !important;
-    box-shadow: 0 4px 12px rgba(43, 108, 176, 0.2) !important;
+    box-shadow: 0 4px 14px rgba(43, 108, 176, 0.25) !important;
 }
 
-/* Highlight card in cart */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker),
-div[data-testid="stContainer"]:has(div.in-cart-marker),
-div[data-testid="element-container"]:has(div.in-cart-marker) {
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) div,
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) [data-testid="stMarkdownContainer"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) [data-testid="stVerticalBlock"] {
+    background-color: transparent !important;
+}
+
+/* In-Cart Card Highlight */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {
     background-color: #F0FDF4 !important;
-    border: 2px solid #059669 !important;
+    border: 2.5px solid #059669 !important;
     border-radius: 12px !important;
+    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.2) !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) div,
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) [data-testid="stMarkdownContainer"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) [data-testid="stVerticalBlock"] {
+    background-color: transparent !important;
 }
 </style>
 """, unsafe_allow_html=True)
