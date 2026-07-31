@@ -1697,6 +1697,8 @@ with tab4:
     
     if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database", type="primary"):
         new_handles_to_insert = []
+        skipped_details = []
+        
         for file in uploaded_files:
             file_name = file.name.lower()
             if file_name.endswith('.zip'):
@@ -1705,16 +1707,19 @@ with tab4:
                     zip_ref.extractall(extract_path)
                     for root, _, filenames in os.walk(extract_path):
                         for fn in filenames:
+                            if fn.startswith('~$') or fn.startswith('._'):
+                                skipped_details.append({"File": fn, "Lý do": "File ẩn / tạm của hệ điều hành"})
+                                continue
                             if fn.endswith('.xlsx') or fn.endswith('.xls'):
                                 h = extract_handle_from_filename(fn)
-                                if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name})
+                                if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name, "filename": fn})
+                                else: skipped_details.append({"File": fn, "Lý do": "Không trích xuất được Handle từ tên file"})
             elif file_name.endswith('.txt'):
                 content = file.read().decode("utf-8", errors="ignore")
                 for line in content.splitlines():
                     h = to_pure_id(line)
-                    if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name})
+                    if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name, "filename": file.name})
             elif file_name.endswith('.xlsx') or file_name.endswith('.xls'):
-                # 1. CHECK IF FILE IS AN AUDIT REPORT FILE (1 CHANNEL ONLY)
                 h_from_fn = extract_handle_from_filename(file.name)
                 
                 file.seek(0)
@@ -1731,10 +1736,8 @@ with tab4:
                 except Exception: pass
                 
                 if is_report and h_from_fn:
-                    # FOR AUDIT REPORT EXCEL FILES: INSERT ONLY THE SINGLE MAIN CHANNEL HANDLE!
-                    new_handles_to_insert.append({"handle": h_from_fn, "youtuber_name": h_from_fn.upper(), "source": file.name})
+                    new_handles_to_insert.append({"handle": h_from_fn, "youtuber_name": h_from_fn.upper(), "source": file.name, "filename": file.name})
                 else:
-                    # FOR LIST EXCEL FILES: EXTRACT PURE CHANNEL HANDLES/URLS ONLY (STRICTLY IGNORE VIDEO LINKS)
                     file.seek(0)
                     try:
                         df_excel = pd.read_excel(file)
@@ -1742,13 +1745,25 @@ with tab4:
                             for val in df_excel[col].dropna():
                                 p = to_pure_id(val)
                                 if p:
-                                    new_handles_to_insert.append({"handle": p, "youtuber_name": p.upper(), "source": file.name})
+                                    new_handles_to_insert.append({"handle": p, "youtuber_name": p.upper(), "source": file.name, "filename": file.name})
                     except Exception: pass
 
         if new_handles_to_insert:
-            df_insert = pd.DataFrame(new_handles_to_insert).drop_duplicates(subset=["handle"])
-            supabase.table("channels").upsert(df_insert.to_dict(orient="records"), on_conflict="handle").execute()
-            st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle vào Database đám mây Supabase!")
+            df_raw = pd.DataFrame(new_handles_to_insert)
+            
+            # IDENTIFY DUPLICATE HANDLES IN UPLOAD
+            duplicated_rows = df_raw[df_raw.duplicated(subset=["handle"], keep="first")]
+            for _, d_row in duplicated_rows.iterrows():
+                skipped_details.append({"File": d_row.get("filename", d_row["source"]), "Handle": f"@{d_row['handle']}", "Lý do": "Trùng lặp Handle với 1 file khác trong gói ZIP"})
+
+            df_insert = df_raw.drop_duplicates(subset=["handle"])
+            supabase.table("channels").upsert(df_insert[["handle", "youtuber_name", "source"]].to_dict(orient="records"), on_conflict="handle").execute()
+            
+            st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle duy nhất vào Database đám mây Supabase!")
+            
+            if skipped_details:
+                with st.expander(f"⚠️ Chi tiết ({len(skipped_details)}) file / Handle trùng lặp bị bỏ qua"):
+                    st.dataframe(pd.DataFrame(skipped_details), use_container_width=True)
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
