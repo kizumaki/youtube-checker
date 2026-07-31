@@ -2962,16 +2962,38 @@ with tab5:
     else:
         st.info("Database hiện đang trống!")
 
+# --- TAB 6: CHANNEL & VIDEO TAGS SEO INSPECTOR WITH DATABASE SELECTBOX ---
 with tab6:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)</h3>", unsafe_allow_html=True)
-    inspect_handle_input = st.text_input("Nhập Handle Kênh cần soi:", value="@NickDiGiovanni")
-    if inspect_handle_input and st.button("🔍 Soi Từ Khóa Ngay", type="primary"):
-        pure_inspect = to_pure_id(inspect_handle_input)
+    st.caption("💡 *Nhập Handle thủ công hoặc chọn nhanh các kênh đã có sẵn trong Database CRM.*")
+
+    col_i1, col_i2 = st.columns([1, 1])
+    with col_i1:
+        inspect_handle_input = st.text_input("Nhập Handle Kênh / Link cần soi:", value="@NickDiGiovanni", key="input_inspect_manual")
+    with col_i2:
+        db_channels_options = ["-- Chọn Kênh từ Database --"]
+        try:
+            res_db = supabase.table("channels").select("handle, youtuber_name").order("handle").execute()
+            if res_db.data:
+                for row in res_db.data:
+                    h = row.get("handle")
+                    name = row.get("youtuber_name") or h
+                    if h: db_channels_options.append(f"@{h} - {name}")
+        except Exception: pass
+        
+        selected_db_channel = st.selectbox("Hoặc chọn kênh từ Database CRM:", options=db_channels_options, key="sel_inspect_db")
+
+    if st.button("🔍 Soi Từ Khóa Ngay", type="primary", key="btn_run_inspect_tab6"):
+        target_inspect = inspect_handle_input
+        if selected_db_channel != "-- Chọn Kênh từ Database --":
+            target_inspect = selected_db_channel.split(" - ")[0].strip()
+
+        pure_inspect = to_pure_id(target_inspect)
         if pure_inspect:
             try:
                 active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
                 cid_insp, _, _, _ = get_channel_id_by_handle_direct(pure_inspect, active_keys)
-                if not cid_insp: st.error("Không tìm thấy Channel ID cho kênh này!")
+                if not cid_insp: st.error(f"Không tìm thấy Channel ID cho kênh @{pure_inspect}!")
                 else:
                     ext_data = extract_channel_master_keywords(cid_insp)
                     st.session_state['pending_keywords'] = ", ".join(ext_data['master_keywords'])
@@ -2979,6 +3001,8 @@ with tab6:
                     st.session_state['last_inspected_handle'] = pure_inspect
                     st.rerun()
             except Exception as e: st.error(f"Lỗi khi soi từ khóa: {e}")
+        else:
+            st.warning("⚠️ Vui lòng nhập hoặc chọn một kênh hợp lệ!")
 
     if 'last_inspected_data' in st.session_state:
         ext_data, pure_inspect = st.session_state['last_inspected_data'], st.session_state.get('last_inspected_handle', '')
