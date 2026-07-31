@@ -66,7 +66,7 @@ def cb_clear_all():
 def clear_selected_channels():
     cb_clear_all()
 
-# Theme CSS Dynamic Injection
+# Theme CSS Dynamic Injection & FIX OVERFLOW FOR FLOATING TOOLBAR
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
 bg_color = "#1E1816" if is_dark else "#F4F2F1"
 card_bg = "#2A221F" if is_dark else "#FFFFFF"
@@ -83,6 +83,11 @@ st.markdown(f"""
 section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_color} !important; box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05) !important; }}
 header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 
+/* UNLOCK OVERFLOW FOR STICKY FLOATING TOOLBARS */
+section.main, .main .block-container, [data-testid="stMain"], [data-baseweb="tab-panel"], div[data-testid="stVerticalBlock"] {{
+    overflow: visible !important;
+}}
+
 /* HIGH-END ARTISTIC TABS */
 .stTabs [data-baseweb="tab-list"] {{ gap: 32px; background-color: transparent; padding: 0 0 4px 0; border-bottom: 2px solid #D1D5DB; }}
 .stTabs [data-baseweb="tab"] {{ background-color: transparent !important; border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #6B7280 !important; font-weight: 700; font-size: 0.9rem; padding: 10px 4px; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s ease !important; cursor: pointer !important; }}
@@ -93,18 +98,19 @@ header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px !important; padding: 12px !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; }}
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important; }}
 
-/* STICKY FLOATING ACTION BAR */
+/* REAL FLOATING STICKY TOOLBAR */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.sticky-action-bar) {{
+    position: -webkit-sticky !important;
     position: sticky !important;
-    top: 2.875rem !important; /* Pins just below the Streamlit header */
-    z-index: 999 !important;
+    top: 3.5rem !important;
+    z-index: 99999 !important;
     background-color: {card_bg} !important;
-    box-shadow: 0 15px 30px rgba(0,0,0,0.1) !important;
-    border: 1px solid #D95F26 !important;
-    border-top: 4px solid #D95F26 !important;
-    padding: 10px 15px 0px 15px !important;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.18) !important;
+    border: 2px solid #D95F26 !important;
+    border-top: 5px solid #D95F26 !important;
+    border-radius: 12px !important;
+    padding: 12px 16px !important;
     margin-bottom: 25px !important;
-    transition: all 0.3s ease !important;
 }}
 
 /* ACTIVE INSPECTED CARD */
@@ -338,9 +344,6 @@ def delete_channel_from_system(pure_handle):
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
 
-    for prefix in ["chk_t1_", "chk_t1_ext_", "chk_t1_rej_", "chk_p_", "chk_r_", "chk_db_"]:
-        st.session_state.pop(f"{prefix}{pure_handle}", None)
-
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']:
         if key_list in st.session_state:
             st.session_state[key_list] = [ch for ch in st.session_state[key_list] if to_pure_id(ch.get('Handle')) != pure_handle]
@@ -464,6 +467,23 @@ def render_social_badges_html(contacts_dict):
     if 'Website' in contacts_dict: html += f"<a href='{contacts_dict['Website']}' target='_blank' class='social-badge social-web'>🌐 Web</a>"
     html += "</div>"
     return html
+
+# TAB 5 CACHED METADATA & CONTACT EXTRACTION HELPER
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_channel_crm_meta(pure_handle):
+    cid = get_channel_id_by_handle(pure_handle)
+    if not cid: return {"sub_count": 0, "sub_str": "N/A", "country": "N/A", "socials": {}}
+    playlist_id, sub_count, desc, joined, country_name, country_code, avatar = get_channel_details(cid)
+    recent_vids = get_6_recent_videos(pure_handle)
+    v_descs = " ".join([v.get('Description', '') for v in recent_vids])
+    corpus = f"{desc} {v_descs}"
+    socials = extract_contacts_and_socials(corpus)
+    return {
+        "sub_count": sub_count,
+        "sub_str": f"{sub_count:,}" if sub_count else "N/A",
+        "country": country_name if country_name else "N/A",
+        "socials": socials
+    }
 
 def extract_video_id(raw_url):
     if not raw_url or pd.isna(raw_url): return None
@@ -952,7 +972,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-# --- REUSABLE COMPONENT: RENDER SHARED CART (WITH INDEX STARTING AT 1) ---
+# --- REUSABLE COMPONENT: RENDER SHARED CART ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
@@ -1134,7 +1154,7 @@ def process_tab1_single_handle(p_id, db_matches):
         "Socials": {}
     }
 
-# --- TAB 1: BATCH SEARCH WITH REAL-TIME PROGRESS BAR ---
+# --- TAB 1: BATCH SEARCH WITH STICKY FLOATING TOOLBAR ---
 with tab1:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle / Link Video Hàng Loạt</h3>", unsafe_allow_html=True)
     st.caption("💡 *Tự động quét quy mô kênh (Yêu cầu >= 1,000,000 Subs), lọc bỏ các kênh Âm nhạc/News/LGBT và Đào sâu MXH/Email.*")
@@ -1210,6 +1230,7 @@ with tab1:
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
 
+                # STICKY FLOATING ACTION BAR
                 with st.container(border=True):
                     st.markdown('<div class="sticky-action-bar"></div>', unsafe_allow_html=True)
                     tb1, tb2, tb3, tb4, tb5, tb6 = st.columns([2.0, 2.0, 1.8, 1.8, 1.2, 1.2])
@@ -1332,7 +1353,7 @@ with tab1:
                     with te2:
                         st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_ext", on_click=cb_select_all, args=(existing_handles,), use_container_width=True)
                     with te3:
-                        st.button("❌ Bỏ Chọn", key="btn_clear_sel_t1_ext", on_click=cb_clear_all, use_container_width=True)
+                        st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_ext", on_click=cb_clear_all, use_container_width=True)
 
                 items_per_page_ex = 20
                 total_pages_ex = max(1, (len(existing_handles) + items_per_page_ex - 1) // items_per_page_ex)
@@ -1412,6 +1433,7 @@ with tab1:
                         with c2:
                             st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}`")
                             st.markdown(f"❌ **Lý do loại:** <span style='color:#EF4444; font-weight:700;'>{item.get('Lý do loại', item['Trạng thái'])}</span>", unsafe_allow_html=True)
+                            st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
                         with c3:
                             if st.button("🗑️ Xóa Kênh", key=f"del_t1_rej_{p_id}", use_container_width=True):
                                 delete_channel_from_system(p_id)
@@ -1649,6 +1671,7 @@ with tab3:
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
 
+                # STICKY FLOATING ACTION BAR
                 with st.container(border=True):
                     st.markdown('<div class="sticky-action-bar"></div>', unsafe_allow_html=True)
                     ba1, ba2, ba3, ba4, ba5 = st.columns([2.5, 2.5, 2.0, 1.5, 1.5])
@@ -1821,17 +1844,17 @@ with tab3:
                         with c0:
                             st.checkbox("", key=f"chk_r_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
-                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
-                            st.write(f"**{row['Tên Kênh']}**")
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='{item.get('Link Kênh', f'https://youtube.com/@{p_id}')}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
-                                show_video_dialog(p_id)
+                                show_video_dialog(p_id, pre_fetched_videos=item.get('recent_videos'))
                         with c2:
-                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | 🌍 **Q.Gia:** `{row.get('Quốc gia', '')}`")
-                            st.write(f"🎬 **Tổng Video:** `{row.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{row.get('Video Gần Nhất', '')}`")
-                            st.markdown(render_social_badges_html(row.get("Socials", {})), unsafe_allow_html=True)
+                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | 🌍 **Q.Gia:** `{item.get('Quốc gia', '')}`")
+                            st.write(f"🎬 **Tổng Video:** `{item.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{item.get('Video Gần Nhất', '')}`")
+                            st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
                         with c3:
-                            st.write(f"**Database:** {row.get('Trạng Thái DB', '')}")
-                            st.markdown(f"❌ **Lý do:** <span style='color:#D95F26; font-weight:700;'>{item['Lý do loại']}</span>", unsafe_allow_html=True)
+                            st.write(f"**Database:** {item.get('Trạng Thái DB', '')}")
+                            st.markdown(f"❌ **Lý do:** <span style='color:#D95F26; font-weight:700;'>{item.get('Lý do loại', '')}</span>", unsafe_allow_html=True)
                         with c4:
                             bc1, bc2 = st.columns(2)
                             if is_in_cart:
@@ -1846,7 +1869,7 @@ with tab3:
                                     st.rerun()
                             else:
                                 if bc1.button("🛒 Thêm Giỏ", key=f"add_r_{p_id}", use_container_width=True):
-                                    item_data = dict(row); item_data["Tag"] = "📌 Chưa phân loại"
+                                    item_data = dict(item); item_data["Tag"] = "📌 Chưa phân loại"
                                     st.session_state['cart'][p_id] = item_data
                                     add_to_cart_db(p_id, item_data)
                                     st.rerun()
@@ -1859,7 +1882,7 @@ with tab3:
                                     with st.spinner("Đang dựng Audit..."):
                                         b_data, f_name = run_single_channel_audit(p_id)
                                         if b_data:
-                                            supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                            supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": item.get('Tên Kênh', p_id.upper()), "source": "Smart Finder Audit"}], on_conflict="handle").execute()
                                             st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
                                             st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                             st.rerun()
@@ -1959,7 +1982,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- ADVANCED DATABASE CRM VIEWER WITH ALL 4 FILTERS ---
+# --- ADVANCED DATABASE CRM VIEWER WITH REAL-TIME FILTERS & DEEP SOCIALS ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -1973,12 +1996,12 @@ with tab5:
             if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
                 confirm_clear_db_dialog()
 
-        # FULL ADVANCED FILTERS (4 COLUMNS INCLUDING SUBSCRIBER RANGE)
+        # FULL ADVANCED FILTERS (4 COLUMNS)
         st.divider()
         st.markdown("#### 🔍 Bộ Lọc Database Chuyên Sâu:")
         fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
         with fc1:
-            search_db = st.text_input("Tìm kiếm theo Handle hoặc Tên:", "")
+            search_db = st.text_input("Tìm kiếm thủ công theo Handle/Tên:", "")
         with fc2:
             sub_range_options = ["-- Tất Cả Mốc Subs --", "< 100K Subs", "100K - 500K Subs", "500K - 1M Subs", "> 1M Subs"]
             sel_sub_range = st.selectbox("Lọc theo Mốc Subscribers:", options=sub_range_options)
@@ -1997,27 +2020,21 @@ with tab5:
         if sel_source != "-- Tất Cả Nguồn --":
             df_filtered = df_filtered[df_filtered['source'] == sel_source]
 
-        # SUBSCRIBER FILTERING
-        def parse_sub_num(val):
-            if pd.isna(val) or not val: return 0
-            s = str(val).replace(',', '').replace(' ', '').upper()
-            m_k = re.search(r'([\d.]+)\s*K', s)
-            if m_k: return int(float(m_k.group(1)) * 1000)
-            m_m = re.search(r'([\d.]+)\s*M', s)
-            if m_m: return int(float(m_m.group(1)) * 1000000)
-            try: return int(float(s))
-            except Exception: return 0
-
-        if sel_sub_range != "-- Tất Cả Mốc Subs --" and 'subscribers' in df_filtered.columns:
-            df_filtered['sub_num'] = df_filtered['subscribers'].apply(parse_sub_num)
-            if sel_sub_range == "< 100K Subs":
-                df_filtered = df_filtered[df_filtered['sub_num'] < 100000]
-            elif sel_sub_range == "100K - 500K Subs":
-                df_filtered = df_filtered[(df_filtered['sub_num'] >= 100000) & (df_filtered['sub_num'] < 500000)]
-            elif sel_sub_range == "500K - 1M Subs":
-                df_filtered = df_filtered[(df_filtered['sub_num'] >= 500000) & (df_filtered['sub_num'] < 1000000)]
-            elif sel_sub_range == "> 1M Subs":
-                df_filtered = df_filtered[df_filtered['sub_num'] >= 1000000]
+        # AUTOMATIC SUBSCRIBER FILTERING
+        if sel_sub_range != "-- Tất Cả Mốc Subs --":
+            with st.spinner("Đang tính toán mốc Subs để lọc tự động..."):
+                valid_handles = []
+                for idx, r in df_filtered.iterrows():
+                    p_h = to_pure_id(r['handle'])
+                    meta = get_channel_crm_meta(p_h)
+                    s_num = meta['sub_count']
+                    
+                    if sel_sub_range == "< 100K Subs" and s_num < 100000: valid_handles.append(r['handle'])
+                    elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): valid_handles.append(r['handle'])
+                    elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): valid_handles.append(r['handle'])
+                    elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: valid_handles.append(r['handle'])
+                
+                df_filtered = df_filtered[df_filtered['handle'].isin(valid_handles)]
 
         st.caption(f"Đã lọc: **{len(df_filtered)}** / {len(df_all)} kênh")
 
@@ -2036,7 +2053,7 @@ with tab5:
                 "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
             })
         else:
-            # RENDER MODE 2: CARD VIEW WITH PAGINATION
+            # RENDER MODE 2: CARD VIEW WITH PAGINATION & STICKY ACTION BAR
             items_per_page = 20
             total_pages = max(1, (len(df_filtered) + items_per_page - 1) // items_per_page)
             page = st.number_input("Trang:", min_value=1, max_value=total_pages, value=1, step=1)
@@ -2045,6 +2062,7 @@ with tab5:
             end_idx = start_idx + items_per_page
             page_data = df_filtered.iloc[start_idx:end_idx]
 
+            # STICKY FLOATING ACTION BAR FOR DB
             with st.container(border=True):
                 st.markdown('<div class="sticky-action-bar"></div>', unsafe_allow_html=True)
                 cnt_total_sel_db = len(st.session_state['selected_channels'])
@@ -2070,6 +2088,7 @@ with tab5:
                 p_id = to_pure_id(row['handle'])
                 is_active = (p_id == st.session_state.get('active_inspected_handle'))
                 stt_num_db = start_idx + idx + 1
+                crm_meta = get_channel_crm_meta(p_id)
                 
                 with st.container(border=True):
                     if is_active:
@@ -2085,7 +2104,9 @@ with tab5:
                         if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                             show_video_dialog(p_id)
                     with c2:
-                        st.write(f"**Nguồn dữ liệu:** {row.get('source', 'N/A')}")
+                        st.write(f"👥 **Subs:** `{crm_meta['sub_str']}` | 🌍 **Q.Gia:** `{crm_meta['country']}`")
+                        st.write(f"📁 **Nguồn dữ liệu:** {row.get('source', 'N/A')}")
+                        st.markdown(render_social_badges_html(crm_meta.get("socials", {})), unsafe_allow_html=True)
                     with c3:
                         if st.button("🗑️ Xóa DB", key=f"del_db_{idx}_{p_id}", use_container_width=True):
                             delete_channel_from_system(p_id)
