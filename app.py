@@ -1688,9 +1688,10 @@ with tab4:
                 if h_from_fn:
                     new_handles_to_insert.append({"handle": h_from_fn, "youtuber_name": h_from_fn.upper(), "source": file.name})
                 
-                # EXTRACT ALL HANDLES FROM COLUMNS INSIDE THE EXCEL FILE
+                # SAFELY EXTRACT ALL HANDLES INSIDE THE EXCEL FILE COLUMNS
                 file.seek(0)
-                extracted_handles = extract_handles_from_file(file)
+                raw_inputs = extract_raw_inputs_from_file(file)
+                extracted_handles = parse_raw_inputs_to_handles(raw_inputs)
                 for ch in extracted_handles:
                     new_handles_to_insert.append({"handle": ch, "youtuber_name": ch.upper(), "source": file.name})
 
