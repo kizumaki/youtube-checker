@@ -193,6 +193,7 @@ def add_to_cart_db(pure_handle, channel_data):
         supabase.table("cart_items").upsert({"handle": pure_handle, "channel_data": data_clean}, on_conflict="handle").execute()
     except Exception: pass
 
+# ULTRA-FAST SINGLE QUERY BULK UPSERT FOR BATCH CART ADDITION
 def add_batch_to_cart_db(channels_list):
     try:
         rows = []
@@ -720,21 +721,67 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
             
     return list(handles)
 
+# NATIVE WORD (.DOCX) TEXT EXTRACTOR
+def extract_text_from_docx_bytes(file_bytes):
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+            xml_content = z.read('word/document.xml')
+            tree = ET.fromstring(xml_content)
+            texts = [elem.text for elem in tree.iter() if elem.tag.endswith('}t') and elem.text]
+            return " ".join(texts)
+    except Exception:
+        return ""
+
 def extract_raw_inputs_from_file(uploaded_file):
     raw_list = []
     fname = uploaded_file.name.lower()
     try:
+        uploaded_file.seek(0)
+        file_bytes = uploaded_file.read()
+        uploaded_file.seek(0)
+        
         if fname.endswith('.txt'):
-            content = uploaded_file.read().decode("utf-8", errors="ignore")
+            content = file_bytes.decode("utf-8", errors="ignore")
             raw_list = re.split(r'[\n,\t\r]+', content)
         elif fname.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(io.BytesIO(file_bytes))
             for col in df.columns:
+                raw_list.append(str(col))
                 for val in df[col].dropna(): raw_list.append(str(val))
         elif fname.endswith('.xlsx') or fname.endswith('.xls'):
-            df = pd.read_excel(uploaded_file)
+            raw_list.append(uploaded_file.name)
+            df = pd.read_excel(io.BytesIO(file_bytes))
             for col in df.columns:
+                raw_list.append(str(col))
                 for val in df[col].dropna(): raw_list.append(str(val))
+        elif fname.endswith('.docx') or fname.endswith('.doc'):
+            text = extract_text_from_docx_bytes(file_bytes)
+            raw_list = re.split(r'[\n,\t\r]+', text)
+        elif fname.endswith('.zip'):
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                for name in z.namelist():
+                    if name.startswith('~$') or name.startswith('._') or name.endswith('/'): continue
+                    raw_list.append(name)
+                    n_lower = name.lower()
+                    z_bytes = z.read(name)
+                    if n_lower.endswith('.txt'):
+                        raw_list.extend(re.split(r'[\n,\t\r]+', z_bytes.decode("utf-8", errors="ignore")))
+                    elif n_lower.endswith('.docx') or n_lower.endswith('.doc'):
+                        raw_list.extend(re.split(r'[\n,\t\r]+', extract_text_from_docx_bytes(z_bytes)))
+                    elif n_lower.endswith('.xlsx') or n_lower.endswith('.xls'):
+                        try:
+                            df = pd.read_excel(io.BytesIO(z_bytes))
+                            for col in df.columns:
+                                raw_list.append(str(col))
+                                for val in df[col].dropna(): raw_list.append(str(val))
+                        except Exception: pass
+                    elif n_lower.endswith('.csv'):
+                        try:
+                            df = pd.read_csv(io.BytesIO(z_bytes))
+                            for col in df.columns:
+                                raw_list.append(str(col))
+                                for val in df[col].dropna(): raw_list.append(str(val))
+                        except Exception: pass
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return raw_list
 
@@ -1844,22 +1891,81 @@ with tab1:
 
     render_shared_cart_ui(key_suffix="tab1")
 
-# --- TAB 2: LIVE API SCRAPER ---
+# --- TAB 2: LIVE API SCRAPER (SINGLE & BATCH AUDIT GENERATOR) ---
 with tab2:
-    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14</h3>", unsafe_allow_html=True)
-    channel_url_input = st.text_input("Dán Link kênh hoặc Handle vào đây:", value="@4wd247")
+    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14 (Đơn / Hàng Loạt)</h3>", unsafe_allow_html=True)
+    st.caption("💡 *Hỗ trợ nhập 1 hoặc dán danh sách nhiều Handle/Link YouTube, hoặc Upload file `.zip`, `.xlsx`, `.txt`, `.docx` (Word).*")
 
-    if channel_url_input and st.button("🚀 Xử lý Kênh & Tạo Báo Cáo V4.14", type="primary"):
-        pure_h = to_pure_id(channel_url_input)
-        if pure_h:
-            try:
-                b_data, f_name = run_single_channel_audit(pure_h)
-                if b_data:
-                    supabase.table("channels").upsert([{"handle": pure_h, "youtuber_name": pure_h.upper(), "source": "YouTube API V4.14"}], on_conflict="handle").execute()
-                    st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công kênh @{pure_h} vào Database!"
-                    st.success(f"🎉 Đã dựng xong báo cáo Audit!")
-                    st.download_button("📥 Tải về File Audit V4.14", data=b_data, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-            except Exception as e: st.error(f"Lỗi: {e}")
+    col_t2_1, col_t2_2 = st.columns([2, 1])
+    with col_t2_1:
+        text_input_area_t2 = st.text_area("Dán danh sách Handle/Link kênh/Link Video (mỗi dòng 1 link):", height=180, value="@4wd247", key="text_input_tab2")
+    with col_t2_2:
+        file_input_t2 = st.file_uploader("Upload file danh sách hoặc gói báo cáo (.zip, .xlsx, .txt, .docx, .csv):", type=["zip", "xlsx", "xls", "txt", "docx", "doc", "csv"], key="file_input_tab2")
+
+    if st.button("🚀 Bắt Đầu Cào Live & Tạo Báo Cáo Audit V4.14", type="primary", key="btn_run_tab2_audit"):
+        all_raw_inputs_t2 = []
+        if text_input_area_t2:
+            all_raw_inputs_t2.extend(re.split(r'[\n,\t\r]+', str(text_input_area_t2)))
+        if file_input_t2:
+            all_raw_inputs_t2.extend(extract_raw_inputs_from_file(file_input_t2))
+            
+        target_handles_t2 = parse_raw_inputs_to_handles(all_raw_inputs_t2)
+        if not target_handles_t2:
+            st.warning("⚠️ Vui lòng dán danh sách Handle/Link hoặc upload file để cào báo cáo!")
+        else:
+            tot_t2 = len(target_handles_t2)
+            st.info(f"🔍 Đang tiến hành cào Live & dựng Báo cáo Audit V4.14 cho **{tot_t2}** kênh...")
+            
+            prog_t2 = st.progress(0)
+            stat_t2 = st.empty()
+            comp_t2 = 0
+            audit_results_t2 = []
+            db_upsert_list_t2 = []
+            quota_exhausted_t2 = False
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(run_single_channel_audit, p_h) for p_h in target_handles_t2]
+                for future in as_completed(futures):
+                    try:
+                        b_bytes, f_name = future.result()
+                        if b_bytes and f_name:
+                            audit_results_t2.append((f_name, b_bytes))
+                            p_h_clean = f_name.split('_')[0]
+                            db_upsert_list_t2.append({"handle": p_h_clean, "youtuber_name": p_h_clean.upper(), "source": "Live Audit Scraper"})
+                    except Exception as err:
+                        err_str = str(err)
+                        if "Quota" in err_str or "API Keys" in err_str:
+                            quota_exhausted_t2 = True
+
+                    comp_t2 += 1
+                    prog_t2.progress(comp_t2 / tot_t2)
+                    stat_t2.markdown(f"⏳ **Đang cào dữ liệu & Dựng Audit V4.14:** `{comp_t2}/{tot_t2}` kênh...")
+
+            prog_t2.empty()
+            stat_t2.empty()
+
+            if db_upsert_list_t2:
+                supabase.table("channels").upsert(db_upsert_list_t2, on_conflict="handle").execute()
+                for k in list(st.session_state.keys()):
+                    if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
+                        st.session_state.pop(k, None)
+                st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công {len(db_upsert_list_t2)} kênh mới vào Database!"
+
+            if quota_exhausted_t2:
+                st.warning(f"⚠️ Quota API đã cạn giữa chừng! Hệ thống đã hoàn tất và đóng gói {len(audit_results_t2)}/{tot_t2} file Audit trước khi cạn Quota.")
+
+            if len(audit_results_t2) == 1:
+                f_name, b_bytes = audit_results_t2[0]
+                st.success(f"🎉 Đã dựng xong báo cáo Audit V4.14 cho kênh @{f_name.split('_')[0]}!")
+                st.download_button("📥 Tải về File Audit V4.14 (.xlsx)", data=b_bytes, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
+            elif len(audit_results_t2) > 1:
+                zip_buf = io.BytesIO()
+                with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z_file:
+                    for fname, fbytes in audit_results_t2:
+                        z_file.writestr(fname, fbytes)
+                out_zip_name = f"Goi_Bao_Cao_Audit_V414_{datetime.datetime.now().strftime('%d-%m-%Y')}.zip"
+                st.success(f"🎉 Đã hoàn tất cào dữ liệu và dựng {len(audit_results_t2)} File Báo cáo Audit V4.14!")
+                st.download_button(f"📦 TẢI GÓI AUDIT ZIP ({len(audit_results_t2)} FILE EXCEL)", data=zip_buf.getvalue(), file_name=out_zip_name, mime="application/zip", type="primary", use_container_width=True)
 
 # --- TAB 3: MULTI-THREADED SMART RELATED FINDER ---
 def process_single_candidate(item, min_subs_choice, min_duration_choice, db_existing_set, api_keys):
@@ -2383,7 +2489,7 @@ with tab3:
                 if total_pages_rej > 1:
                     st.divider()
                     col_prjb1, col_prjb2 = st.columns([2, 8])
-                    with col_prjb1:
+                    with col_ppb1:
                         st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_bottom", on_change=sync_pagination_bottom, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
                     with col_prjb2:
                         st.write("")
@@ -2391,12 +2497,12 @@ with tab3:
 
     render_shared_cart_ui(key_suffix="tab3")
 
-# --- TAB 4: UPLOAD & UPDATE DATABASE DIRECTLY FROM EXCEL / ZIP / TXT ---
+# --- TAB 4: UPLOAD & UPDATE DATABASE DIRECTLY FROM EXCEL / ZIP / TXT / WORD ---
 with tab4:
-    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📤 Upload file .ZIP, .TXT hoặc .XLSX để cập nhật Database</h3>", unsafe_allow_html=True)
-    st.caption("💡 *Hỗ trợ tải lên trực tiếp các file Excel báo cáo lẻ (.xlsx), file nén .ZIP hoặc file danh sách .TXT.*")
+    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📤 Upload file .ZIP, .TXT, .XLSX hoặc .DOCX để cập nhật Database</h3>", unsafe_allow_html=True)
+    st.caption("💡 *Hỗ trợ tải lên trực tiếp các file Excel báo cáo lẻ (.xlsx), file Word (.docx), file nén .ZIP hoặc file danh sách .TXT.*")
     
-    uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo), file `.txt` hoặc file Excel báo cáo `.xlsx` vào đây:", type=["zip", "txt", "xlsx", "xls"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo), file `.txt`, `.docx` hoặc file Excel báo cáo `.xlsx` vào đây:", type=["zip", "txt", "xlsx", "xls", "docx", "doc", "csv"], accept_multiple_files=True)
     
     if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database", type="primary"):
         new_handles_to_insert = []
@@ -2420,6 +2526,12 @@ with tab4:
             elif file_name.endswith('.txt'):
                 content = file.read().decode("utf-8", errors="ignore")
                 for line in content.splitlines():
+                    h = to_pure_id(line)
+                    if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name, "filename": file.name})
+            elif file_name.endswith('.docx') or file_name.endswith('.doc'):
+                file.seek(0)
+                text = extract_text_from_docx_bytes(file.read())
+                for line in re.split(r'[\n,\t\r]+', text):
                     h = to_pure_id(line)
                     if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name, "filename": file.name})
             elif file_name.endswith('.xlsx') or file_name.endswith('.xls'):
