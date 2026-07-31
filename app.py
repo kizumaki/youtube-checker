@@ -969,7 +969,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     return buf.getvalue()
 
 # --- REUSABLE COMPONENT: RENDER SHARED CART ---
-def render_shared_cart_ui(key_suffix=""):
+def render_shared_cart_ui(key_suffix="cart_ui"):
     st.divider()
     cart_items = st.session_state['cart']
     
@@ -1019,6 +1019,10 @@ def render_shared_cart_ui(key_suffix=""):
             if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
                 data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": f"Cart Import [{i.get('Tag', '')}]"} for i in cart_items.values()]
                 supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
+                # Invalidate Tab 5 caches
+                for k in list(st.session_state.keys()):
+                    if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
+                        st.session_state.pop(k, None)
                 st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
             if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
                 clear_cart_db()
@@ -1239,7 +1243,7 @@ with tab1:
                                         item_data = {"Handle": item["Handle"], "Tên Kênh": item.get("Tên Kênh", p_id.upper()), "Link Kênh": f"https://www.youtube.com/@{p_id}", "Trạng Thái DB": "✅ KÊNH MỚI", "Tag": "📌 Chưa phân loại", "Socials": item.get("Socials", {})}
                                         st.session_state['cart'][p_id] = item_data
                                         add_to_cart_db(p_id, item_data)
-                                st.success(f"🎉 Đã thêm {cnt_for_cart} kênh mới vào giỏ!")
+                                st.toast(f"🎉 Đã thêm {cnt_for_cart} kênh mới vào giỏ!")
                                 st.rerun()
                             else: st.warning("Vui lòng chọn kênh chưa có trong giỏ!")
                     with tb2:
@@ -1258,7 +1262,7 @@ with tab1:
                                     for k in list(st.session_state.keys()):
                                         if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                                             st.session_state.pop(k, None)
-                                    # Update session states dynamically
+                                    # Move saved channels from NEW to EXISTING
                                     st.session_state['batch_check_new'] = [item for item in new_handles if to_pure_id(item["Handle"]) not in saved_ids]
                                     for item in new_handles:
                                         p_id = to_pure_id(item["Handle"])
@@ -1268,6 +1272,7 @@ with tab1:
                                                 "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
                                                 "Trạng thái": "❌ Đã có trong DB"
                                             })
+                                    st.session_state['selected_channels'].difference_update(saved_ids)
                                     st.toast(f"🎉 Đã lưu thành công {len(data_db)} kênh vào Database!")
                                     st.rerun()
                             else: st.warning("Vui lòng chọn ít nhất 1 kênh!")
@@ -1280,7 +1285,7 @@ with tab1:
                             if cnt_total_sel > 0:
                                 for p_id in list(selected_set): delete_channel_from_system(p_id)
                                 st.session_state['selected_channels'].clear()
-                                st.success(f"🗑️ Đã xóa {cnt_total_sel} kênh!")
+                                st.toast(f"🗑️ Đã xóa {cnt_total_sel} kênh!")
                                 st.rerun()
                             else: st.warning("Vui lòng chọn ít nhất 1 kênh!")
                     with tb5:
@@ -1386,7 +1391,7 @@ with tab1:
                             if cnt_total_sel_ex > 0:
                                 for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
                                 cb_clear_all()
-                                st.success(f"🗑️ Đã xóa {cnt_total_sel_ex} kênh!")
+                                st.toast(f"🗑️ Đã xóa {cnt_total_sel_ex} kênh!")
                                 st.rerun()
                             else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                     with te2:
@@ -1444,7 +1449,7 @@ with tab1:
                             if cnt_total_sel_rej > 0:
                                 for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
                                 cb_clear_all()
-                                st.success(f"🗑️ Đã xóa {cnt_total_sel_rej} kênh!")
+                                st.toast(f"🗑️ Đã xóa {cnt_total_sel_rej} kênh!")
                                 st.rerun()
                             else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                     with tr2:
@@ -1736,7 +1741,7 @@ with tab3:
                                         item_data = dict(row); item_data["Tag"] = "📌 Chưa phân loại"
                                         st.session_state['cart'][p_id] = item_data
                                         add_to_cart_db(p_id, item_data)
-                                st.success(f"🎉 Đã thêm {cnt_for_cart} kênh mới đã chọn!")
+                                st.toast(f"🎉 Đã thêm {cnt_for_cart} kênh mới đã chọn!")
                                 st.rerun()
                             else: st.warning("Không có kênh mới nào chưa được thêm vào giỏ trong các kênh bạn chọn!")
                     with ba2:
@@ -1748,7 +1753,7 @@ with tab3:
                             if cnt_total_sel > 0:
                                 for p_id in list(selected_set): delete_channel_from_system(p_id)
                                 cb_clear_all()
-                                st.success(f"🗑️ Đã xóa {cnt_total_sel} kênh!")
+                                st.toast(f"🗑️ Đã xóa {cnt_total_sel} kênh!")
                                 st.rerun()
                             else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                     with ba4:
@@ -1871,13 +1876,13 @@ with tab3:
                             if cnt_total_sel_t3_rej > 0:
                                 for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
                                 cb_clear_all()
-                                st.success(f"🗑️ Đã xóa {cnt_total_sel_t3_rej} kênh!")
+                                st.toast(f"🗑️ Đã xóa {cnt_total_sel_t3_rej} kênh!")
                                 st.rerun()
                             else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                     with ra2:
                         st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_rej", on_click=cb_select_all, args=(display_rejected,), use_container_width=True)
                     with ra3:
-                        st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t3_rej", on_click=cb_clear_all, use_container_width=True)
+                        st.button("❌ Bỏ Chọn", key="btn_clear_sel_t3_rej", on_click=cb_clear_all, use_container_width=True)
 
                 items_per_page_rej = 20
                 total_pages_rej = max(1, (len(display_rejected) + items_per_page_rej - 1) // items_per_page_rej)
@@ -2053,7 +2058,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- MULTI-THREADED CRM DATABASE VIEWER WITH PARALLEL FAST PAGE FETCH ---
+# --- MULTI-THREADED CRM DATABASE VIEWER WITH SMART INPUT & MULTI-FORMAT SEARCH ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -2071,7 +2076,7 @@ with tab5:
         st.markdown("#### 🔍 Bộ Lọc Database Chuyên Sâu:")
         fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
         with fc1:
-            search_db = st.text_input("Tìm kiếm thủ công theo Handle/Tên:", "")
+            search_db = st.text_input("Tìm kiếm thủ công (Handle, Tên, Link Kênh, Link Video):", placeholder="Dán @handle, link Youtube hoặc link Video...")
         with fc2:
             sub_range_options = ["-- Tất Cả Mốc Subs --", "< 100K Subs", "100K - 500K Subs", "500K - 1M Subs", "> 1M Subs"]
             sel_sub_range = st.selectbox("Lọc theo Mốc Subscribers:", options=sub_range_options)
@@ -2082,11 +2087,32 @@ with tab5:
             view_mode = st.radio("Chế độ hiển thị:", ["🎨 Card View (Thẻ chi tiết)", "📊 Table Grid View (Bảng nén gọn)"], horizontal=True)
 
         df_pre = df_all.copy()
-        if search_db:
-            df_pre = df_pre[
-                df_pre['handle'].str.contains(search_db, case=False, na=False) | 
-                df_pre['youtuber_name'].str.contains(search_db, case=False, na=False)
-            ]
+        
+        # SMART MULTI-FORMAT MANUAL SEARCH FILTER
+        if search_db.strip():
+            s_input = search_db.strip()
+            v_id = extract_video_id(s_input)
+            resolved_handles = []
+            if v_id:
+                with st.spinner("🔍 Đang giải mã Link Video sang Handle Kênh..."):
+                    resolved_handles = get_handles_from_video_ids([v_id])
+
+            pure_h = to_pure_id(s_input)
+            clean_kw = re.sub(r'^@+', '', s_input).strip().lower()
+
+            cond_handle = df_pre['handle'].str.contains(clean_kw, case=False, na=False)
+            cond_name = df_pre['youtuber_name'].str.contains(clean_kw, case=False, na=False)
+
+            if pure_h:
+                cond_pure = df_pre['handle'].str.contains(pure_h, case=False, na=False)
+                cond_handle = cond_handle | cond_pure
+
+            if resolved_handles:
+                cond_resolved = df_pre['handle'].apply(to_pure_id).isin([h.lower() for h in resolved_handles])
+                df_pre = df_pre[cond_handle | cond_name | cond_resolved]
+            else:
+                df_pre = df_pre[cond_handle | cond_name]
+
         if sel_source != "-- Tất Cả Nguồn --":
             df_pre = df_pre[df_pre['source'] == sel_source]
 
@@ -2188,7 +2214,7 @@ with tab5:
                             for p_id in list(st.session_state['selected_channels']):
                                 delete_channel_from_system(p_id)
                             cb_clear_all()
-                            st.success(f"🗑️ Đã xóa {cnt_total_sel_db} kênh khỏi Database!")
+                            st.toast(f"🗑️ Đã xóa {cnt_total_sel_db} kênh khỏi Database!")
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh trong DB!")
                 with db_act2:
