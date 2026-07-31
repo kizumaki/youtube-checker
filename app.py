@@ -51,6 +51,7 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
+# CLEAR BOTH THE SET AND CHECKBOX WIDGET STATES SAFELY
 def clear_selected_channels():
     st.session_state['selected_channels'].clear()
     for key in list(st.session_state.keys()):
@@ -284,7 +285,7 @@ with st.sidebar:
             if key.startswith('audit_file_'): del st.session_state[key]
         st.rerun()
 
-# --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM ---
+# --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM (FIXED SAFE WIDGET CLEANUP) ---
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
     try: supabase.table("channels").delete().eq("handle", pure_handle).execute()
@@ -294,9 +295,10 @@ def delete_channel_from_system(pure_handle):
     if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
-    if f"chk_t1_{pure_handle}" in st.session_state: st.session_state[f"chk_t1_{pure_handle}"] = False
-    if f"chk_p_{pure_handle}" in st.session_state: st.session_state[f"chk_p_{pure_handle}"] = False
-    if f"chk_r_{pure_handle}" in st.session_state: st.session_state[f"chk_r_{pure_handle}"] = False
+
+    # SAFELY POP WIDGET KEYS WITHOUT DIRECT ASSIGNMENT TO AVOID STREAMLIT API EXCEPTION
+    for prefix in ["chk_t1_", "chk_p_", "chk_r_"]:
+        st.session_state.pop(f"{prefix}{pure_handle}", None)
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing']:
         if key_list in st.session_state:
@@ -782,7 +784,7 @@ def render_shared_cart_ui(key_suffix=""):
             
         if 'recent_videos' in df_cart.columns: df_cart = df_cart.drop(columns=['recent_videos'])
 
-        # FIX: FORCE DATAFRAME INDEX TO START AT 1
+        # FORCE DATAFRAME INDEX TO START AT 1
         df_cart.index = range(1, len(df_cart) + 1)
 
         st.dataframe(df_cart, use_container_width=True, column_config={
