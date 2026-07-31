@@ -51,21 +51,24 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
-# SELECT ALL FROM A SPECIFIC LIST SAFELY
-def select_all_from_list(channel_list, key_prefix=""):
+# CALLBACK: SELECT ALL FROM A SPECIFIC LIST SAFELY BEFORE WIDGET RENDERING
+def cb_select_all(channel_list, key_prefix=""):
     for item in channel_list:
         raw_h = item.get('Handle') or item.get('handle')
         p_id = to_pure_id(raw_h)
         if p_id:
             st.session_state['selected_channels'].add(p_id)
-            st.session_state.pop(f"{key_prefix}{p_id}", None)
+            st.session_state[f"{key_prefix}{p_id}"] = True
 
-# CLEAR BOTH THE SET AND CHECKBOX WIDGET STATES SAFELY WITHOUT STREAMLIT API EXCEPTION
-def clear_selected_channels():
+# CALLBACK: CLEAR ALL SELECTIONS SAFELY BEFORE WIDGET RENDERING
+def cb_clear_all():
     st.session_state['selected_channels'].clear()
     for key in list(st.session_state.keys()):
         if key.startswith("chk_"):
-            st.session_state.pop(key, None)
+            st.session_state[key] = False
+
+def clear_selected_channels():
+    cb_clear_all()
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -176,7 +179,7 @@ def clear_entire_database():
         keys_to_clear = ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']
         for k in keys_to_clear:
             if k in st.session_state: del st.session_state[k]
-        clear_selected_channels()
+        cb_clear_all()
         return True
     except Exception:
         return False
@@ -297,7 +300,7 @@ with st.sidebar:
 
     st.divider()
     if st.button("🔄 Làm Mới Màn Hình", use_container_width=True):
-        clear_selected_channels()
+        cb_clear_all()
         keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'active_inspected_handle']
         for key in keys_to_clear:
             if key in st.session_state: del st.session_state[key]
@@ -1130,13 +1133,9 @@ with tab1:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with tb5:
-                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_new", use_container_width=True):
-                        select_all_from_list(new_handles, "chk_t1_")
-                        st.rerun()
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_new", on_click=cb_select_all, args=(new_handles, "chk_t1_"), use_container_width=True)
                 with tb6:
-                    if st.button("❌ Bỏ Chọn", key="btn_clear_sel_t1_new", use_container_width=True):
-                        clear_selected_channels()
-                        st.rerun()
+                    st.button("❌ Bỏ Chọn", key="btn_clear_sel_t1_new", on_click=cb_clear_all, use_container_width=True)
 
                 st.divider()
                 
@@ -1211,18 +1210,14 @@ with tab1:
                     if st.button(f"🗑️ Xóa ({cnt_total_sel_ex}) Kênh Đã Chọn", key="btn_del_sel_t1_ext", use_container_width=True):
                         if cnt_total_sel_ex > 0:
                             for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
-                            clear_selected_channels()
+                            cb_clear_all()
                             st.success(f"🗑️ Đã xóa {cnt_total_sel_ex} kênh!")
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with te2:
-                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_ext", use_container_width=True):
-                        select_all_from_list(existing_handles, "chk_t1_ext_")
-                        st.rerun()
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_ext", on_click=cb_select_all, args=(existing_handles, "chk_t1_ext_"), use_container_width=True)
                 with te3:
-                    if st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_ext", use_container_width=True):
-                        clear_selected_channels()
-                        st.rerun()
+                    st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_ext", on_click=cb_clear_all, use_container_width=True)
 
                 st.divider()
 
@@ -1266,18 +1261,14 @@ with tab1:
                     if st.button(f"🗑️ Xóa ({cnt_total_sel_rej}) Kênh Đã Chọn", key="btn_del_sel_t1_rej", use_container_width=True):
                         if cnt_total_sel_rej > 0:
                             for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
-                            clear_selected_channels()
+                            cb_clear_all()
                             st.success(f"🗑️ Đã xóa {cnt_total_sel_rej} kênh!")
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with tr2:
-                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_rej", use_container_width=True):
-                        select_all_from_list(rejected_handles, "chk_t1_rej_")
-                        st.rerun()
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_rej", on_click=cb_select_all, args=(rejected_handles, "chk_t1_rej_"), use_container_width=True)
                 with tr3:
-                    if st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_rej", use_container_width=True):
-                        clear_selected_channels()
-                        st.rerun()
+                    st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_rej", on_click=cb_clear_all, use_container_width=True)
 
                 st.divider()
 
@@ -1555,13 +1546,9 @@ with tab3:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with ba4:
-                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_pass_t3", use_container_width=True):
-                        select_all_from_list(display_passed, "chk_p_")
-                        st.rerun()
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_pass_t3", on_click=cb_select_all, args=(display_passed, "chk_p_"), use_container_width=True)
                 with ba5:
-                    if st.button("❌ Bỏ Chọn", key="btn_clear_sel_pass", use_container_width=True):
-                        clear_selected_channels()
-                        st.rerun()
+                    st.button("❌ Bỏ Chọn", key="btn_clear_sel_pass", on_click=cb_clear_all, use_container_width=True)
 
                 st.divider()
 
@@ -1669,18 +1656,14 @@ with tab3:
                     if st.button(f"🗑️ Xóa ({cnt_total_sel_t3_rej}) Đã Chọn", key="btn_del_sel_t3_rej", use_container_width=True):
                         if cnt_total_sel_t3_rej > 0:
                             for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
-                            clear_selected_channels()
+                            cb_clear_all()
                             st.success(f"🗑️ Đã xóa {cnt_total_sel_t3_rej} kênh!")
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with ra2:
-                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_rej", use_container_width=True):
-                        select_all_from_list(display_rejected, "chk_r_")
-                        st.rerun()
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_rej", on_click=cb_select_all, args=(display_rejected, "chk_r_"), use_container_width=True)
                 with ra3:
-                    if st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t3_rej", use_container_width=True):
-                        clear_selected_channels()
-                        st.rerun()
+                    st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t3_rej", on_click=cb_clear_all, use_container_width=True)
 
                 st.divider()
 
@@ -1882,22 +1865,16 @@ with tab5:
                 if cnt_total_sel_db > 0:
                     for p_id in list(st.session_state['selected_channels']):
                         delete_channel_from_system(p_id)
-                    clear_selected_channels()
+                    cb_clear_all()
                     st.success(f"🗑️ Đã xóa {cnt_total_sel_db} kênh khỏi Database!")
                     st.rerun()
                 else: st.warning("Vui lòng tick chọn ít nhất 1 kênh trong DB!")
         with db_act2:
-            if st.button("✅ Chọn Tất Cả (Trang Này)", key="btn_sel_page_db", use_container_width=True):
-                select_all_from_list(page_data.to_dict('records'), "chk_db_")
-                st.rerun()
+            st.button("✅ Chọn Tất Cả (Trang Này)", key="btn_sel_page_db", on_click=cb_select_all, args=(page_data.to_dict('records'), "chk_db_"), use_container_width=True)
         with db_act3:
-            if st.button("✅ Chọn Tất Cả (Toàn DB)", key="btn_sel_all_db", use_container_width=True):
-                select_all_from_list(df_filtered.to_dict('records'), "chk_db_")
-                st.rerun()
+            st.button("✅ Chọn Tất Cả (Toàn DB)", key="btn_sel_all_db", on_click=cb_select_all, args=(df_filtered.to_dict('records'), "chk_db_"), use_container_width=True)
         with db_act4:
-            if st.button("❌ Bỏ Chọn", key="btn_clear_sel_db", use_container_width=True):
-                clear_selected_channels()
-                st.rerun()
+            st.button("❌ Bỏ Chọn", key="btn_clear_sel_db", on_click=cb_clear_all, use_container_width=True)
 
         st.divider()
         for idx, row in page_data.iterrows():
