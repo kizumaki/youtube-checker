@@ -53,6 +53,9 @@ def toggle_select_channel(pure_handle):
 
 def clear_selected_channels():
     st.session_state['selected_channels'].clear()
+    for key in list(st.session_state.keys()):
+        if key.startswith("chk_"):
+            st.session_state[key] = False
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -290,6 +293,9 @@ def delete_channel_from_system(pure_handle):
     if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
+    if f"chk_t1_{pure_handle}" in st.session_state: st.session_state[f"chk_t1_{pure_handle}"] = False
+    if f"chk_p_{pure_handle}" in st.session_state: st.session_state[f"chk_p_{pure_handle}"] = False
+    if f"chk_r_{pure_handle}" in st.session_state: st.session_state[f"chk_r_{pure_handle}"] = False
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing']:
         if key_list in st.session_state:
@@ -298,7 +304,7 @@ def delete_channel_from_system(pure_handle):
     audit_key = f"audit_file_{pure_handle}"
     if audit_key in st.session_state: del st.session_state[audit_key]
 
-# --- API QUOTA ROTATION MANAGER (WITH QUOTA TRACKING) ---
+# --- API QUOTA ROTATION MANAGER ---
 def yt_execute(request_func, cost=1):
     keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     if not keys: keys = [DEFAULT_API_KEY]
@@ -310,7 +316,6 @@ def yt_execute(request_func, cost=1):
             req = request_func(yt)
             res = req.execute()
             
-            # Record Usage
             usage = st.session_state.get('api_usage', {})
             usage[key] = usage.get(key, 0) + cost
             st.session_state['api_usage'] = usage
@@ -741,7 +746,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-# --- REUSABLE COMPONENT: RENDER SHARED CART (WITH SYNC & CAMPAIGNS) ---
+# --- REUSABLE COMPONENT: RENDER SHARED CART (WITH UNIQUE WIDGET KEYS) ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
@@ -751,16 +756,16 @@ def render_shared_cart_ui(key_suffix=""):
     with col_t2:
         with st.expander("📁 Quản Lý Chiến Dịch"):
             camps = load_campaigns()
-            new_camp_name = st.text_input("Tên chiến dịch mới:")
-            if st.button("💾 Lưu Giỏ Hàng Thành Chiến Dịch", use_container_width=True):
+            new_camp_name = st.text_input("Tên chiến dịch mới:", key=f"new_camp_name_{key_suffix}")
+            if st.button("💾 Lưu Giỏ Hàng Thành Chiến Dịch", use_container_width=True, key=f"save_camp_btn_{key_suffix}"):
                 if new_camp_name:
                     camps[new_camp_name] = cart_items
                     save_campaigns(camps)
                     st.success(f"Đã lưu chiến dịch '{new_camp_name}'!")
                 else: st.warning("Vui lòng nhập tên chiến dịch.")
             
-            sel_camp = st.selectbox("Tải lại chiến dịch cũ:", options=["-- Chọn --"] + list(camps.keys()))
-            if st.button("📂 Tải Dữ Liệu", use_container_width=True):
+            sel_camp = st.selectbox("Tải lại chiến dịch cũ:", options=["-- Chọn --"] + list(camps.keys()), key=f"sel_camp_{key_suffix}")
+            if st.button("📂 Tải Dữ Liệu", use_container_width=True, key=f"load_camp_btn_{key_suffix}"):
                 if sel_camp != "-- Chọn --":
                     st.session_state['cart'] = camps[sel_camp]
                     clear_cart_db()
@@ -799,10 +804,10 @@ def render_shared_cart_ui(key_suffix=""):
 
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
             wh_col1, wh_col2 = st.columns([3, 1])
-            with wh_col1: webhook_url = st.text_input("🔗 Dán Google Apps Script Webhook URL (Để đồng bộ lên Sheets):")
+            with wh_col1: webhook_url = st.text_input("🔗 Dán Google Apps Script Webhook URL (Để đồng bộ lên Sheets):", key=f"webhook_url_{key_suffix}")
             with wh_col2: 
                 st.write("")
-                if st.button("🚀 Push to Google Sheets", type="primary", use_container_width=True):
+                if st.button("🚀 Push to Google Sheets", type="primary", use_container_width=True, key=f"push_gsheets_btn_{key_suffix}"):
                     if webhook_url:
                         try:
                             requests.post(webhook_url, json={"data": df_cart.to_dict(orient="records")})
