@@ -111,6 +111,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {{ borde
 .badge-tangerine, .badge-tangerine * {{ background-color: #D95F26 !important; color: #FFFFFF !important; border: none !important; }}
 .badge-ocean, .badge-ocean * {{ background-color: #47A5D1 !important; color: #FFFFFF !important; border: none !important; }}
 .badge-score {{ padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 0.8rem; background-color: #FFF2EB; color: #D95F26; border: 1px solid #D95F26; display: inline-block; }}
+.badge-stt {{ font-weight: 800; font-size: 0.85rem; color: #6B7280; background-color: #E5E7EB; padding: 2px 8px; border-radius: 6px; margin-right: 8px; inline-block; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -746,7 +747,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-# --- REUSABLE COMPONENT: RENDER SHARED CART (WITH UNIQUE WIDGET KEYS) ---
+# --- REUSABLE COMPONENT: RENDER SHARED CART (WITH INDEX STARTING AT 1) ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
@@ -780,6 +781,9 @@ def render_shared_cart_ui(key_suffix=""):
             df_cart['Link Kênh'] = df_cart['Handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}" if to_pure_id(h) else "")
             
         if 'recent_videos' in df_cart.columns: df_cart = df_cart.drop(columns=['recent_videos'])
+
+        # FIX: FORCE DATAFRAME INDEX TO START AT 1
+        df_cart.index = range(1, len(df_cart) + 1)
 
         st.dataframe(df_cart, use_container_width=True, column_config={
             "Link Kênh": st.column_config.LinkColumn("Trang Chủ", display_text="🏠 Kênh"),
@@ -952,6 +956,7 @@ with tab1:
                     p_id = to_pure_id(item["Handle"])
                     is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
+                    stt_num = start_idx + idx + 1
                     
                     with st.container(border=True):
                         if is_active:
@@ -965,7 +970,7 @@ with tab1:
                         with c0:
                             st.checkbox("", key=f"chk_t1_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
-                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{item['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num}</span><a href='{item['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
                             
                             c1_1, c1_2 = st.columns(2)
@@ -1014,6 +1019,7 @@ with tab1:
                 for idx, item in enumerate(paged_ex):
                     p_id = to_pure_id(item["Handle"])
                     is_active = (p_id == st.session_state.get('active_inspected_handle'))
+                    stt_num_ex = start_idx_ex + idx + 1
                     
                     with st.container(border=True):
                         if is_active:
@@ -1022,7 +1028,7 @@ with tab1:
 
                         c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
-                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_ex}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_ext_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
@@ -1291,6 +1297,7 @@ with tab3:
                     p_id = to_pure_id(row['Handle'])
                     is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
+                    stt_num_pass = start_idx + idx + 1
 
                     with st.container(border=True):
                         if is_active:
@@ -1304,7 +1311,7 @@ with tab3:
                         with c0:
                             st.checkbox("", key=f"chk_p_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
-                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_pass}</span><a href='{row['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
                             
                             c1_1, c1_2 = st.columns(2)
@@ -1388,6 +1395,7 @@ with tab3:
                     p_id = to_pure_id(row['Handle'])
                     is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
+                    stt_num_rej = start_idx_rej + idx + 1
                     
                     with st.container(border=True):
                         if is_active:
@@ -1401,7 +1409,7 @@ with tab3:
                         with c0:
                             st.checkbox("", key=f"chk_r_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
-                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='{row['Link Kênh']}' style='text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
@@ -1514,6 +1522,7 @@ with tab5:
         for idx, row in page_data.iterrows():
             p_id = to_pure_id(row['handle'])
             is_active = (p_id == st.session_state.get('active_inspected_handle'))
+            stt_num_db = start_idx + idx + 1
             
             with st.container(border=True):
                 if is_active:
@@ -1522,7 +1531,7 @@ with tab5:
 
                 c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                 with c1:
-                    st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>@{p_id}</a></h3>", unsafe_allow_html=True)
+                    st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_db}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>@{p_id}</a></h3>", unsafe_allow_html=True)
                     st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
                     if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                         show_video_dialog(p_id)
