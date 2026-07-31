@@ -352,6 +352,10 @@ def to_pure_id(raw_val):
         s = val
     s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
+
+    # SANITIZE & REMOVE TRAILING DATE PATTERNS (e.g. _28-07-2026, _2026-07-28) IF LEAKED IN
+    s = re.sub(r'_(?:backlog|\d{1,4}[-_/.]\d{1,2}[-_/.]\d{2,4}|\d{6,8})$', '', s, flags=re.IGNORECASE)
+
     return s if s else None
 
 def extract_video_id(raw_url):
@@ -430,8 +434,13 @@ def extract_raw_inputs_from_file(uploaded_file):
 def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
     base_no_ext = os.path.splitext(base)[0]
-    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
+    
+    # STRICT REGEX TO REMOVE DATE PATTERNS AT END OF FILENAME (e.g. _28-07-2026, _2026-07-28, _28072026)
+    pattern = r'_(?:backlog|\d{1,4}[-_/.]\d{1,2}[-_/.]\d{2,4}|\d{6,8})$'
     cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
+    
+    # SECOND PASS CLEANING IN CASE OF MULTIPLE UNDERSCORE SUFFIXES
+    cleaned = re.sub(r'_\d{1,2}[-_/.]\d{1,2}[-_/.]\d{2,4}$', '', cleaned)
     cleaned = re.sub(r'[\s]+', '', cleaned)
     pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
     return pure_id if pure_id else None
@@ -1707,7 +1716,7 @@ with tab4:
                     h = to_pure_id(line)
                     if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name})
             elif file_name.endswith('.xlsx') or file_name.endswith('.xls'):
-                # 1. CHECK IF FILE IS A REPORT FILE (1 CHANNEL ONLY)
+                # 1. CHECK IF FILE IS AN AUDIT REPORT FILE (1 CHANNEL ONLY)
                 h_from_fn = extract_handle_from_filename(file.name)
                 
                 file.seek(0)
