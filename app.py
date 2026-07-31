@@ -1121,7 +1121,7 @@ def render_shared_cart_ui(key_suffix="cart_ui"):
                 # Set Notification for Tab 5
                 st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công {len(data_db)} kênh mới vào Database! Tất cả kênh mới được ưu tiên hiển thị ở đầu danh sách."
 
-                # BATCH AUDIT V4.14 GENERATION WITH PROGRESS BAR & MULTI-THREADING
+                # BATCH AUDIT V4.14 GENERATION WITH SAFE TRY-EXCEPT AND PROGRESS BAR
                 handles_to_audit = [to_pure_id(i["Handle"]) for i in cart_items.values() if to_pure_id(i["Handle"])]
                 tot_cart_audit = len(handles_to_audit)
                 
@@ -1130,19 +1130,29 @@ def render_shared_cart_ui(key_suffix="cart_ui"):
                     stat_audit = st.empty()
                     comp_audit = 0
                     audit_results = []
+                    quota_exhausted = False
 
                     with ThreadPoolExecutor(max_workers=5) as executor:
                         futures = [executor.submit(run_single_channel_audit, p_h) for p_h in handles_to_audit]
                         for future in as_completed(futures):
-                            b_bytes, f_name = future.result()
-                            if b_bytes and f_name:
-                                audit_results.append((f_name, b_bytes))
+                            try:
+                                b_bytes, f_name = future.result()
+                                if b_bytes and f_name:
+                                    audit_results.append((f_name, b_bytes))
+                            except Exception as err:
+                                err_str = str(err)
+                                if "Quota" in err_str or "API Keys" in err_str:
+                                    quota_exhausted = True
+
                             comp_audit += 1
                             prog_audit.progress(comp_audit / tot_cart_audit)
                             stat_audit.markdown(f"⏳ **Đang cào dữ liệu & Dựng Audit V4.14:** `{comp_audit}/{tot_cart_audit}` kênh...")
 
                     prog_audit.empty()
                     stat_audit.empty()
+
+                    if quota_exhausted:
+                        st.warning(f"⚠️ Quota API đã cạn giữa chừng! Hệ thống đã tự động đóng gói {len(audit_results)}/{tot_cart_audit} file Audit hoàn thành trước khi hết Quota.")
 
                     # PACK ALL XLSX AUDIT REPORTS INTO A SINGLE ZIP ARCHIVE
                     if audit_results:
@@ -1338,10 +1348,12 @@ with tab1:
             with ThreadPoolExecutor(max_workers=8) as executor:
                 futures = [executor.submit(process_tab1_single_handle, p_id, db_matches) for p_id in target_list]
                 for future in as_completed(futures):
-                    status, res_data = future.result()
-                    if status == "NEW": new_handles.append(res_data)
-                    elif status == "EXISTING": existing_handles.append(res_data)
-                    else: rejected_handles.append(res_data)
+                    try:
+                        status, res_data = future.result()
+                        if status == "NEW": new_handles.append(res_data)
+                        elif status == "EXISTING": existing_handles.append(res_data)
+                        else: rejected_handles.append(res_data)
+                    except Exception: pass
                     
                     completed_count += 1
                     progress_bar.progress(completed_count / total_items)
@@ -1934,9 +1946,11 @@ with tab3:
                     with ThreadPoolExecutor(max_workers=8) as executor:
                         futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set) for item in channel_items]
                         for future in as_completed(futures):
-                            is_pass, res_data = future.result()
-                            if is_pass: passed_channels.append(res_data)
-                            else: rejected_channels.append(res_data)
+                            try:
+                                is_pass, res_data = future.result()
+                                if is_pass: passed_channels.append(res_data)
+                                else: rejected_channels.append(res_data)
+                            except Exception: pass
                             
                             comp_cand += 1
                             progress_bar_t3.progress(comp_cand / tot_cand)
@@ -2158,7 +2172,7 @@ with tab3:
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel_t3_rej = len(selected_set)
 
-                # ACTION BAR FOR TAB 3 REJECTED CHANNELS
+                # ACTION BAR FOR TAB 3 REJECTED CHANNELS WITH RECOVERY & COMPARE
                 with st.container(border=True):
                     st.markdown('<div class="action-bar-marker"></div>', unsafe_allow_html=True)
                     ra1, ra2, ra3, ra4, ra5 = st.columns([2.0, 1.8, 1.5, 1.5, 1.5])
@@ -2478,17 +2492,19 @@ with tab5:
                     with ThreadPoolExecutor(max_workers=10) as executor:
                         futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in handles_to_check]
                         for future in as_completed(futures):
-                            p_h, meta = future.result()
-                            crm_meta_map[p_h] = meta
-                            s_num = meta['sub_count']
-                            
-                            is_match = False
-                            if sel_sub_range == "< 100K Subs" and (0 < s_num < 100000): is_match = True
-                            elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): is_match = True
-                            elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): is_match = True
-                            elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: is_match = True
-                            
-                            if is_match: matched_handles.append(p_h)
+                            try:
+                                p_h, meta = future.result()
+                                crm_meta_map[p_h] = meta
+                                s_num = meta['sub_count']
+                                
+                                is_match = False
+                                if sel_sub_range == "< 100K Subs" and (0 < s_num < 100000): is_match = True
+                                elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): is_match = True
+                                elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): is_match = True
+                                elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: is_match = True
+                                
+                                if is_match: matched_handles.append(p_h)
+                            except Exception: pass
                             
                             comp_h += 1
                             prog_bar_db.progress(comp_h / tot_h)
@@ -2561,8 +2577,10 @@ with tab5:
                 with ThreadPoolExecutor(max_workers=10) as executor:
                     futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in missing_paged]
                     for future in as_completed(futures):
-                        p_h, meta = future.result()
-                        crm_meta_map[p_h] = meta
+                        try:
+                            p_h, meta = future.result()
+                            crm_meta_map[p_h] = meta
+                        except Exception: pass
 
             # STATIC ACTION BAR
             with st.container(border=True):
