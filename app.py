@@ -51,6 +51,15 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
+# SELECT ALL FROM A SPECIFIC LIST
+def select_all_from_list(channel_list, key_prefix=""):
+    for item in channel_list:
+        raw_h = item.get('Handle') or item.get('handle')
+        p_id = to_pure_id(raw_h)
+        if p_id:
+            st.session_state['selected_channels'].add(p_id)
+            st.session_state[f"{key_prefix}{p_id}"] = True
+
 # CLEAR BOTH THE SET AND CHECKBOX WIDGET STATES SAFELY
 def clear_selected_channels():
     st.session_state['selected_channels'].clear()
@@ -307,7 +316,7 @@ def delete_channel_from_system(pure_handle):
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
 
-    for prefix in ["chk_t1_", "chk_p_", "chk_r_"]:
+    for prefix in ["chk_t1_", "chk_t1_ext_", "chk_t1_rej_", "chk_p_", "chk_r_", "chk_db_"]:
         st.session_state.pop(f"{prefix}{pure_handle}", None)
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']:
@@ -436,7 +445,6 @@ def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
     base_no_ext = os.path.splitext(base)[0]
     
-    # ADVANCED REGEX TO STRIP ANY SUFFIX STARTING WITH _backlog OR MONTH NAMES OR DATE DIGITS
     pattern = r'_(?:backlog|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,4})[_\-\s,.]?.*$'
     cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
     cleaned = re.sub(r'[\s]+', '', cleaned)
@@ -888,7 +896,6 @@ def render_shared_cart_ui(key_suffix=""):
             
         if 'recent_videos' in df_cart.columns: df_cart = df_cart.drop(columns=['recent_videos'])
 
-        # FORCE DATAFRAME INDEX TO START AT 1
         df_cart.index = range(1, len(df_cart) + 1)
 
         st.dataframe(df_cart, use_container_width=True, column_config={
@@ -988,7 +995,6 @@ def process_tab1_single_handle(p_id, db_matches):
             country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
             sub_count = int(item['statistics'].get('subscriberCount', 0))
             
-            # FILTER 1: MUST HAVE >= 1,000,000 SUBS
             if sub_count < 1000000:
                 return "REJECTED", {
                     "Handle": f"@{p_id}",
@@ -998,7 +1004,6 @@ def process_tab1_single_handle(p_id, db_matches):
                     "Lý do loại": f"Dưới 1M Subs ({sub_count:,})"
                 }
             
-            # FILTER 2: MUSIC, NEWS, LGBT & LAYER 1 METADATA
             passes_l1, l1_reason = passes_layer1_metadata_filter(ch_title, ch_desc, country_code)
             if not passes_l1:
                 return "REJECTED", {
@@ -1091,9 +1096,9 @@ with tab1:
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
 
-                tb1, tb2, tb3, tb4, tb5 = st.columns([2.5, 2.5, 2.0, 2.0, 1.0])
+                tb1, tb2, tb3, tb4, tb5, tb6 = st.columns([2.0, 2.0, 1.8, 1.8, 1.2, 1.2])
                 with tb1:
-                    if st.button("🛒 Thêm TẤT CẢ Kênh Mới vào Giỏ", type="primary", key="btn_add_all_t1", use_container_width=True):
+                    if st.button("🛒 Thêm TẤT CẢ Vào Giỏ", type="primary", key="btn_add_all_t1", use_container_width=True):
                         for item in new_handles:
                             p_id = to_pure_id(item["Handle"])
                             item_data = {"Handle": item["Handle"], "Tên Kênh": item.get("Tên Kênh", p_id.upper()), "Link Kênh": f"https://www.youtube.com/@{p_id}", "Trạng Thái DB": "✅ KÊNH MỚI", "Tag": "📌 Chưa phân loại"}
@@ -1102,7 +1107,7 @@ with tab1:
                         st.success(f"🎉 Đã thêm {len(new_handles)} kênh mới vào Giỏ hàng chung!")
                         st.rerun()
                 with tb2:
-                    if st.button(f"🛒 Thêm ({cnt_for_cart}) Kênh Mới Vào Giỏ", key="btn_add_sel_t1", use_container_width=True):
+                    if st.button(f"🛒 Thêm ({cnt_for_cart}) Đã Chọn", key="btn_add_sel_t1", use_container_width=True):
                         if cnt_for_cart > 0:
                             for item in new_handles:
                                 p_id = to_pure_id(item["Handle"])
@@ -1126,7 +1131,11 @@ with tab1:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with tb5:
-                    if st.button("❌ Bỏ Chọn", key="btn_clear_sel_t1", use_container_width=True):
+                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_new", use_container_width=True):
+                        select_all_from_list(new_handles, "chk_t1_")
+                        st.rerun()
+                with tb6:
+                    if st.button("❌ Bỏ Chọn", key="btn_clear_sel_t1_new", use_container_width=True):
                         clear_selected_channels()
                         st.rerun()
 
@@ -1197,6 +1206,27 @@ with tab1:
 
         with res_tab2:
             if existing_handles:
+                cnt_total_sel_ex = len(st.session_state['selected_channels'])
+                te1, te2, te3 = st.columns([3, 1.5, 1.5])
+                with te1:
+                    if st.button(f"🗑️ Xóa ({cnt_total_sel_ex}) Kênh Đã Chọn", key="btn_del_sel_t1_ext", use_container_width=True):
+                        if cnt_total_sel_ex > 0:
+                            for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
+                            clear_selected_channels()
+                            st.success(f"🗑️ Đã xóa {cnt_total_sel_ex} kênh!")
+                            st.rerun()
+                        else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
+                with te2:
+                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_ext", use_container_width=True):
+                        select_all_from_list(existing_handles, "chk_t1_ext_")
+                        st.rerun()
+                with te3:
+                    if st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_ext", use_container_width=True):
+                        clear_selected_channels()
+                        st.rerun()
+
+                st.divider()
+
                 items_per_page_ex = 20
                 total_pages_ex = max(1, (len(existing_handles) + items_per_page_ex - 1) // items_per_page_ex)
                 page_ex = st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, value=1, step=1, key="page_ex_t1")
@@ -1213,7 +1243,9 @@ with tab1:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
                             st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
-                        c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                        c0, c1, c2, c3 = st.columns([0.4, 3.6, 4.0, 2.0])
+                        with c0:
+                            st.checkbox("", key=f"chk_t1_ext_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_ex}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
@@ -1229,6 +1261,27 @@ with tab1:
 
         with res_tab3:
             if rejected_handles:
+                cnt_total_sel_rej = len(st.session_state['selected_channels'])
+                tr1, tr2, tr3 = st.columns([3, 1.5, 1.5])
+                with tr1:
+                    if st.button(f"🗑️ Xóa ({cnt_total_sel_rej}) Kênh Đã Chọn", key="btn_del_sel_t1_rej", use_container_width=True):
+                        if cnt_total_sel_rej > 0:
+                            for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
+                            clear_selected_channels()
+                            st.success(f"🗑️ Đã xóa {cnt_total_sel_rej} kênh!")
+                            st.rerun()
+                        else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
+                with tr2:
+                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_rej", use_container_width=True):
+                        select_all_from_list(rejected_handles, "chk_t1_rej_")
+                        st.rerun()
+                with tr3:
+                    if st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_rej", use_container_width=True):
+                        clear_selected_channels()
+                        st.rerun()
+
+                st.divider()
+
                 items_per_page_rej = 20
                 total_pages_rej = max(1, (len(rejected_handles) + items_per_page_rej - 1) // items_per_page_rej)
                 page_rej = st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=1, step=1, key="page_rej_t1")
@@ -1245,7 +1298,9 @@ with tab1:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
                             st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
-                        c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                        c0, c1, c2, c3 = st.columns([0.4, 3.6, 4.0, 2.0])
+                        with c0:
+                            st.checkbox("", key=f"chk_t1_rej_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
@@ -1475,7 +1530,7 @@ with tab3:
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
 
-                ba1, ba2, ba3, ba4, ba5 = st.columns([2.5, 2.5, 2.0, 2.0, 1.0])
+                ba1, ba2, ba3, ba4, ba5 = st.columns([2.5, 2.5, 2.0, 1.5, 1.5])
                 with ba1:
                     if st.button(f"🛒 Thêm ({cnt_for_cart}) Kênh Mới Vào Giỏ", key="btn_add_sel_pass", use_container_width=True):
                         if cnt_for_cart > 0:
@@ -1501,6 +1556,10 @@ with tab3:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with ba4:
+                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_pass_t3", use_container_width=True):
+                        select_all_from_list(display_passed, "chk_p_")
+                        st.rerun()
+                with ba5:
                     if st.button("❌ Bỏ Chọn", key="btn_clear_sel_pass", use_container_width=True):
                         clear_selected_channels()
                         st.rerun()
@@ -1605,6 +1664,27 @@ with tab3:
 
                 display_rejected = sort_and_filter_channels(rejected_list, filter_rej_q, sort_rej_by)
                 
+                cnt_total_sel_t3_rej = len(st.session_state['selected_channels'])
+                ra1, ra2, ra3 = st.columns([3, 1.5, 1.5])
+                with ra1:
+                    if st.button(f"🗑️ Xóa ({cnt_total_sel_t3_rej}) Đã Chọn", key="btn_del_sel_t3_rej", use_container_width=True):
+                        if cnt_total_sel_t3_rej > 0:
+                            for p_id in list(st.session_state['selected_channels']): delete_channel_from_system(p_id)
+                            clear_selected_channels()
+                            st.success(f"🗑️ Đã xóa {cnt_total_sel_t3_rej} kênh!")
+                            st.rerun()
+                        else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
+                with ra2:
+                    if st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_rej", use_container_width=True):
+                        select_all_from_list(display_rejected, "chk_r_")
+                        st.rerun()
+                with ra3:
+                    if st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t3_rej", use_container_width=True):
+                        clear_selected_channels()
+                        st.rerun()
+
+                st.divider()
+
                 items_per_page_rej = 20
                 total_pages_rej = max(1, (len(display_rejected) + items_per_page_rej - 1) // items_per_page_rej)
                 page_rej = st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=1, step=1, key="page_rej_t3")
@@ -1751,7 +1831,6 @@ with tab4:
         if new_handles_to_insert:
             df_raw = pd.DataFrame(new_handles_to_insert)
             
-            # IDENTIFY DUPLICATE HANDLES IN UPLOAD
             duplicated_rows = df_raw[df_raw.duplicated(subset=["handle"], keep="first")]
             for _, d_row in duplicated_rows.iterrows():
                 skipped_details.append({"File": d_row.get("filename", d_row["source"]), "Handle": f"@{d_row['handle']}", "Lý do": "Trùng lặp Handle với 1 file khác trong gói ZIP"})
@@ -1796,6 +1875,31 @@ with tab5:
         end_idx = start_idx + items_per_page
         page_data = df_filtered.iloc[start_idx:end_idx]
 
+        # DATABASE TOOLBAR FOR SELECTION & BULK DELETE
+        cnt_total_sel_db = len(st.session_state['selected_channels'])
+        db_act1, db_act2, db_act3, db_act4 = st.columns([3, 2, 2, 1.5])
+        with db_act1:
+            if st.button(f"🗑️ Xóa ({cnt_total_sel_db}) Kênh Đã Chọn Khỏi DB", key="btn_del_sel_db", use_container_width=True):
+                if cnt_total_sel_db > 0:
+                    for p_id in list(st.session_state['selected_channels']):
+                        delete_channel_from_system(p_id)
+                    clear_selected_channels()
+                    st.success(f"🗑️ Đã xóa {cnt_total_sel_db} kênh khỏi Database!")
+                    st.rerun()
+                else: st.warning("Vui lòng tick chọn ít nhất 1 kênh trong DB!")
+        with db_act2:
+            if st.button("✅ Chọn Tất Cả (Trang Này)", key="btn_sel_page_db", use_container_width=True):
+                select_all_from_list(page_data.to_dict('records'), "chk_db_")
+                st.rerun()
+        with db_act3:
+            if st.button("✅ Chọn Tất Cả (Toàn DB)", key="btn_sel_all_db", use_container_width=True):
+                select_all_from_list(df_filtered.to_dict('records'), "chk_db_")
+                st.rerun()
+        with db_act4:
+            if st.button("❌ Bỏ Chọn", key="btn_clear_sel_db", use_container_width=True):
+                clear_selected_channels()
+                st.rerun()
+
         st.divider()
         for idx, row in page_data.iterrows():
             p_id = to_pure_id(row['handle'])
@@ -1807,7 +1911,9 @@ with tab5:
                     st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
                     st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
-                c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                c0, c1, c2, c3 = st.columns([0.4, 3.8, 3.8, 2.0])
+                with c0:
+                    st.checkbox("", key=f"chk_db_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                 with c1:
                     st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_db}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>@{p_id}</a></h3>", unsafe_allow_html=True)
                     st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
