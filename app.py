@@ -66,7 +66,7 @@ def cb_clear_all():
 def clear_selected_channels():
     cb_clear_all()
 
-# Theme CSS Dynamic Injection & UNLOCK OVERFLOW FOR FLOATING TOOLBAR
+# Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
 bg_color = "#1E1816" if is_dark else "#F4F2F1"
 card_bg = "#2A221F" if is_dark else "#FFFFFF"
@@ -84,7 +84,7 @@ section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; b
 header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 
 /* UNLOCK INNER CONTAINERS FOR STICKY FLOATING ACTION BAR */
-[data-baseweb="tab-panel"], div[data-testid="stTabPanel"], div[data-testid="stVerticalBlock"] {{
+[data-testid="stAppViewContainer"], [data-testid="stMain"], .main, .block-container, [data-baseweb="tab-panel"], div[data-testid="stTabPanel"] {{
     overflow: visible !important;
 }}
 
@@ -333,7 +333,7 @@ with st.sidebar:
             if key.startswith('audit_file_'): del st.session_state[key]
         st.rerun()
 
-# --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM ---
+# --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM WITH TAB 5 CACHE INVALIDATION ---
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
     try: supabase.table("channels").delete().eq("handle", pure_handle).execute()
@@ -343,6 +343,11 @@ def delete_channel_from_system(pure_handle):
     if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
+
+    # INVALIDATE TAB 5 CACHES ON DELETION
+    for key in list(st.session_state.keys()):
+        if key.startswith('crm_cache_') or key == 'tab5_crm_cache':
+            st.session_state.pop(key, None)
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']:
         if key_list in st.session_state:
@@ -2085,7 +2090,7 @@ with tab5:
                             s_num = meta['sub_count']
                             
                             is_match = False
-                            if sel_sub_range == "< 100K Subs" and (0 <= s_num < 100000): is_match = True
+                            if sel_sub_range == "< 100K Subs" and (0 < s_num < 100000): is_match = True
                             elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): is_match = True
                             elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): is_match = True
                             elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: is_match = True
