@@ -353,8 +353,9 @@ def to_pure_id(raw_val):
     s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
 
-    # SANITIZE & REMOVE TRAILING DATE PATTERNS (e.g. _28-07-2026, _2026-07-28) IF LEAKED IN
-    s = re.sub(r'_(?:backlog|\d{1,4}[-_/.]\d{1,2}[-_/.]\d{2,4}|\d{6,8})$', '', s, flags=re.IGNORECASE)
+    # COMPREHENSIVE REGEX TO STRIP FILENAME SUFFIXES (e.g. _backlog_june01,2026, _28-07-2026, _july28,2026)
+    pattern = r'_(?:backlog|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,4})[_\-\s,.]?.*$'
+    s = re.sub(pattern, '', s, flags=re.IGNORECASE)
 
     return s if s else None
 
@@ -435,12 +436,9 @@ def extract_handle_from_filename(filename):
     base = os.path.basename(filename)
     base_no_ext = os.path.splitext(base)[0]
     
-    # STRICT REGEX TO REMOVE DATE PATTERNS AT END OF FILENAME (e.g. _28-07-2026, _2026-07-28, _28072026)
-    pattern = r'_(?:backlog|\d{1,4}[-_/.]\d{1,2}[-_/.]\d{2,4}|\d{6,8})$'
+    # ADVANCED REGEX TO STRIP ANY SUFFIX STARTING WITH _backlog OR MONTH NAMES OR DATE DIGITS
+    pattern = r'_(?:backlog|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,4})[_\-\s,.]?.*$'
     cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
-    
-    # SECOND PASS CLEANING IN CASE OF MULTIPLE UNDERSCORE SUFFIXES
-    cleaned = re.sub(r'_\d{1,2}[-_/.]\d{1,2}[-_/.]\d{2,4}$', '', cleaned)
     cleaned = re.sub(r'[\s]+', '', cleaned)
     pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
     return pure_id if pure_id else None
