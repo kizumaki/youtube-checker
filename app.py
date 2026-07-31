@@ -43,6 +43,7 @@ supabase = init_supabase()
 if 'app_theme' not in st.session_state: st.session_state['app_theme'] = 'Studio Peach (Sáng)'
 if 'selected_channels' not in st.session_state: st.session_state['selected_channels'] = set()
 if 'api_usage' not in st.session_state: st.session_state['api_usage'] = {}
+if 'api_status_map' not in st.session_state: st.session_state['api_status_map'] = {}
 if 'chk_counter' not in st.session_state: st.session_state['chk_counter'] = 0
 
 # Callback for Selection Sync
@@ -235,6 +236,29 @@ def save_campaigns(camps_dict):
     try: supabase.table("app_config").upsert({"key": "campaigns", "value": json.dumps(camps_dict)}, on_conflict="key").execute()
     except Exception: pass
 
+# REAL-TIME API KEY HEALTH DIAGNOSTIC FUNCTION
+def test_all_api_keys():
+    keys = st.session_state.get('api_keys', [])
+    usage = st.session_state.get('api_usage', {})
+    status_map = {}
+    for k in keys:
+        try:
+            yt = build("youtube", "v3", developerKey=k)
+            yt.channels().list(part="id", id="UC_x5XG1OV2P6uZZ5FSM9Ttw").execute()
+            status_map[k] = ("OK", usage.get(k, 0))
+        except HttpError as e:
+            if e.resp.status in [403, 429]:
+                usage[k] = 10000
+                status_map[k] = ("EXHAUSTED", 10000)
+            else:
+                usage[k] = 10000
+                status_map[k] = ("DEAD", 10000)
+        except Exception:
+            usage[k] = 10000
+            status_map[k] = ("DEAD", 10000)
+    st.session_state['api_usage'] = usage
+    st.session_state['api_status_map'] = status_map
+
 # --- INITIALIZE PERSISTENT STATE ---
 if 'global_api_keys' not in st.session_state:
     db_keys = load_api_keys_from_db()
@@ -310,16 +334,25 @@ with st.sidebar:
     st.selectbox("🎨 Giao diện App:", options=["Studio Peach (Sáng)", "Studio Espresso (Tối)"], key="app_theme")
     st.divider()
 
-    # --- API HEALTH MONITOR (ACCURATE DEAD/EXHAUSTED KEY MONITORING) ---
+    # --- API HEALTH MONITOR (ACCURATE REAL-TIME MONITORING) ---
     st.markdown("<h4 style='font-weight: 700; font-size: 0.95rem;'>🛡️ Sức Khỏe API Quota</h4>", unsafe_allow_html=True)
     active_keys = st.session_state.get('api_keys', [])
     usage_data = st.session_state.get('api_usage', {})
+    status_map = st.session_state.get('api_status_map', {})
     
     for k in active_keys:
+        k_stat_type, _ = status_map.get(k, ("UNKNOWN", 0))
         used = usage_data.get(k, 0)
-        pct = min(100, int((used / 10000) * 100))
-        color = "#10B981" if pct < 70 else ("#F59E0B" if pct < 90 else "#EF4444")
-        status_label = f"{used:,}/10,000" if used < 10000 else "❌ Hết Quota / Key Lỗi"
+        
+        if k_stat_type in ["EXHAUSTED", "DEAD"] or used >= 10000:
+            pct = 100
+            color = "#EF4444"
+            status_label = "🔴 Hết Quota / Key Lỗi" if k_stat_type != "DEAD" else "💀 Key Chết / Vô Hiệu Hóa"
+        else:
+            pct = min(100, int((used / 10000) * 100))
+            color = "#10B981" if pct < 70 else ("#F59E0B" if pct < 90 else "#EF4444")
+            status_label = f"🟢 {used:,}/10,000"
+
         st.markdown(f"""
             <div style='margin-bottom: 8px;'>
                 <div style='font-size: 0.75rem; color: #6B7280; font-weight: 700;'>🔑 {k[:10]}...</div>
@@ -330,12 +363,19 @@ with st.sidebar:
             </div>
         """, unsafe_allow_html=True)
 
+    if st.button("🧪 Kiểm Tra Sức Khỏe Keys", use_container_width=True, key="btn_test_keys"):
+        with st.spinner("Đang gửi truy vấn test sức khỏe 6 API Keys..."):
+            test_all_api_keys()
+            st.rerun()
+
+    st.write("")
     keys_input = st.text_area("Cập nhật danh sách Key (1 key/dòng):", value=st.session_state['global_api_keys'], height=80, key="api_keys_text_area")
     
     if st.button("💾 Lưu Cấu Hình Key", type="primary", use_container_width=True):
         st.session_state['global_api_keys'] = keys_input
         set_api_keys(keys_input)
         save_api_keys_to_db(keys_input)
+        test_all_api_keys()
         st.toast("🎉 Đã lưu vĩnh viễn danh sách API Keys!")
         st.rerun()
 
@@ -395,6 +435,10 @@ def yt_execute(request_func, cost=1):
                 usage = st.session_state.get('api_usage', {})
                 usage[key] = 10000
                 st.session_state['api_usage'] = usage
+                
+                status_map = st.session_state.get('api_status_map', {})
+                status_map[key] = ("EXHAUSTED", 10000)
+                st.session_state['api_status_map'] = status_map
                 
                 idx = (idx + 1) % len(keys)
                 st.session_state['api_key_idx'] = idx
@@ -2534,6 +2578,13 @@ with tab5:
 
         st.caption(f"🎯 Kết quả khớp: **{len(df_filtered)}** / {len(df_all)} kênh")
 
+        # RENDER WARNING BANNER IF ALL KEYS ARE EXHAUSTED/DEAD
+        active_keys_t5 = st.session_state.get('api_keys', [])
+        usage_data_t5 = st.session_state.get('api_usage', {})
+        all_keys_dead = all(usage_data_t5.get(k, 0) >= 10000 for k in active_keys_t5) if active_keys_t5 else True
+        if all_keys_dead:
+            st.warning("⚠️ **Tất cả API Keys của bạn hiện đã cạn Quota hoặc bị lỗi.** Các chỉ số kênh bên dưới sẽ tạm thời hiển thị N/A. Vui lòng dán danh sách API Key mới ở Sidebar và bấm 'LƯU CẤU HÌNH KEY' để phục hồi hiển thị ngay lập tức!")
+
         # RENDER MODE 1: TABLE GRID VIEW
         if view_mode == "📊 Table Grid View (Bảng nén gọn)":
             df_grid = df_filtered.copy()
@@ -2585,7 +2636,7 @@ with tab5:
             # PRE-FETCH METADATA IN PARALLEL FOR CURRENT 20 PAGED CARDS
             paged_handles = [to_pure_id(r['handle']) for _, r in page_data.iterrows() if to_pure_id(r['handle'])]
             missing_paged = [p_h for p_h in paged_handles if p_h not in crm_meta_map]
-            if missing_paged:
+            if missing_paged and not all_keys_dead:
                 with ThreadPoolExecutor(max_workers=10) as executor:
                     futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in missing_paged]
                     for future in as_completed(futures):
