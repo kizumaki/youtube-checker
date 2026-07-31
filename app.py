@@ -66,9 +66,16 @@ def cb_clear_all():
 def clear_selected_channels():
     cb_clear_all()
 
-# CALLBACK: DYNAMIC PAGINATION MASTER SYNC
-def on_page_change(widget_key, state_key):
-    st.session_state[state_key] = st.session_state[widget_key]
+# CALLBACKS: DUAL-WAY PAGINATION SYNCHRONIZATION
+def sync_pagination_top(top_key, bottom_key, state_key):
+    val = st.session_state[top_key]
+    st.session_state[state_key] = val
+    st.session_state[bottom_key] = val
+
+def sync_pagination_bottom(top_key, bottom_key, state_key):
+    val = st.session_state[bottom_key]
+    st.session_state[state_key] = val
+    st.session_state[top_key] = val
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -972,7 +979,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-# --- REUSABLE COMPONENT: RENDER SHARED CART ---
+# --- REUSABLE COMPONENT: RENDER SHARED CART WITH BATCH AUDIT ZIP GENERATION ---
 def render_shared_cart_ui(key_suffix="cart_ui"):
     st.divider()
     cart_items = st.session_state['cart']
@@ -1015,24 +1022,80 @@ def render_shared_cart_ui(key_suffix="cart_ui"):
             "Tag": st.column_config.TextColumn("🏷️ Nhãn Trạng Thái")
         })
         
-        with st.expander("🚀 Đẩy Dữ Liệu & Xuất File (Google Sheets / Excel)"):
-            c1, c2, c3, c4 = st.columns(4)
+        with st.expander("🚀 Đẩy Dữ Liệu & Xuất File (Google Sheets / Excel / Audit ZIP)", expanded=True):
+            c1, c2, c3, c4 = st.columns([1.5, 1.5, 3.2, 1.8])
             c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True, key=f"dl_txt_cart_{key_suffix}")
             buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
             c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang_dung_chung.xlsx", use_container_width=True, key=f"dl_xl_cart_{key_suffix}")
-            if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
+            
+            if c3.button("⚡ NẠP DB & TẠO BÁO CÁO AUDIT", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
                 data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": f"Cart Import [{i.get('Tag', '')}]"} for i in cart_items.values()]
                 supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
                 # Invalidate Tab 5 caches
                 for k in list(st.session_state.keys()):
                     if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                         st.session_state.pop(k, None)
-                st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
-            if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
+
+                # BATCH AUDIT V4.14 GENERATION WITH PROGRESS BAR & MULTI-THREADING
+                handles_to_audit = [to_pure_id(i["Handle"]) for i in cart_items.values() if to_pure_id(i["Handle"])]
+                tot_cart_audit = len(handles_to_audit)
+                
+                if tot_cart_audit > 0:
+                    prog_audit = st.progress(0)
+                    stat_audit = st.empty()
+                    comp_audit = 0
+                    audit_results = []
+
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        futures = [executor.submit(run_single_channel_audit, p_h) for p_h in handles_to_audit]
+                        for future in as_completed(futures):
+                            b_bytes, f_name = future.result()
+                            if b_bytes and f_name:
+                                audit_results.append((f_name, b_bytes))
+                            comp_audit += 1
+                            prog_audit.progress(comp_audit / tot_cart_audit)
+                            stat_audit.markdown(f"⏳ **Đang cào dữ liệu & Dựng Audit V4.14:** `{comp_audit}/{tot_cart_audit}` kênh...")
+
+                    prog_audit.empty()
+                    stat_audit.empty()
+
+                    # PACK ALL XLSX AUDIT REPORTS INTO A SINGLE ZIP ARCHIVE
+                    if audit_results:
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                            for fname, fbytes in audit_results:
+                                zip_file.writestr(fname, fbytes)
+                        
+                        zip_bytes = zip_buffer.getvalue()
+                        st.session_state[f"cart_audit_zip_{key_suffix}"] = {
+                            "bytes": zip_bytes,
+                            "filename": f"Goi_Bao_Cao_Audit_V414_{datetime.datetime.now().strftime('%d-%m-%Y')}.zip",
+                            "count": len(audit_results)
+                        }
+                        st.success(f"🎉 Đã nạp thành công {len(data_db)} kênh vào DB & Dựng xong {len(audit_results)} file Báo cáo Audit V4.14!")
+                        st.rerun()
+
+            if c4.button("🧹 Xóa Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
                 clear_cart_db()
                 st.session_state['cart'] = {}
+                st.session_state.pop(f"cart_audit_zip_{key_suffix}", None)
                 st.success("🎉 Đã xóa sạch Giỏ Hàng!")
                 st.rerun()
+
+            # DOWNLOAD BUTTON FOR AUDIT ZIP PACKAGE IF AVAILABLE
+            zip_key = f"cart_audit_zip_{key_suffix}"
+            if zip_key in st.session_state:
+                st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+                zip_info = st.session_state[zip_key]
+                st.download_button(
+                    label=f"📦 TẢI GÓI AUDIT ZIP ({zip_info['count']} FILE EXCEL)",
+                    data=zip_info["bytes"],
+                    file_name=zip_info["filename"],
+                    mime="application/zip",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"dl_zip_btn_{key_suffix}"
+                )
 
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
             wh_col1, wh_col2 = st.columns([3, 1])
@@ -1313,7 +1376,7 @@ with tab1:
                 # TOP PAGINATION CONTROL
                 col_p1, col_p2 = st.columns([2, 8])
                 with col_p1:
-                    st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_top", on_change=on_page_change, args=("page_new_t1_top", "p_state_t1_new"))
+                    st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_top", on_change=sync_pagination_top, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
                 with col_p2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {len(paged_new)} / {len(new_handles)} kênh)*")
@@ -1395,7 +1458,7 @@ with tab1:
                     st.divider()
                     col_pb1, col_pb2 = st.columns([2, 8])
                     with col_pb1:
-                        st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_bottom", on_change=on_page_change, args=("page_new_t1_bottom", "p_state_t1_new"))
+                        st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_bottom", on_change=sync_pagination_bottom, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
                     with col_pb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {len(paged_new)} / {len(new_handles)} kênh)*")
@@ -1436,7 +1499,7 @@ with tab1:
 
                 col_pe1, col_pe2 = st.columns([2, 8])
                 with col_pe1:
-                    st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_top", on_change=on_page_change, args=("page_ex_t1_top", "p_state_t1_ex"))
+                    st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_top", on_change=sync_pagination_top, args=("page_ex_t1_top", "page_ex_t1_bottom", "p_state_t1_ex"))
                 with col_pe2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {len(paged_ex)} / {len(existing_handles)} kênh)*")
@@ -1471,7 +1534,7 @@ with tab1:
                     st.divider()
                     col_peb1, col_peb2 = st.columns([2, 8])
                     with col_peb1:
-                        st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_bottom", on_change=on_page_change, args=("page_ex_t1_bottom", "p_state_t1_ex"))
+                        st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_bottom", on_change=sync_pagination_bottom, args=("page_ex_t1_top", "page_ex_t1_bottom", "p_state_t1_ex"))
                     with col_peb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {len(paged_ex)} / {len(existing_handles)} kênh)*")
@@ -1510,7 +1573,7 @@ with tab1:
 
                 col_pr1, col_pr2 = st.columns([2, 8])
                 with col_pr1:
-                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_top", on_change=on_page_change, args=("page_rej_t1_top", "p_state_t1_rej"))
+                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_top", on_change=sync_pagination_top, args=("page_rej_t1_top", "page_rej_t1_bottom", "p_state_t1_rej"))
                 with col_pr2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(rejected_handles)} kênh)*")
@@ -1546,7 +1609,7 @@ with tab1:
                     st.divider()
                     col_prb1, col_prb2 = st.columns([2, 8])
                     with col_prb1:
-                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_bottom", on_change=on_page_change, args=("page_rej_t1_bottom", "p_state_t1_rej"))
+                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_bottom", on_change=sync_pagination_bottom, args=("page_rej_t1_top", "page_rej_t1_bottom", "p_state_t1_rej"))
                     with col_prb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(rejected_handles)} kênh)*")
@@ -1831,7 +1894,7 @@ with tab3:
                 # TOP PAGINATION CONTROL
                 col_pp1, col_pp2 = st.columns([2, 8])
                 with col_pp1:
-                    st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_top", on_change=on_page_change, args=("page_pass_t3_top", "p_state_t3_pass"))
+                    st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_top", on_change=sync_pagination_top, args=("page_pass_t3_top", "page_pass_t3_bottom", "p_state_t3_pass"))
                 with col_pp2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {len(paged_passed)} / {len(display_passed)} kênh)*")
@@ -1922,7 +1985,7 @@ with tab3:
                     st.divider()
                     col_ppb1, col_ppb2 = st.columns([2, 8])
                     with col_ppb1:
-                        st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_bottom", on_change=on_page_change, args=("page_pass_t3_bottom", "p_state_t3_pass"))
+                        st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_bottom", on_change=sync_pagination_bottom, args=("page_pass_t3_top", "page_pass_t3_bottom", "p_state_t3_pass"))
                     with col_ppb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {len(paged_passed)} / {len(display_passed)} kênh)*")
@@ -1970,7 +2033,7 @@ with tab3:
 
                 col_prj1, col_prj2 = st.columns([2, 8])
                 with col_prj1:
-                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_top", on_change=on_page_change, args=("page_rej_t3_top", "p_state_t3_rej"))
+                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_top", on_change=sync_pagination_top, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
                 with col_prj2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(display_rejected)} kênh)*")
@@ -2055,7 +2118,7 @@ with tab3:
                     st.divider()
                     col_prjb1, col_prjb2 = st.columns([2, 8])
                     with col_prjb1:
-                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_bottom", on_change=on_page_change, args=("page_rej_t3_bottom", "p_state_t3_rej"))
+                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_bottom", on_change=sync_pagination_bottom, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
                     with col_prjb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(display_rejected)} kênh)*")
@@ -2145,7 +2208,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- MULTI-THREADED CRM DATABASE VIEWER WITH PERFECT DUAL-WAY PAGINATION ---
+# --- MULTI-THREADED CRM DATABASE VIEWER WITH PERFECT SYNCHRONIZED PAGINATION ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -2272,7 +2335,7 @@ with tab5:
             if st.session_state['p_state_t5_db'] > total_pages: st.session_state['p_state_t5_db'] = total_pages
             if st.session_state['p_state_t5_db'] < 1: st.session_state['p_state_t5_db'] = 1
             
-            # PRE-SYNC WIDGET KEYS BEFORE RENDERING
+            # PRE-SYNC WIDGET KEYS BEFORE RENDERING TO PREVENT STALE WIDGET VALUES
             st.session_state['page_db_viewer_top'] = st.session_state['p_state_t5_db']
             st.session_state['page_db_viewer_bottom'] = st.session_state['p_state_t5_db']
             
@@ -2284,7 +2347,7 @@ with tab5:
             # TOP PAGINATION CONTROL
             col_db_p1, col_db_p2 = st.columns([2, 8])
             with col_db_p1:
-                st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_top", on_change=on_page_change, args=("page_db_viewer_top", "p_state_t5_db"))
+                st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_top", on_change=sync_pagination_top, args=("page_db_viewer_top", "page_db_viewer_bottom", "p_state_t5_db"))
             with col_db_p2:
                 st.write("")
                 st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {len(page_data)} / {len(df_filtered)} kênh)*")
@@ -2356,7 +2419,7 @@ with tab5:
                 st.divider()
                 col_db_pb1, col_db_pb2 = st.columns([2, 8])
                 with col_db_pb1:
-                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_bottom", on_change=on_page_change, args=("page_db_viewer_bottom", "p_state_t5_db"))
+                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_bottom", on_change=sync_pagination_bottom, args=("page_db_viewer_top", "page_db_viewer_bottom", "p_state_t5_db"))
                 with col_db_pb2:
                     st.write("")
                     st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {len(page_data)} / {len(df_filtered)} kênh)*")
