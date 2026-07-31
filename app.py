@@ -3,6 +3,8 @@ import pandas as pd
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.drawing.image import Image as ExcelImage
+from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.series import DataPoint
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import isodate
@@ -925,6 +927,8 @@ def run_single_channel_audit(pure_handle):
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
+    
+    # SHEET 1: MAIN SUMMARY REPORT (UNCHANGED)
     ws = wb.active
     ws.title = clean_handle[:31]
     date_str = datetime.datetime.now().strftime("%d-%m-%Y")
@@ -975,6 +979,69 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
         cD = ws.cell(row=r, column=4, value=v['Views']); cD.number_format = '#,##0'
         ws.cell(row=r, column=5, value=v['Published Date']).alignment = Alignment(horizontal="center", vertical="center")
     ws.column_dimensions['A'].width = 55; ws.column_dimensions['B'].width = 45; ws.column_dimensions['C'].width = 22; ws.column_dimensions['D'].width = 15; ws.column_dimensions['E'].width = 15
+
+    # SHEET 2: TOP 10 VIDEO TITLE WITH BAR CHART
+    ws2 = wb.create_sheet(title="Top 10 Video Title")
+    colors_hex = [
+        '2F5597', 'C00000', '70AD47', '7030A0', '00C0C0',
+        'E37222', '41536B', 'A04000', '385723', '626262'
+    ]
+    ws2['A1'] = "Top 10 Most Viewed Videos (Click to Watch)"
+    ws2['B1'] = "Views"
+    ws2['A1'].font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    ws2['A1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ws2['A1'].alignment = Alignment(horizontal="left", vertical="center")
+
+    ws2['B1'].font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    ws2['B1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ws2['B1'].alignment = Alignment(horizontal="right", vertical="center")
+
+    ws2['D1'] = f"📊 Top 10 Most Viewed Videos - {clean_handle}"
+    ws2['D1'].font = Font(name="Arial", size=12, bold=True, color="1F4E78")
+
+    top10_vids = sorted(video_data, key=lambda x: x.get('Views', 0), reverse=True)[:10]
+    for idx, v in enumerate(top10_vids):
+        row = idx + 2
+        color = colors_hex[idx % len(colors_hex)]
+        
+        cell_a = ws2.cell(row=row, column=1, value=v['Title'])
+        if v.get('Link'):
+            cell_a.hyperlink = v['Link']
+        cell_a.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+        cell_a.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        
+        cell_b = ws2.cell(row=row, column=2, value=v['Views'])
+        cell_b.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+        cell_b.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        cell_b.number_format = '#,##0'
+
+    ws2.column_dimensions['A'].width = 55
+    ws2.column_dimensions['B'].width = 18
+
+    if top10_vids:
+        chart = BarChart()
+        chart.type = "col"
+        chart.style = 10
+        chart.title = None
+        chart.legend = None
+        chart.y_axis.title = "Total Views"
+        chart.x_axis.title = "Videos"
+
+        data = Reference(ws2, min_col=2, min_row=1, max_row=len(top10_vids)+1)
+        cats = Reference(ws2, min_col=1, min_row=2, max_row=len(top10_vids)+1)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+
+        series = chart.series[0]
+        for i in range(len(top10_vids)):
+            dp = DataPoint(idx=i)
+            dp.graphicalProperties.solidFill = colors_hex[i % len(colors_hex)]
+            series.dPt.append(dp)
+
+        chart.width = 18
+        chart.height = 10
+        ws2.add_chart(chart, "D3")
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -1031,10 +1098,14 @@ def render_shared_cart_ui(key_suffix="cart_ui"):
             if c3.button("⚡ NẠP DB & TẠO BÁO CÁO AUDIT", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
                 data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": f"Cart Import [{i.get('Tag', '')}]"} for i in cart_items.values()]
                 supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
+                
                 # Invalidate Tab 5 caches
                 for k in list(st.session_state.keys()):
                     if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                         st.session_state.pop(k, None)
+
+                # Set Notification for Tab 5
+                st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công {len(data_db)} kênh mới vào Database! Tất cả kênh mới được ưu tiên hiển thị ở đầu danh sách."
 
                 # BATCH AUDIT V4.14 GENERATION WITH PROGRESS BAR & MULTI-THREADING
                 handles_to_audit = [to_pure_id(i["Handle"]) for i in cart_items.values() if to_pure_id(i["Handle"])]
@@ -1325,10 +1396,12 @@ with tab1:
                                         saved_ids.add(p_id)
                                 if data_db:
                                     supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
-                                    # Invalidate Tab 5 caches
+                                    # Invalidate Tab 5 caches & Set notify
                                     for k in list(st.session_state.keys()):
                                         if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                                             st.session_state.pop(k, None)
+                                    st.session_state['new_db_channels_notify'] = f"🎉 Vừa lưu thành công {len(data_db)} kênh mới vào Database! Kênh mới nhất được ưu tiên hiển thị ở đầu danh sách."
+                                    
                                     # Move saved channels from NEW to EXISTING
                                     st.session_state['batch_check_new'] = [item for item in new_handles if to_pure_id(item["Handle"]) not in saved_ids]
                                     for item in new_handles:
@@ -1432,6 +1505,7 @@ with tab1:
                                 for k in list(st.session_state.keys()):
                                     if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                                         st.session_state.pop(k, None)
+                                st.session_state['new_db_channels_notify'] = f"🎉 Vừa lưu thành công kênh @{p_id} vào Database!"
                                 st.session_state['batch_check_new'] = [it for it in new_handles if to_pure_id(it["Handle"]) != p_id]
                                 st.session_state['batch_check_existing'].append({
                                     "Handle": f"@{p_id}",
@@ -1628,6 +1702,7 @@ with tab2:
                 b_data, f_name = run_single_channel_audit(pure_h)
                 if b_data:
                     supabase.table("channels").upsert([{"handle": pure_h, "youtuber_name": pure_h.upper(), "source": "YouTube API V4.14"}], on_conflict="handle").execute()
+                    st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công kênh @{pure_h} vào Database!"
                     st.success(f"🎉 Đã dựng xong báo cáo Audit!")
                     st.download_button("📥 Tải về File Audit V4.14", data=b_data, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
             except Exception as e: st.error(f"Lỗi: {e}")
@@ -1962,6 +2037,7 @@ with tab3:
                                         b_data, f_name = run_single_channel_audit(p_id)
                                         if b_data:
                                             supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": row['Tên Kênh'], "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                            st.session_state['new_db_channels_notify'] = f"🎉 Vừa lưu thành công kênh @{p_id} vào Database!"
                                             st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
                                             st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                             st.rerun()
@@ -2095,6 +2171,7 @@ with tab3:
                                         b_data, f_name = run_single_channel_audit(p_id)
                                         if b_data:
                                             supabase.table("channels").upsert([{"handle": p_id, "youtuber_name": item.get('Tên Kênh', p_id.upper()), "source": "Smart Finder Audit"}], on_conflict="handle").execute()
+                                            st.session_state['new_db_channels_notify'] = f"🎉 Vừa lưu thành công kênh @{p_id} vào Database!"
                                             st.session_state['audit_success_msg'] = f"🎉 Đã lưu **@{p_id}** vào Database!"
                                             st.session_state[audit_key] = {"bytes": b_data, "filename": f_name}
                                             st.rerun()
@@ -2195,10 +2272,11 @@ with tab4:
             df_insert = df_raw.drop_duplicates(subset=["handle"])
             supabase.table("channels").upsert(df_insert[["handle", "youtuber_name", "source"]].to_dict(orient="records"), on_conflict="handle").execute()
             
-            # Invalidate Tab 5 caches
+            # Invalidate Tab 5 caches & Set notify
             for k in list(st.session_state.keys()):
                 if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                     st.session_state.pop(k, None)
+            st.session_state['new_db_channels_notify'] = f"🎉 Vừa tải lên & nạp thành công {len(df_insert)} kênh mới vào Database! Tất cả kênh mới được ưu tiên hiển thị ở đầu danh sách."
 
             st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle duy nhất vào Database đám mây Supabase!")
             
@@ -2211,10 +2289,26 @@ with tab4:
 # --- MULTI-THREADED CRM DATABASE VIEWER WITH PERFECT SYNCHRONIZED PAGINATION ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
-    res = supabase.table("channels").select("*").execute()
+    
+    # NOTIFICATION BANNER FOR NEW CHANNELS
+    if 'new_db_channels_notify' in st.session_state:
+        st.success(st.session_state['new_db_channels_notify'])
+
+    # QUERY SUPABASE SORTED BY CREATED_AT DESCENDING (NEWEST FIRST)
+    try:
+        res = supabase.table("channels").select("*").order("created_at", desc=True).execute()
+    except Exception:
+        try:
+            res = supabase.table("channels").select("*").order("id", desc=True).execute()
+        except Exception:
+            res = supabase.table("channels").select("*").execute()
+
     if res.data:
         df_all = pd.DataFrame(res.data)
-        
+        if 'created_at' in df_all.columns:
+            df_all['created_at_dt'] = pd.to_datetime(df_all['created_at'], errors='coerce')
+            df_all = df_all.sort_values(by='created_at_dt', ascending=False)
+
         c_top1, c_top2 = st.columns([7, 3])
         with c_top1:
             st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
@@ -2319,11 +2413,20 @@ with tab5:
             df_grid['Link Kênh'] = df_grid['handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}" if to_pure_id(h) else "")
             df_grid['Tab Videos'] = df_grid['handle'].apply(lambda h: f"https://youtube.com/@{to_pure_id(h)}/videos" if to_pure_id(h) else "")
             
+            if 'created_at' in df_grid.columns:
+                df_grid['Ngày Cập Nhật'] = pd.to_datetime(df_grid['created_at'], errors='coerce').dt.strftime('%d-%m-%Y %H:%M')
+            else:
+                df_grid['Ngày Cập Nhật'] = 'N/A'
+                
             df_grid.index = range(1, len(df_grid) + 1)
-            st.dataframe(df_grid[['handle', 'youtuber_name', 'source', 'Link Kênh', 'Tab Videos']], use_container_width=True, column_config={
+            cols_show = ['handle', 'youtuber_name', 'source', 'Ngày Cập Nhật', 'Link Kênh', 'Tab Videos']
+            cols_show = [c for c in cols_show if c in df_grid.columns]
+
+            st.dataframe(df_grid[cols_show], use_container_width=True, column_config={
                 "handle": st.column_config.TextColumn("Handle"),
                 "youtuber_name": st.column_config.TextColumn("Tên YouTuber"),
                 "source": st.column_config.TextColumn("Nguồn Dữ Liệu"),
+                "Ngày Cập Nhật": st.column_config.TextColumn("📅 Ngày Cập Nhật"),
                 "Link Kênh": st.column_config.LinkColumn("Trang Chủ", display_text="🏠 Kênh"),
                 "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
             })
@@ -2391,6 +2494,14 @@ with tab5:
                 
                 crm_meta = crm_meta_map.get(p_id) or {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}
                 
+                created_str = ""
+                if row.get('created_at'):
+                    try:
+                        created_dt = pd.to_datetime(row['created_at'])
+                        created_str = created_dt.strftime("%d-%m-%Y %H:%M")
+                    except Exception:
+                        created_str = str(row['created_at'])[:16]
+
                 with st.container(border=True):
                     if is_active:
                         st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
@@ -2406,7 +2517,7 @@ with tab5:
                             show_video_dialog(p_id)
                     with c2:
                         st.write(f"👥 **Subs:** `{crm_meta['sub_str']}` | 🌍 **Q.Gia:** `{crm_meta['country']}`")
-                        st.write(f"📁 **Nguồn dữ liệu:** {row.get('source', 'N/A')}")
+                        st.write(f"📁 **Nguồn:** {row.get('source', 'N/A')}" + (f" | 📅 **Cập nhật:** `{created_str}`" if created_str else ""))
                         st.markdown(render_social_badges_html(crm_meta.get("socials", {})), unsafe_allow_html=True)
                     with c3:
                         if st.button("🗑️ Xóa DB", key=f"del_db_{idx}_{p_id}", use_container_width=True):
