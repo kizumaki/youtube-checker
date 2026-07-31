@@ -285,7 +285,7 @@ with st.sidebar:
             if key.startswith('audit_file_'): del st.session_state[key]
         st.rerun()
 
-# --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM (FIXED SAFE WIDGET CLEANUP) ---
+# --- HELPER TO DELETE CHANNEL COMPLETELY FROM SYSTEM ---
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
     try: supabase.table("channels").delete().eq("handle", pure_handle).execute()
@@ -296,7 +296,6 @@ def delete_channel_from_system(pure_handle):
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
 
-    # SAFELY POP WIDGET KEYS WITHOUT DIRECT ASSIGNMENT TO AVOID STREAMLIT API EXCEPTION
     for prefix in ["chk_t1_", "chk_p_", "chk_r_"]:
         st.session_state.pop(f"{prefix}{pure_handle}", None)
 
@@ -336,47 +335,92 @@ def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]: return None
     s = str(raw_val).strip()
     m_url = re.search(r'youtube\.com/(?:@|c/|user/|channel/)?([^\s?#/]+)', s, re.IGNORECASE)
-    if m_url: s = m_url.group(1)
+    if m_url:
+        val = m_url.group(1)
+        if val.lower() in ['watch', 'shorts', 'feed', 'embed']: return None
+        s = val
     s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
     return s if s else None
+
+def extract_video_id(raw_url):
+    if not raw_url or pd.isna(raw_url): return None
+    s = str(raw_url).strip()
+    m = re.search(r'(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})', s)
+    return m.group(1) if m else None
+
+def get_handles_from_video_ids(video_ids):
+    if not video_ids: return []
+    channel_ids = set()
+    for i in range(0, len(video_ids), 50):
+        chunk = video_ids[i:i+50]
+        try:
+            res = yt_execute(lambda yt: yt.videos().list(part="snippet", id=','.join(chunk)), cost=1)
+            for item in res.get('items', []):
+                c_id = item.get('snippet', {}).get('channelId')
+                if c_id: channel_ids.add(c_id)
+        except Exception: pass
+        
+    handles = []
+    if channel_ids:
+        c_ids_list = list(channel_ids)
+        for i in range(0, len(c_ids_list), 50):
+            chunk = c_ids_list[i:i+50]
+            try:
+                res = yt_execute(lambda yt: yt.channels().list(part="snippet", id=','.join(chunk)), cost=1)
+                for item in res.get('items', []):
+                    custom_url = item.get('snippet', {}).get('customUrl', '')
+                    pure = to_pure_id(custom_url) or to_pure_id(item.get('id'))
+                    if pure and pure not in handles:
+                        handles.append(pure)
+            except Exception: pass
+    return handles
+
+def parse_raw_inputs_to_handles(raw_inputs_list):
+    handles = set()
+    video_ids = set()
+    for raw in raw_inputs_list:
+        if not raw or pd.isna(raw): continue
+        s = str(raw).strip()
+        if not s: continue
+        
+        v_id = extract_video_id(s)
+        if v_id:
+            video_ids.add(v_id)
+        else:
+            p_h = to_pure_id(s)
+            if p_h: handles.add(p_h)
+            
+    if video_ids:
+        with st.spinner(f"🔍 Đang giải mã {len(video_ids)} Link Video sang Handle Kênh..."):
+            resolved_h = get_handles_from_video_ids(list(video_ids))
+            for h in resolved_h: handles.add(h)
+            
+    return list(handles)
+
+def extract_raw_inputs_from_file(uploaded_file):
+    raw_list = []
+    fname = uploaded_file.name.lower()
+    try:
+        if fname.endswith('.txt'):
+            content = uploaded_file.read().decode("utf-8", errors="ignore")
+            raw_list = re.split(r'[\n,\t\r]+', content)
+        elif fname.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+            for col in df.columns:
+                for val in df[col].dropna(): raw_list.append(str(val))
+        elif fname.endswith('.xlsx') or fname.endswith('.xls'):
+            df = pd.read_excel(uploaded_file)
+            for col in df.columns:
+                for val in df[col].dropna(): raw_list.append(str(val))
+    except Exception as e: st.error(f"Lỗi đọc file: {e}")
+    return raw_list
 
 def is_long_form_video(v, min_seconds=180):
     title = v.get('Title', '').lower()
     if '#shorts' in title or '#short' in title: return False
     if v.get('Seconds', 0) <= min_seconds: return False
     return True
-
-def extract_handles_from_text(text_block):
-    if not text_block: return []
-    lines = re.split(r'[\n,\t\r]+', str(text_block))
-    handles = []
-    for line in lines:
-        p = to_pure_id(line)
-        if p and p not in handles: handles.append(p)
-    return handles
-
-def extract_handles_from_file(uploaded_file):
-    handles = []
-    fname = uploaded_file.name.lower()
-    try:
-        if fname.endswith('.txt'):
-            content = uploaded_file.read().decode("utf-8", errors="ignore")
-            handles = extract_handles_from_text(content)
-        elif fname.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-            for col in df.columns:
-                for val in df[col].dropna():
-                    p = to_pure_id(val)
-                    if p and p not in handles: handles.append(p)
-        elif fname.endswith('.xlsx') or fname.endswith('.xls'):
-            df = pd.read_excel(uploaded_file)
-            for col in df.columns:
-                for val in df[col].dropna():
-                    p = to_pure_id(val)
-                    if p and p not in handles: handles.append(p)
-    except Exception as e: st.error(f"Lỗi đọc file: {e}")
-    return handles
 
 def is_within_last_90_days(date_str):
     if not date_str or date_str == "N/A": return False
@@ -858,20 +902,20 @@ def sort_and_filter_channels(channel_list, search_query, sort_by):
 
 # --- TAB 1: BATCH SEARCH ---
 with tab1:
-    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle Hàng Loạt</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle / Link Video Hàng Loạt</h3>", unsafe_allow_html=True)
     col_s1, col_s2 = st.columns([2, 1])
-    with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh vào đây (mỗi kênh 1 dòng):", height=180)
+    with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh/Link Video vào đây (mỗi dòng 1 link):", height=180)
     with col_s2: file_input_check = st.file_uploader("Hoặc Upload file danh sách (.txt, .csv, .xlsx):")
         
     if st.button("🔎 Bắt Đầu Kiểm Tra Hàng Loạt", type="primary"):
-        all_target_handles = set()
+        all_raw_inputs = []
         if text_input_area:
-            for h in extract_handles_from_text(text_input_area): all_target_handles.add(h)
+            all_raw_inputs.extend(re.split(r'[\n,\t\r]+', str(text_input_area)))
         if file_input_check:
-            for h in extract_handles_from_file(file_input_check): all_target_handles.add(h)
+            all_raw_inputs.extend(extract_raw_inputs_from_file(file_input_check))
                 
-        target_list = list(all_target_handles)
-        if not target_list: st.warning("⚠️ Vui lòng dán danh sách Handle hoặc chọn file để kiểm tra!")
+        target_list = parse_raw_inputs_to_handles(all_raw_inputs)
+        if not target_list: st.warning("⚠️ Vui lòng dán danh sách Handle, Link Video hoặc chọn file để kiểm tra!")
         else:
             with st.spinner(f"Đang đối chiếu đa luồng {len(target_list)} Handle với Database Supabase..."):
                 response = supabase.table("channels").select("handle, youtuber_name").in_("handle", target_list).execute()
