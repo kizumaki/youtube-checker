@@ -40,11 +40,9 @@ def init_supabase():
 supabase = init_supabase()
 
 # --- INITIALIZE PERSISTENT STATE ---
-if 'app_theme' not in st.session_state:
-    st.session_state['app_theme'] = 'Studio Peach (Sáng)'
-
-if 'selected_channels' not in st.session_state:
-    st.session_state['selected_channels'] = set()
+if 'app_theme' not in st.session_state: st.session_state['app_theme'] = 'Studio Peach (Sáng)'
+if 'selected_channels' not in st.session_state: st.session_state['selected_channels'] = set()
+if 'api_usage' not in st.session_state: st.session_state['api_usage'] = {}
 
 # Callback for Selection Sync
 def toggle_select_channel(pure_handle):
@@ -53,12 +51,8 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
-# FIX: CLEAR BOTH THE SET AND ALL INDIVIDUAL CHECKBOX WIDGET STATES
 def clear_selected_channels():
     st.session_state['selected_channels'].clear()
-    for key in list(st.session_state.keys()):
-        if key.startswith("chk_"):
-            st.session_state[key] = False
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -73,183 +67,47 @@ st.markdown(f"""
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
 
 /* Base Theme */
-.stApp {{
-    background-color: {bg_color} !important;
-    color: {text_color} !important;
-    font-family: 'Montserrat', sans-serif !important;
-}}
-
-/* Sidebar Styling */
-section[data-testid="stSidebar"] {{
-    background-color: {sidebar_bg} !important;
-    border-right: 1px solid {border_color} !important;
-    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05) !important;
-}}
-
-/* Header */
-header[data-testid="stHeader"] {{
-    background-color: transparent !important;
-}}
+.stApp {{ background-color: {bg_color} !important; color: {text_color} !important; font-family: 'Montserrat', sans-serif !important; }}
+section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_color} !important; box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05) !important; }}
+header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 
 /* HIGH-END ARTISTIC TABS */
-.stTabs [data-baseweb="tab-list"] {{
-    gap: 32px;
-    background-color: transparent;
-    padding: 0 0 4px 0;
-    border-bottom: 2px solid #D1D5DB;
-}}
-
-.stTabs [data-baseweb="tab"] {{
-    background-color: transparent !important;
-    border: none !important;
-    border-bottom: 3px solid transparent !important;
-    border-radius: 0 !important;
-    color: #6B7280 !important;
-    font-weight: 700;
-    font-size: 0.9rem;
-    padding: 10px 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    transition: all 0.3s ease !important;
-    cursor: pointer !important;
-}}
-
-.stTabs [data-baseweb="tab"]:hover {{
-    color: #D95F26 !important;
-    transform: translateY(-1px);
-}}
-
-.stTabs [aria-selected="true"] {{
-    color: #D95F26 !important;
-    border-bottom: 3px solid #D95F26 !important;
-    transform: translateY(0);
-}}
+.stTabs [data-baseweb="tab-list"] {{ gap: 32px; background-color: transparent; padding: 0 0 4px 0; border-bottom: 2px solid #D1D5DB; }}
+.stTabs [data-baseweb="tab"] {{ background-color: transparent !important; border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #6B7280 !important; font-weight: 700; font-size: 0.9rem; padding: 10px 4px; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s ease !important; cursor: pointer !important; }}
+.stTabs [data-baseweb="tab"]:hover {{ color: #D95F26 !important; transform: translateY(-1px); }}
+.stTabs [aria-selected="true"] {{ color: #D95F26 !important; border-bottom: 3px solid #D95F26 !important; transform: translateY(0); }}
 
 /* Standard Card Container Styling */
-div[data-testid="stVerticalBlockBorderWrapper"] {{
-    background-color: {card_bg} !important;
-    border: 1px solid {border_color} !important;
-    border-radius: 12px !important;
-    padding: 12px !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}}
-
-div[data-testid="stVerticalBlockBorderWrapper"]:hover {{
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
-}}
+div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px !important; padding: 12px !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; }}
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important; }}
 
 /* ACTIVE INSPECTED CARD (TANGERINE) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {{
-    border: 2px solid #D95F26 !important; 
-    box-shadow: 0 8px 24px rgba(217, 95, 38, 0.2) !important;
-}}
-
-/* IN-CART CARD (OCEAN BLUE) */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {{
-    border: 2px solid #47A5D1 !important;
-    box-shadow: 0 8px 24px rgba(71, 165, 209, 0.2) !important;
-}}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {{ border: 2px solid #D95F26 !important; box-shadow: 0 8px 24px rgba(217, 95, 38, 0.2) !important; }}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {{ border: 2px solid #47A5D1 !important; box-shadow: 0 8px 24px rgba(71, 165, 209, 0.2) !important; }}
 
 /* Active Banner Tag Styling (Strict 100% White Text) */
-.active-banner-tag {{
-    background-color: #D95F26 !important;
-    color: #FFFFFF !important;
-    padding: 6px 14px !important;
-    border-radius: 8px !important;
-    font-weight: 800 !important;
-    margin-bottom: 12px !important;
-    font-size: 0.85rem !important;
-    letter-spacing: 0.05em !important;
-    display: inline-block !important;
-    box-shadow: 0 3px 10px rgba(217, 95, 38, 0.25) !important;
-}}
+.active-banner-tag {{ background-color: #D95F26 !important; color: #FFFFFF !important; padding: 6px 14px !important; border-radius: 8px !important; font-weight: 800 !important; margin-bottom: 12px !important; font-size: 0.85rem !important; letter-spacing: 0.05em !important; display: inline-block !important; box-shadow: 0 3px 10px rgba(217, 95, 38, 0.25) !important; }}
 .active-banner-tag * {{ color: #FFFFFF !important; }}
-
-.in-cart-banner-tag {{
-    background-color: #47A5D1 !important;
-    color: #FFFFFF !important;
-    padding: 6px 14px !important;
-    border-radius: 8px !important;
-    font-weight: 800 !important;
-    margin-bottom: 12px !important;
-    font-size: 0.85rem !important;
-    letter-spacing: 0.05em !important;
-    display: inline-block !important;
-    box-shadow: 0 3px 10px rgba(71, 165, 209, 0.25) !important;
-}}
+.in-cart-banner-tag {{ background-color: #47A5D1 !important; color: #FFFFFF !important; padding: 6px 14px !important; border-radius: 8px !important; font-weight: 800 !important; margin-bottom: 12px !important; font-size: 0.85rem !important; letter-spacing: 0.05em !important; display: inline-block !important; box-shadow: 0 3px 10px rgba(71, 165, 209, 0.25) !important; }}
 .in-cart-banner-tag * {{ color: #FFFFFF !important; }}
 
 /* Inputs & Selectboxes */
-.stTextInput input, .stTextArea textarea, .stSelectbox select {{
-    background-color: {card_bg} !important;
-    color: {text_color} !important;
-    border: 1px solid #D1D5DB !important;
-    border-radius: 8px !important;
-    font-family: 'Montserrat', sans-serif !important;
-}}
-
-.stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox select:focus {{
-    border-color: #D95F26 !important;
-    box-shadow: 0 0 0 1px #D95F26 !important;
-}}
+.stTextInput input, .stTextArea textarea, .stSelectbox select {{ background-color: {card_bg} !important; color: {text_color} !important; border: 1px solid #D1D5DB !important; border-radius: 8px !important; font-family: 'Montserrat', sans-serif !important; }}
+.stTextInput input:focus, .stTextArea textarea:focus, .stSelectbox select:focus {{ border-color: #D95F26 !important; box-shadow: 0 0 0 1px #D95F26 !important; }}
 
 /* Default Buttons */
-.stButton button {{
-    border-radius: 8px !important;
-    font-weight: 700 !important;
-    font-family: 'Montserrat', sans-serif !important;
-    border: 1px solid #D1D5DB !important;
-    background-color: {card_bg} !important;
-    color: {text_color} !important;
-    text-transform: uppercase;
-    font-size: 0.8rem !important;
-    letter-spacing: 0.05em;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}}
-
-.stButton button:hover {{
-    border-color: #D95F26 !important;
-    color: #D95F26 !important;
-    transform: translateY(-1px) !important;
-}}
+.stButton button {{ border-radius: 8px !important; font-weight: 700 !important; font-family: 'Montserrat', sans-serif !important; border: 1px solid #D1D5DB !important; background-color: {card_bg} !important; color: {text_color} !important; text-transform: uppercase; font-size: 0.8rem !important; letter-spacing: 0.05em; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important; }}
+.stButton button:hover {{ border-color: #D95F26 !important; color: #D95F26 !important; transform: translateY(-1px) !important; }}
 
 /* ARTISTIC PRIMARY BUTTONS (#D95F26 Gradient & Soft 1px Lift) */
-.stButton button[kind="primary"],
-.stButton button[kind="primary"] *,
-.stButton button[kind="primary"] p,
-.stButton button[kind="primary"] span,
-.stButton button[kind="primary"] div {{
-    background: linear-gradient(135deg, #D95F26 0%, #E66A32 100%) !important;
-    color: #FFFFFF !important;
-    border: none !important;
-    box-shadow: 0 3px 10px rgba(217, 95, 38, 0.22) !important;
-}}
-
-.stButton button[kind="primary"]:hover,
-.stButton button[kind="primary"]:hover *,
-.stButton button[kind="primary"]:hover p,
-.stButton button[kind="primary"]:hover span,
-.stButton button[kind="primary"]:hover div {{
-    background: linear-gradient(135deg, #C24E18 0%, #D95F26 100%) !important;
-    color: #FFFFFF !important;
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 16px rgba(217, 95, 38, 0.32) !important;
-}}
+.stButton button[kind="primary"], .stButton button[kind="primary"] *, .stButton button[kind="primary"] p, .stButton button[kind="primary"] span, .stButton button[kind="primary"] div {{ background: linear-gradient(135deg, #D95F26 0%, #E66A32 100%) !important; color: #FFFFFF !important; border: none !important; box-shadow: 0 3px 10px rgba(217, 95, 38, 0.22) !important; }}
+.stButton button[kind="primary"]:hover, .stButton button[kind="primary"]:hover *, .stButton button[kind="primary"]:hover p, .stButton button[kind="primary"]:hover span, .stButton button[kind="primary"]:hover div {{ background: linear-gradient(135deg, #C24E18 0%, #D95F26 100%) !important; color: #FFFFFF !important; transform: translateY(-1px) !important; box-shadow: 0 6px 16px rgba(217, 95, 38, 0.32) !important; }}
 
 /* Badges */
-.badge-pro {{
-    display: inline-block;
-    padding: 6px 12px;
-    border-radius: 9999px;
-    font-size: 0.7rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}}
-
+.badge-pro {{ display: inline-block; padding: 6px 12px; border-radius: 9999px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }}
 .badge-tangerine, .badge-tangerine * {{ background-color: #D95F26 !important; color: #FFFFFF !important; border: none !important; }}
 .badge-ocean, .badge-ocean * {{ background-color: #47A5D1 !important; color: #FFFFFF !important; border: none !important; }}
+.badge-score {{ padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 0.8rem; background-color: #FFF2EB; color: #D95F26; border: 1px solid #D95F26; display: inline-block; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -296,6 +154,17 @@ def remove_from_cart_db(pure_handle):
 
 def clear_cart_db():
     try: supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
+    except Exception: pass
+
+def load_campaigns():
+    try:
+        res = supabase.table("app_config").select("value").eq("key", "campaigns").execute()
+        if res.data and len(res.data) > 0: return json.loads(res.data[0]["value"])
+    except Exception: pass
+    return {}
+
+def save_campaigns(camps_dict):
+    try: supabase.table("app_config").upsert({"key": "campaigns", "value": json.dumps(camps_dict)}, on_conflict="key").execute()
     except Exception: pass
 
 # --- INITIALIZE PERSISTENT STATE ---
@@ -373,13 +242,28 @@ with st.sidebar:
     st.selectbox("🎨 Giao diện App:", options=["Studio Peach (Sáng)", "Studio Espresso (Tối)"], key="app_theme")
     st.divider()
 
-    st.markdown("<h4 style='font-weight: 700; font-size: 0.95rem;'>⚙️ Cấu Hình API Keys</h4>", unsafe_allow_html=True)
-    active_key_count = len(st.session_state.get('api_keys', []))
-    st.markdown(f"Đang chạy: <span class='badge-pro badge-tangerine'>{active_key_count} Keys</span>", unsafe_allow_html=True)
+    # --- API HEALTH MONITOR ---
+    st.markdown("<h4 style='font-weight: 700; font-size: 0.95rem;'>🛡️ Sức Khỏe API Quota</h4>", unsafe_allow_html=True)
+    active_keys = st.session_state.get('api_keys', [])
+    usage_data = st.session_state.get('api_usage', {})
     
-    keys_input = st.text_area("Danh sách API (1 key/dòng):", value=st.session_state['global_api_keys'], height=140, key="api_keys_text_area")
+    for k in active_keys:
+        used = usage_data.get(k, 0)
+        pct = min(100, int((used / 10000) * 100))
+        color = "#10B981" if pct < 70 else ("#F59E0B" if pct < 90 else "#EF4444")
+        st.markdown(f"""
+            <div style='margin-bottom: 8px;'>
+                <div style='font-size: 0.75rem; color: #6B7280; font-weight: 700;'>🔑 {k[:10]}...</div>
+                <div style='background-color: #E5E7EB; border-radius: 4px; height: 6px; width: 100%; margin-top: 4px;'>
+                    <div style='background-color: {color}; width: {pct}%; height: 100%; border-radius: 4px;'></div>
+                </div>
+                <div style='font-size: 0.65rem; color: #9CA3AF; text-align: right; margin-top: 2px;'>{used:,}/10,000</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    keys_input = st.text_area("Cập nhật danh sách Key (1 key/dòng):", value=st.session_state['global_api_keys'], height=80, key="api_keys_text_area")
     
-    if st.button("💾 Lưu Cấu Hình Vĩnh Viễn", type="primary", use_container_width=True):
+    if st.button("💾 Lưu Cấu Hình Key", type="primary", use_container_width=True):
         st.session_state['global_api_keys'] = keys_input
         set_api_keys(keys_input)
         save_api_keys_to_db(keys_input)
@@ -406,9 +290,6 @@ def delete_channel_from_system(pure_handle):
     if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
-    if f"chk_t1_{pure_handle}" in st.session_state: st.session_state[f"chk_t1_{pure_handle}"] = False
-    if f"chk_p_{pure_handle}" in st.session_state: st.session_state[f"chk_p_{pure_handle}"] = False
-    if f"chk_r_{pure_handle}" in st.session_state: st.session_state[f"chk_r_{pure_handle}"] = False
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing']:
         if key_list in st.session_state:
@@ -417,8 +298,8 @@ def delete_channel_from_system(pure_handle):
     audit_key = f"audit_file_{pure_handle}"
     if audit_key in st.session_state: del st.session_state[audit_key]
 
-# --- API QUOTA ROTATION MANAGER ---
-def yt_execute(request_func):
+# --- API QUOTA ROTATION MANAGER (WITH QUOTA TRACKING) ---
+def yt_execute(request_func, cost=1):
     keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     if not keys: keys = [DEFAULT_API_KEY]
     idx = st.session_state.get('api_key_idx', 0)
@@ -427,9 +308,16 @@ def yt_execute(request_func):
         try:
             yt = build("youtube", "v3", developerKey=key)
             req = request_func(yt)
-            return req.execute()
+            res = req.execute()
+            
+            # Record Usage
+            usage = st.session_state.get('api_usage', {})
+            usage[key] = usage.get(key, 0) + cost
+            st.session_state['api_usage'] = usage
+            
+            return res
         except HttpError as e:
-            if e.resp.status in [403, 400]:
+            if e.resp.status in [403, 400, 429]:
                 idx = (idx + 1) % len(keys)
                 st.session_state['api_key_idx'] = idx
             else: raise e
@@ -518,11 +406,11 @@ def clean_and_extract_keywords(text, seed_handle=""):
 def get_channel_id_by_handle(handle):
     clean = handle.replace('@', '').split('/')[-1].strip()
     try:
-        res = yt_execute(lambda yt: yt.channels().list(part="id", forHandle=clean))
+        res = yt_execute(lambda yt: yt.channels().list(part="id", forHandle=clean), cost=1)
         if 'items' in res and len(res['items']) > 0: return res['items'][0]['id']
     except Exception: pass
     try:
-        res = yt_execute(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1))
+        res = yt_execute(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1), cost=100)
         if 'items' in res and len(res['items']) > 0: return res['items'][0]['snippet']['channelId']
     except Exception: pass
     return None
@@ -531,7 +419,7 @@ def get_channel_id_by_handle(handle):
 def extract_channel_master_keywords(channel_id):
     keywords_pool, channel_keywords, top_tags, categories = [], [], [], []
     try:
-        ch_res = yt_execute(lambda yt: yt.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id))
+        ch_res = yt_execute(lambda yt: yt.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id), cost=1)
         if 'items' in ch_res and len(ch_res['items']) > 0:
             item = ch_res['items'][0]
             raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
@@ -545,10 +433,10 @@ def extract_channel_master_keywords(channel_id):
             for t in topics: categories.append(t.split('/')[-1].replace('_', ' '))
             uploads_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
             if uploads_playlist:
-                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15))
+                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15), cost=1)
                 v_ids = [v['snippet']['resourceId']['videoId'] for v in v_res.get('items', [])]
                 if v_ids:
-                    v_detail_res = yt_execute(lambda yt: yt.videos().list(part="snippet", id=','.join(v_ids)))
+                    v_detail_res = yt_execute(lambda yt: yt.videos().list(part="snippet", id=','.join(v_ids)), cost=1)
                     for v_item in v_detail_res.get('items', []):
                         for tag in v_item.get('snippet', {}).get('tags', []):
                             if len(tag) > 2 and tag.lower() not in STOP_WORDS:
@@ -560,7 +448,7 @@ def extract_channel_master_keywords(channel_id):
     return {"master_keywords": most_common_kws, "channel_keywords": list(set(channel_keywords))[:10], "top_tags": top_tag_counts, "categories": categories}
 
 def get_channel_details(channel_id):
-    res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=channel_id))
+    res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=channel_id), cost=1)
     if 'items' in res and len(res['items']) > 0:
         item = res['items'][0]
         playlist_id = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
@@ -584,7 +472,7 @@ def get_video_details(video_ids):
     for i in range(0, total, 50):
         try:
             chunk = video_ids[i:i+50]
-            res = yt_execute(lambda yt: yt.videos().list(part="snippet,contentDetails,statistics", id=','.join(chunk)))
+            res = yt_execute(lambda yt: yt.videos().list(part="snippet,contentDetails,statistics", id=','.join(chunk)), cost=1)
             for item in res.get('items', []):
                 duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
                 h, rem = divmod(duration_seconds, 3600)
@@ -633,7 +521,7 @@ def get_6_recent_videos(pure_handle):
             if len(long_vids) < 6:
                 playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
                 if playlist_id:
-                    v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=30))
+                    v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=30), cost=1)
                     v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                     if v_ids:
                         v_details = get_video_details(v_ids)
@@ -642,6 +530,36 @@ def get_6_recent_videos(pure_handle):
                             if len(long_vids) >= 6: break
     except Exception: pass
     return long_vids[:6]
+
+# --- AI OUTREACH EMAIL DRAFT MODAL ---
+@st.dialog("🤖 AI Soạn Mail Hợp Tác", width="large")
+def show_ai_email_dialog(channel_data):
+    st.markdown(f"<h3 style='color: #D95F26; font-weight: 800;'>Thư ngỏ gửi <span style='color: #47A5D1;'>{channel_data.get('Tên Kênh', 'Creator')}</span></h3>", unsafe_allow_html=True)
+    st.caption("✨ AI đã tự động phân tích chỉ số và thiết kế thư cá nhân hóa. Bạn có thể chỉnh sửa trước khi Copy.")
+    
+    er_text = channel_data.get('ER', 'rất ấn tượng')
+    if er_text != 'N/A' and er_text != 'rất ấn tượng': er_text = f"lên tới {er_text}"
+        
+    template = f"""Subject: Collaboration Opportunity with {channel_data.get('Tên Kênh', 'your channel')} 🚀
+
+Hi {channel_data.get('Tên Kênh', 'there')},
+
+I’ve been closely following your content on YouTube, especially your latest videos, and I am absolutely blown away by the quality! It’s no surprise your channel is growing so fast, with an incredible engagement rate {er_text}. 
+
+I am reaching out from Backstreet Voice Studio. We specialize in high-end voiceover, localization, and audio optimization, helping top-tier creators like you expand their reach into new global markets effortlessly. 
+
+Given your strong audience retention and niche focus, translating and dubbing your content could easily double your current viewership without requiring any extra production effort on your end.
+
+Would you be open to a quick 10-minute chat this week to see how we could partner up to maximize your channel's revenue? 
+
+Keep up the amazing work!
+
+Best regards,
+[Your Name/Title]
+Backstreet Voice Studio"""
+    
+    st.text_area("Bản Thảo Email (Sẵn sàng Copy):", value=template, height=350)
+    if st.button("❌ Đóng Cửa Sổ", type="primary", use_container_width=True): st.rerun()
 
 # --- STREAMLIT MODAL DIALOGS ---
 @st.dialog("🎬 6 Video Dài (Long-form) Mới Nhất", width="large")
@@ -707,13 +625,19 @@ def compare_channels_dialog(channel_data_list):
                     recent_vids = get_6_recent_videos(pure_h)
                     latest_date = recent_vids[0]['Published Date'] if recent_vids else 'N/A'
                     try:
-                        c_res = yt_execute(lambda yt: yt.channels().list(part="statistics", id=cid))
+                        c_res = yt_execute(lambda yt: yt.channels().list(part="statistics", id=cid), cost=1)
                         video_count = int(c_res['items'][0]['statistics'].get('videoCount', 0)) if (c_res.get('items') and len(c_res['items']) > 0) else 0
                     except Exception: video_count = 0
                     c_dict['Subscribers'] = f"{sub_count:,}"
                     c_dict['Tổng Số Video'] = f"{video_count:,}"
                     c_dict['Quốc gia'] = country_name if country_name else 'N/A'
                     c_dict['Video Gần Nhất'] = latest_date
+                    
+                    if recent_vids and sub_count > 0:
+                        avg_views = sum(v.get('Views', 0) for v in recent_vids) / len(recent_vids)
+                        er_rate = (avg_views / sub_count) * 100
+                        c_dict['ER'] = f"{er_rate:.2f}%"
+                        c_dict['Score'] = min(100, int((er_rate / 10.0) * 100))
             enriched_list.append(c_dict)
 
     cols = st.columns(len(enriched_list))
@@ -722,6 +646,7 @@ def compare_channels_dialog(channel_data_list):
             ch_handle = ch.get('Handle', 'N/A')
             pure_h = to_pure_id(ch_handle)
             ch_link = f"https://youtube.com/@{pure_h}" if pure_h else "javascript:void(0);"
+            score_badge = f"<div style='margin-top: 10px;'><span class='badge-score'>🔥 Điểm: {ch.get('Score', 'N/A')}/100</span></div>" if ch.get('Score') else ""
 
             card_html = f"""
             <div style='background-color: {card_bg}; padding: 18px 12px; border-radius: 12px; border: 1px solid {border_color}; text-align: center; margin-bottom: 10px;'>
@@ -736,6 +661,7 @@ def compare_channels_dialog(channel_data_list):
                 <p style='font-size: 1.0rem; font-weight: 600; color: {text_color}; margin-top: 0; margin-bottom: 12px;'>{ch.get('Quốc gia', 'N/A')}</p>
                 <p style='font-size: 0.75rem; color: #6B7280; margin-bottom: 2px; font-weight: 700;'>📅 GẦN NHẤT</p>
                 <p style='font-size: 1.0rem; font-weight: 600; color: #47A5D1; margin-top: 0; margin-bottom: 0;'>{ch.get('Video Gần Nhất', 'N/A')}</p>
+                {score_badge}
             </div>
             """
             st.markdown(card_html, unsafe_allow_html=True)
@@ -750,7 +676,7 @@ def run_single_channel_audit(pure_handle):
     v_ids = []
     next_token = None
     while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token))
+        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token), cost=1)
         for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
         next_token = res.get('nextPageToken')
         if not next_token: break
@@ -815,11 +741,33 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     wb.save(buf)
     return buf.getvalue()
 
-# --- REUSABLE COMPONENT: RENDER SHARED CART (URL FIX FOR YOUTUBE @ HANDLES) ---
+# --- REUSABLE COMPONENT: RENDER SHARED CART (WITH SYNC & CAMPAIGNS) ---
 def render_shared_cart_ui(key_suffix=""):
     st.divider()
     cart_items = st.session_state['cart']
-    st.markdown(f"<h3 style='font-weight: 800;'>🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)</h3>", unsafe_allow_html=True)
+    
+    col_t1, col_t2 = st.columns([7, 3])
+    with col_t1: st.markdown(f"<h3 style='font-weight: 800;'>🛒 Giỏ Hàng Dùng Chung ({len(cart_items)} Kênh)</h3>", unsafe_allow_html=True)
+    with col_t2:
+        with st.expander("📁 Quản Lý Chiến Dịch"):
+            camps = load_campaigns()
+            new_camp_name = st.text_input("Tên chiến dịch mới:")
+            if st.button("💾 Lưu Giỏ Hàng Thành Chiến Dịch", use_container_width=True):
+                if new_camp_name:
+                    camps[new_camp_name] = cart_items
+                    save_campaigns(camps)
+                    st.success(f"Đã lưu chiến dịch '{new_camp_name}'!")
+                else: st.warning("Vui lòng nhập tên chiến dịch.")
+            
+            sel_camp = st.selectbox("Tải lại chiến dịch cũ:", options=["-- Chọn --"] + list(camps.keys()))
+            if st.button("📂 Tải Dữ Liệu", use_container_width=True):
+                if sel_camp != "-- Chọn --":
+                    st.session_state['cart'] = camps[sel_camp]
+                    clear_cart_db()
+                    for k, v in st.session_state['cart'].items(): add_to_cart_db(k, v)
+                    st.success(f"Đã tải thành công chiến dịch {sel_camp}!")
+                    st.rerun()
+
     if cart_items:
         df_cart = pd.DataFrame(list(cart_items.values()))
         if 'Handle' in df_cart.columns:
@@ -834,19 +782,33 @@ def render_shared_cart_ui(key_suffix=""):
             "Tag": st.column_config.TextColumn("🏷️ Nhãn Trạng Thái")
         })
         
-        c1, c2, c3, c4 = st.columns(4)
-        c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True, key=f"dl_txt_cart_{key_suffix}")
-        buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
-        c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang_dung_chung.xlsx", use_container_width=True, key=f"dl_xl_cart_{key_suffix}")
-        if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
-            data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": f"Cart Import [{i.get('Tag', '')}]"} for i in cart_items.values()]
-            supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
-            st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
-        if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
-            clear_cart_db()
-            st.session_state['cart'] = {}
-            st.success("🎉 Đã xóa sạch Giỏ Hàng!")
-            st.rerun()
+        with st.expander("🚀 Đẩy Dữ Liệu & Xuất File (Google Sheets / Excel)"):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.download_button("📄 Tải TXT", data="\n".join([i["Handle"] for i in cart_items.values()]), file_name="gio_hang_dung_chung.txt", use_container_width=True, key=f"dl_txt_cart_{key_suffix}")
+            buf_xl = io.BytesIO(); df_cart.to_excel(buf_xl, index=False)
+            c2.download_button("📊 Tải Excel", data=buf_xl.getvalue(), file_name="gio_hang_dung_chung.xlsx", use_container_width=True, key=f"dl_xl_cart_{key_suffix}")
+            if c3.button("⚡ Nạp Toàn Bộ Vào DB", type="primary", use_container_width=True, key=f"push_db_cart_{key_suffix}"):
+                data_db = [{"handle": to_pure_id(i["Handle"]), "youtuber_name": i.get("Tên Kênh", ""), "source": f"Cart Import [{i.get('Tag', '')}]"} for i in cart_items.values()]
+                supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
+                st.success(f"🎉 Đã nạp {len(data_db)} kênh vào Database!")
+            if c4.button("🧹 Xóa Sạch Giỏ Hàng", use_container_width=True, key=f"clear_cart_{key_suffix}"): 
+                clear_cart_db()
+                st.session_state['cart'] = {}
+                st.success("🎉 Đã xóa sạch Giỏ Hàng!")
+                st.rerun()
+
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            wh_col1, wh_col2 = st.columns([3, 1])
+            with wh_col1: webhook_url = st.text_input("🔗 Dán Google Apps Script Webhook URL (Để đồng bộ lên Sheets):")
+            with wh_col2: 
+                st.write("")
+                if st.button("🚀 Push to Google Sheets", type="primary", use_container_width=True):
+                    if webhook_url:
+                        try:
+                            requests.post(webhook_url, json={"data": df_cart.to_dict(orient="records")})
+                            st.success("🎉 Đã đẩy dữ liệu thành công!")
+                        except Exception as e: st.error(f"Lỗi: {e}")
+                    else: st.warning("Vui lòng dán Webhook URL!")
     else:
         st.info("Giỏ hàng đang trống. Bấm '🛒 Thêm' ở Tab 1 hoặc Tab 3 để nhặt kênh vào giỏ!")
 
@@ -854,7 +816,7 @@ def render_shared_cart_ui(key_suffix=""):
 st.markdown("""
     <div style="padding: 5px 0 15px 0;">
         <h1 style="font-weight: 900; margin-bottom: 5px; font-size: 2.4rem; letter-spacing: -0.03em;">YT CHECKER <span style="color: #D95F26;">PRO</span></h1>
-        <p style="font-size: 1.05rem; font-weight: 500; opacity: 0.8;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc & Tiết kiệm Quota.</p>
+        <p style="font-size: 1.05rem; font-weight: 500; opacity: 0.8;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc & Quản lý Chiến Dịch.</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -930,7 +892,6 @@ with tab1:
                 cart_keys = set(st.session_state['cart'].keys())
                 selected_set = st.session_state['selected_channels']
                 
-                # CHỈ ĐẾM CÁC KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
@@ -976,7 +937,6 @@ with tab1:
 
                 st.divider()
                 
-                # Pagination
                 items_per_page = 20
                 total_pages = max(1, (len(new_handles) + items_per_page - 1) // items_per_page)
                 page_new = st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, value=1, step=1, key="page_new_t1")
@@ -1002,8 +962,13 @@ with tab1:
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{item['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
-                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_t1_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
+                            
+                            c1_1, c1_2 = st.columns(2)
+                            if c1_1.button("👁️ Xem Video", key=f"btn_prev_t1_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id)
+                            if c1_2.button("📩 Soạn Mail", key=f"btn_mail_t1_{p_id}"):
+                                show_ai_email_dialog(item)
+
                         with c2:
                             st.markdown(f"**Trạng thái:** <span style='color:#47A5D1;'>{item['Trạng thái']}</span>", unsafe_allow_html=True)
                         with c3:
@@ -1096,10 +1061,11 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
     latest_date, has_qualifying_video = "N/A", False
     recent_vids = []
+    avg_views, er_rate, score = 0, 0, 0
     
     if c_playlist and c_video_count > 0:
         try:
-            v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50))
+            v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50), cost=1)
             v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
             if v_ids:
                 v_details = get_video_details(v_ids)
@@ -1108,9 +1074,21 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
                     latest_date = long_vids[0]['Published Date']
                     has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in long_vids)
                     recent_vids = long_vids[:6]
+                    
+                    if recent_vids and c_subs > 0:
+                        avg_views = sum(v.get('Views', 0) for v in recent_vids) / len(recent_vids)
+                        er_rate = (avg_views / c_subs) * 100
+                        score = min(100, int((er_rate / 10.0) * 100))
         except Exception: pass
 
-    base_data = {"Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", "Trạng Thái DB": db_status, "recent_videos": recent_vids}
+    base_data = {
+        "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, 
+        "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, 
+        "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", 
+        "Trạng Thái DB": db_status, "recent_videos": recent_vids,
+        "ER": f"{er_rate:.2f}%" if er_rate > 0 else "N/A",
+        "Score": score if score > 0 else None
+    }
 
     if c_subs < min_subs_choice: 
         base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"
@@ -1185,14 +1163,14 @@ with tab3:
                 
                 candidate_channel_ids = set()
                 q_chan = " ".join(top_kw_list[:2])
-                c_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50))
+                c_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50), cost=100)
                 for c_item in c_search_res.get('items', []):
                     if c_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(c_item['snippet']['channelId'])
                     
                 search_queries = [" ".join(top_kw_list[:2]), " ".join(top_kw_list[2:4])] if len(top_kw_list) >= 4 else [" ".join(top_kw_list)]
                 for q in search_queries:
                     if not q.strip(): continue
-                    v_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q, type="video", maxResults=50))
+                    v_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q, type="video", maxResults=50), cost=100)
                     for v_item in v_search_res.get('items', []):
                         if v_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(v_item['snippet']['channelId'])
                         
@@ -1205,7 +1183,7 @@ with tab3:
                     channel_items, candidate_handles = [], []
                     
                     for i in range(0, len(candidate_ids_list), 50):
-                        chan_res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])))
+                        chan_res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])), cost=1)
                         for item in chan_res.get('items', []):
                             c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
                             candidate_handles.append(c_h)
@@ -1262,7 +1240,6 @@ with tab3:
                 cart_keys = set(st.session_state['cart'].keys())
                 selected_set = st.session_state['selected_channels']
                 
-                # CHỈ ĐẾM KÊNH MỚI (CHƯA CÓ TRONG GIỎ)
                 selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
                 cnt_for_cart = len(selected_not_in_cart)
                 cnt_total_sel = len(selected_set)
@@ -1299,7 +1276,6 @@ with tab3:
 
                 st.divider()
 
-                # Pagination setup
                 items_per_page = 20
                 total_pages = max(1, (len(display_passed) + items_per_page - 1) // items_per_page)
                 page_pass = st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, value=1, step=1, key="page_pass_t3")
@@ -1325,11 +1301,18 @@ with tab3:
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><a href='{row['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
-                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_pass_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
+                            
+                            c1_1, c1_2 = st.columns(2)
+                            if c1_1.button("👁️ Xem Video", key=f"btn_prev_pass_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
+                            if c1_2.button("📩 Soạn Mail", key=f"btn_mail_pass_{p_id}"):
+                                show_ai_email_dialog(row)
+
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
                             st.write(f"🎬 **Tổng Video:** `{row['Tổng Số Video']}` | 📅 **Mới nhất:** `{row['Video Gần Nhất']}`")
+                            if row.get('Score'):
+                                st.markdown(f"<span class='badge-score'>🔥 Điểm tiềm năng: {row['Score']}/100</span>", unsafe_allow_html=True)
                         with c3:
                             st.write(f"**Database:**\n<span style='color:#47A5D1; font-weight:700;'>{row['Trạng Thái DB']}</span>", unsafe_allow_html=True)
                         with c4:
