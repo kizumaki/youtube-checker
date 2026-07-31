@@ -44,6 +44,7 @@ if 'app_theme' not in st.session_state: st.session_state['app_theme'] = 'Studio 
 if 'selected_channels' not in st.session_state: st.session_state['selected_channels'] = set()
 if 'api_usage' not in st.session_state: st.session_state['api_usage'] = {}
 if 'api_status_map' not in st.session_state: st.session_state['api_status_map'] = {}
+if 'exhausted_keys_set' not in st.session_state: st.session_state['exhausted_keys_set'] = set()
 if 'chk_counter' not in st.session_state: st.session_state['chk_counter'] = 0
 
 # Callback for Selection Sync
@@ -193,7 +194,6 @@ def add_to_cart_db(pure_handle, channel_data):
         supabase.table("cart_items").upsert({"handle": pure_handle, "channel_data": data_clean}, on_conflict="handle").execute()
     except Exception: pass
 
-# ULTRA-FAST SINGLE QUERY BULK UPSERT FOR BATCH CART ADDITION
 def add_batch_to_cart_db(channels_list):
     try:
         rows = []
@@ -236,13 +236,19 @@ def save_campaigns(camps_dict):
     try: supabase.table("app_config").upsert({"key": "campaigns", "value": json.dumps(camps_dict)}, on_conflict="key").execute()
     except Exception: pass
 
-# THREAD-SAFE API EXECUTION ENGINE
+# THREAD-SAFE & AUTOMATIC ROTATION API EXECUTION ENGINE
 def yt_execute_safe(request_func, api_keys, cost=1):
     if not api_keys:
         api_keys = [DEFAULT_API_KEY]
     
+    exhausted = st.session_state.get('exhausted_keys_set', set())
+    # Try active non-exhausted keys first in exact order
+    valid_keys = [k for k in api_keys if k not in exhausted]
+    if not valid_keys:
+        valid_keys = api_keys
+        
     last_err = None
-    for key in api_keys:
+    for key in valid_keys:
         try:
             yt = build("youtube", "v3", developerKey=key)
             req = request_func(yt)
@@ -251,6 +257,11 @@ def yt_execute_safe(request_func, api_keys, cost=1):
         except HttpError as e:
             last_err = e
             if e.resp.status in [403, 400, 429]:
+                if 'exhausted_keys_set' not in st.session_state:
+                    st.session_state['exhausted_keys_set'] = set()
+                st.session_state['exhausted_keys_set'].add(key)
+                st.session_state['api_usage'][key] = 10000
+                st.session_state['api_status_map'][key] = ("EXHAUSTED", 10000)
                 continue
             else:
                 raise e
@@ -258,32 +269,39 @@ def yt_execute_safe(request_func, api_keys, cost=1):
             last_err = e
             continue
             
-    if last_err:
-        raise last_err
-    raise Exception("❌ Toàn bộ API Keys bạn nhập đã bị chết hoặc cạn sạch Quota!")
+    if last_err: raise last_err
+    raise Exception("❌ Toàn bộ API Keys trong danh sách đã cạn Quota hoặc bị lỗi!")
 
 # REAL-TIME API KEY HEALTH DIAGNOSTIC FUNCTION
 def test_all_api_keys():
     keys = st.session_state.get('api_keys', [])
     usage = st.session_state.get('api_usage', {})
-    status_map = {}
+    status_map = st.session_state.get('api_status_map', {})
+    exhausted_set = st.session_state.get('exhausted_keys_set', set())
+    
     for k in keys:
         try:
             yt = build("youtube", "v3", developerKey=k)
             yt.channels().list(part="id", id="UC_x5XG1OV2P6uZZ5FSM9Ttw").execute()
             status_map[k] = ("OK", usage.get(k, 0))
+            if k in exhausted_set: exhausted_set.remove(k)
         except HttpError as e:
             if e.resp.status in [403, 429]:
                 usage[k] = 10000
                 status_map[k] = ("EXHAUSTED", 10000)
+                exhausted_set.add(k)
             else:
                 usage[k] = 10000
                 status_map[k] = ("DEAD", 10000)
+                exhausted_set.add(k)
         except Exception:
             usage[k] = 10000
             status_map[k] = ("DEAD", 10000)
+            exhausted_set.add(k)
+            
     st.session_state['api_usage'] = usage
     st.session_state['api_status_map'] = status_map
+    st.session_state['exhausted_keys_set'] = exhausted_set
 
 # --- INITIALIZE PERSISTENT STATE ---
 if 'global_api_keys' not in st.session_state:
@@ -1033,22 +1051,38 @@ def compare_channels_dialog(channel_data_list):
     st.write("")
     if st.button("❌ Đóng Cửa Sổ So Sánh", type="primary", use_container_width=True): st.rerun()
 
+# SAFE AUDIT GENERATOR WITH SAFETY LOOP CAP (PREVENTS FREEZING)
 def run_single_channel_audit(pure_handle):
-    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
-    cid, _, _ = get_channel_id_by_handle_direct(pure_handle, active_keys)
-    if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url, _, _ = get_channel_details_direct(cid, active_keys)
-    v_ids = []
-    next_token = None
-    while True:
-        res, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token), active_keys, cost=1)
-        for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
-        next_token = res.get('nextPageToken')
-        if not next_token: break
-    v_data = get_video_details_direct(v_ids, active_keys)
-    excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
-    out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
-    return excel_bytes, out_fname
+    try:
+        active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+        cid, _, _ = get_channel_id_by_handle_direct(pure_handle, active_keys)
+        if not cid: return None, None
+        playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url, _, _ = get_channel_details_direct(cid, active_keys)
+        if not playlist_id: return None, None
+
+        v_ids = []
+        next_token = None
+        page_count = 0
+        max_pages = 20 # Safety cap: max 1,000 videos per channel to prevent infinite hanging
+
+        while page_count < max_pages:
+            page_count += 1
+            res, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token), active_keys, cost=1)
+            items = res.get('items', [])
+            if not items: break
+            for v_item in items:
+                v_id_val = v_item.get('snippet', {}).get('resourceId', {}).get('videoId')
+                if v_id_val: v_ids.append(v_id_val)
+            next_token = res.get('nextPageToken')
+            if not next_token: break
+
+        if not v_ids: return None, None
+        v_data = get_video_details_direct(v_ids, active_keys)
+        excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
+        out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+        return excel_bytes, out_fname
+    except Exception:
+        return None, None
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -1242,29 +1276,22 @@ def render_shared_cart_ui(key_suffix="cart_ui"):
                     stat_audit = st.empty()
                     comp_audit = 0
                     audit_results = []
-                    quota_exhausted = False
 
                     with ThreadPoolExecutor(max_workers=5) as executor:
-                        futures = [executor.submit(run_single_channel_audit, p_h) for p_h in handles_to_audit]
+                        futures = {executor.submit(run_single_channel_audit, p_h): p_h for p_h in handles_to_audit}
                         for future in as_completed(futures):
-                            try:
-                                b_bytes, f_name = future.result()
-                                if b_bytes and f_name:
-                                    audit_results.append((f_name, b_bytes))
-                            except Exception as err:
-                                err_str = str(err)
-                                if "Quota" in err_str or "API Keys" in err_str:
-                                    quota_exhausted = True
-
                             comp_audit += 1
                             prog_audit.progress(comp_audit / tot_cart_audit)
                             stat_audit.markdown(f"⏳ **Đang cào dữ liệu & Dựng Audit V4.14:** `{comp_audit}/{tot_cart_audit}` kênh...")
+                            try:
+                                res_val = future.result()
+                                if res_val and res_val[0] and res_val[1]:
+                                    b_bytes, f_name = res_val
+                                    audit_results.append((f_name, b_bytes))
+                            except Exception: pass
 
                     prog_audit.empty()
                     stat_audit.empty()
-
-                    if quota_exhausted:
-                        st.warning(f"⚠️ Quota API đã cạn giữa chừng! Hệ thống đã tự động đóng gói {len(audit_results)}/{tot_cart_audit} file Audit hoàn thành trước khi hết Quota.")
 
                     # PACK ALL XLSX AUDIT REPORTS INTO A SINGLE ZIP ARCHIVE
                     if audit_results:
@@ -1921,25 +1948,22 @@ with tab2:
             comp_t2 = 0
             audit_results_t2 = []
             db_upsert_list_t2 = []
-            quota_exhausted_t2 = False
 
             with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(run_single_channel_audit, p_h) for p_h in target_handles_t2]
+                futures = {executor.submit(run_single_channel_audit, p_h): p_h for p_h in target_handles_t2}
                 for future in as_completed(futures):
+                    p_h_orig = futures[future]
+                    comp_t2 += 1
+                    prog_t2.progress(comp_t2 / tot_t2)
+                    stat_t2.markdown(f"⏳ **Đang cào dữ liệu Live & Dựng Audit V4.14:** `{comp_t2}/{tot_t2}` kênh (@{p_h_orig})...")
                     try:
-                        b_bytes, f_name = future.result()
-                        if b_bytes and f_name:
+                        res_val = future.result()
+                        if res_val and res_val[0] and res_val[1]:
+                            b_bytes, f_name = res_val
                             audit_results_t2.append((f_name, b_bytes))
                             p_h_clean = f_name.split('_')[0]
                             db_upsert_list_t2.append({"handle": p_h_clean, "youtuber_name": p_h_clean.upper(), "source": "Live Audit Scraper"})
-                    except Exception as err:
-                        err_str = str(err)
-                        if "Quota" in err_str or "API Keys" in err_str:
-                            quota_exhausted_t2 = True
-
-                    comp_t2 += 1
-                    prog_t2.progress(comp_t2 / tot_t2)
-                    stat_t2.markdown(f"⏳ **Đang cào dữ liệu & Dựng Audit V4.14:** `{comp_t2}/{tot_t2}` kênh...")
+                    except Exception: pass
 
             prog_t2.empty()
             stat_t2.empty()
@@ -1950,9 +1974,6 @@ with tab2:
                     if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
                         st.session_state.pop(k, None)
                 st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công {len(db_upsert_list_t2)} kênh mới vào Database!"
-
-            if quota_exhausted_t2:
-                st.warning(f"⚠️ Quota API đã cạn giữa chừng! Hệ thống đã hoàn tất và đóng gói {len(audit_results_t2)}/{tot_t2} file Audit trước khi cạn Quota.")
 
             if len(audit_results_t2) == 1:
                 f_name, b_bytes = audit_results_t2[0]
@@ -2489,7 +2510,7 @@ with tab3:
                 if total_pages_rej > 1:
                     st.divider()
                     col_prjb1, col_prjb2 = st.columns([2, 8])
-                    with col_ppb1:
+                    with col_prjb1:
                         st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_bottom", on_change=sync_pagination_bottom, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
                     with col_prjb2:
                         st.write("")
