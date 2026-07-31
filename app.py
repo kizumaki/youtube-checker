@@ -735,26 +735,31 @@ def compare_channels_dialog(channel_data_list):
         for ch in channel_data_list:
             c_dict = dict(ch)
             pure_h = to_pure_id(c_dict.get('Handle'))
-            if pure_h and (c_dict.get('Subscribers') is None or c_dict.get('Subscribers') == 'N/A'):
-                cid = get_channel_id_by_handle(pure_h)
-                if cid:
-                    playlist_id, sub_count, channel_desc, channel_joined, country_name, country_code, avatar_url = get_channel_details(cid)
-                    recent_vids = get_6_recent_videos(pure_h)
-                    latest_date = recent_vids[0]['Published Date'] if recent_vids else 'N/A'
-                    try:
-                        c_res = yt_execute(lambda yt: yt.channels().list(part="statistics", id=cid), cost=1)
-                        video_count = int(c_res['items'][0]['statistics'].get('videoCount', 0)) if (c_res.get('items') and len(c_res['items']) > 0) else 0
-                    except Exception: video_count = 0
-                    c_dict['Subscribers'] = f"{sub_count:,}"
-                    c_dict['Tổng Số Video'] = f"{video_count:,}"
-                    c_dict['Quốc gia'] = country_name if country_name else 'N/A'
-                    c_dict['Video Gần Nhất'] = latest_date
-                    
-                    if recent_vids and sub_count > 0:
-                        avg_views = sum(v.get('Views', 0) for v in recent_vids) / len(recent_vids)
-                        er_rate = (avg_views / sub_count) * 100
-                        c_dict['ER'] = f"{er_rate:.2f}%"
-                        c_dict['Score'] = min(100, int((er_rate / 10.0) * 100))
+            if pure_h:
+                # ENRICH DETAILS IF MISSING VIDEO COUNT OR LATEST DATE
+                if c_dict.get('Tổng Số Video') is None or c_dict.get('Tổng Số Video') == 'N/A' or c_dict.get('Video Gần Nhất') is None or c_dict.get('Video Gần Nhất') == 'N/A':
+                    cid = get_channel_id_by_handle(pure_h)
+                    if cid:
+                        playlist_id, sub_count, channel_desc, channel_joined, country_name, country_code, avatar_url = get_channel_details(cid)
+                        recent_vids = get_6_recent_videos(pure_h)
+                        latest_date = recent_vids[0]['Published Date'] if recent_vids else 'N/A'
+                        try:
+                            c_res = yt_execute(lambda yt: yt.channels().list(part="statistics", id=cid), cost=1)
+                            video_count = int(c_res['items'][0]['statistics'].get('videoCount', 0)) if (c_res.get('items') and len(c_res['items']) > 0) else 0
+                        except Exception: video_count = 0
+                        
+                        if not c_dict.get('Subscribers') or c_dict.get('Subscribers') == 'N/A':
+                            c_dict['Subscribers'] = f"{sub_count:,}"
+                        c_dict['Tổng Số Video'] = f"{video_count:,}"
+                        if not c_dict.get('Quốc gia') or c_dict.get('Quốc gia') == 'N/A':
+                            c_dict['Quốc gia'] = country_name if country_name else 'N/A'
+                        c_dict['Video Gần Nhất'] = latest_date
+                        
+                        if recent_vids and sub_count > 0:
+                            avg_views = sum(v.get('Views', 0) for v in recent_vids) / len(recent_vids)
+                            er_rate = (avg_views / sub_count) * 100
+                            c_dict['ER'] = f"{er_rate:.2f}%"
+                            c_dict['Score'] = min(100, int((er_rate / 10.0) * 100))
             enriched_list.append(c_dict)
 
     cols = st.columns(len(enriched_list))
@@ -1283,7 +1288,7 @@ with tab1:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
                             st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
-                        c0, c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                        c0, c1, c2, c3 = st.columns([0.4, 3.6, 4.0, 2.0])
                         with c0:
                             st.checkbox("", key=f"chk_t1_rej_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
@@ -1666,10 +1671,10 @@ with tab3:
                 total_pages_rej = max(1, (len(display_rejected) + items_per_page_rej - 1) // items_per_page_rej)
                 page_rej = st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=1, step=1, key="page_rej_t3")
                 start_idx_rej = (page_rej - 1) * items_per_page_rej
-                paged_rej = display_rejected[start_idx_rej:start_idx_rej + items_per_page_rej]
+                paged_rejected = display_rejected[start_idx_rej:start_idx_rej + items_per_page_rej]
 
-                for idx, item in enumerate(paged_rej):
-                    p_id = to_pure_id(item["Handle"])
+                for idx, row in enumerate(paged_rejected):
+                    p_id = to_pure_id(row['Handle'])
                     is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
                     stt_num_rej = start_idx_rej + idx + 1
