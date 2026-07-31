@@ -161,6 +161,17 @@ def clear_cart_db():
     try: supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
     except Exception: pass
 
+def clear_entire_database():
+    try:
+        supabase.table("channels").delete().neq("handle", "___NONE___").execute()
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']
+        for k in keys_to_clear:
+            if k in st.session_state: del st.session_state[k]
+        clear_selected_channels()
+        return True
+    except Exception:
+        return False
+
 def load_campaigns():
     try:
         res = supabase.table("app_config").select("value").eq("key", "campaigns").execute()
@@ -448,7 +459,7 @@ EXCLUDED_COUNTRIES = {'CN', 'TW', 'HK', 'TH', 'IN', 'VN'}
 # NON-LATIN CHARACTERS (Chinese, Thai, Hindi, Korean)
 NON_LATIN_REGEX = re.compile(r'[\u0E00-\u0E7F]|[\u4E00-\u9FFF]|[\u0900-\u097F]|[\uAC00-\uD7AF]', re.IGNORECASE)
 
-# STRICTLY UNIQUE VIETNAMESE CHARACTERS (WILL NOT TRIGGER ON SPANISH / PORTUGUESE / FRENCH LATIN ACCENTS)
+# STRICTLY UNIQUE VIETNAMESE CHARACTERS
 VIETNAMESE_UNIQUE_REGEX = re.compile(r'[ơờớởỡợưừứửữựđĐăằắẳẵặảẻỉỏủỷạẹịọụỵềếểễệồốổỗộầấẩẫậ]', re.IGNORECASE)
 
 # CANCELED KEYWORDS FOR MUSIC, NEWS, LGBT
@@ -464,11 +475,9 @@ def passes_layer1_metadata_filter(title, desc, country_code):
     
     combined_text = f"{title} {desc}".lower()
     
-    # CHECK NON-LATIN SCRIPTS (Chinese, Thai, Hindi, Korean)
     if NON_LATIN_REGEX.search(combined_text):
         return False, "Ngôn ngữ không phù hợp (Trung, Thái, Hindi, Hàn)"
         
-    # CHECK DISTINCTLY VIETNAMESE CHARACTERS ONLY
     if VIETNAMESE_UNIQUE_REGEX.search(combined_text):
         return False, "Kênh Ngôn Ngữ Tiếng Việt"
         
@@ -641,6 +650,21 @@ Backstreet Voice Studio"""
     
     st.text_area("Bản Thảo Email (Sẵn sàng Copy):", value=template, height=350)
     if st.button("❌ Đóng Cửa Sổ", type="primary", use_container_width=True): st.rerun()
+
+# --- CONFIRM CLEAR ENTIRE DATABASE DIALOG ---
+@st.dialog("⚠️ CẢNH BÁO: XÓA SẠCH DATABASE", width="small")
+def confirm_clear_db_dialog():
+    st.error("🚨 Hành động này sẽ XÓA VĨNH VIỄN toàn bộ danh sách kênh trong Supabase và KHÔNG THỂ HỒI PHỤC!")
+    st.write("Vui lòng gõ **`XOA DATABASE`** vào ô bên dưới để xác nhận:")
+    confirm_txt = st.text_input("Xác nhận:", key="input_confirm_db_wipe")
+    if st.button("💣 XÁC NHẬN XÓA SẠCH DATABASE", type="primary", use_container_width=True):
+        if confirm_txt.strip().upper() == "XOA DATABASE":
+            if clear_entire_database():
+                st.success("🎉 Đã xóa sạch vĩnh viễn toàn bộ Database!")
+                st.rerun()
+            else: st.error("❌ Đã xảy ra lỗi khi kết nối Supabase!")
+        else:
+            st.warning("⚠️ Mã xác nhận không đúng! Vui lòng gõ 'XOA DATABASE'.")
 
 # --- STREAMLIT MODAL DIALOGS ---
 @st.dialog("🎬 6 Video Dài (Long-form) Mới Nhất", width="large")
@@ -1683,17 +1707,36 @@ with tab4:
                     h = to_pure_id(line)
                     if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name})
             elif file_name.endswith('.xlsx') or file_name.endswith('.xls'):
-                # DIRECT EXCEL REPORT FILE UPLOAD HANDLING
+                # 1. CHECK IF FILE IS A REPORT FILE (1 CHANNEL ONLY)
                 h_from_fn = extract_handle_from_filename(file.name)
-                if h_from_fn:
-                    new_handles_to_insert.append({"handle": h_from_fn, "youtuber_name": h_from_fn.upper(), "source": file.name})
                 
-                # SAFELY EXTRACT ALL HANDLES INSIDE THE EXCEL FILE COLUMNS
                 file.seek(0)
-                raw_inputs = extract_raw_inputs_from_file(file)
-                extracted_handles = parse_raw_inputs_to_handles(raw_inputs)
-                for ch in extracted_handles:
-                    new_handles_to_insert.append({"handle": ch, "youtuber_name": ch.upper(), "source": file.name})
+                is_report = False
+                try:
+                    df_head = pd.read_excel(file, nrows=2, header=None)
+                    if not df_head.empty:
+                        first_cell = str(df_head.iloc[0, 0]).upper()
+                        if "YOUTUBE CHANNEL SUMMARY REPORT" in first_cell or h_from_fn:
+                            is_report = True
+                            if not h_from_fn:
+                                m = re.search(r'([^\s]+)\s+YOUTUBE CHANNEL SUMMARY REPORT', first_cell, re.IGNORECASE)
+                                if m: h_from_fn = to_pure_id(m.group(1))
+                except Exception: pass
+                
+                if is_report and h_from_fn:
+                    # FOR AUDIT REPORT EXCEL FILES: INSERT ONLY THE SINGLE MAIN CHANNEL HANDLE!
+                    new_handles_to_insert.append({"handle": h_from_fn, "youtuber_name": h_from_fn.upper(), "source": file.name})
+                else:
+                    # FOR LIST EXCEL FILES: EXTRACT PURE CHANNEL HANDLES/URLS ONLY (STRICTLY IGNORE VIDEO LINKS)
+                    file.seek(0)
+                    try:
+                        df_excel = pd.read_excel(file)
+                        for col in df_excel.columns:
+                            for val in df_excel[col].dropna():
+                                p = to_pure_id(val)
+                                if p:
+                                    new_handles_to_insert.append({"handle": p, "youtuber_name": p.upper(), "source": file.name})
+                    except Exception: pass
 
         if new_handles_to_insert:
             df_insert = pd.DataFrame(new_handles_to_insert).drop_duplicates(subset=["handle"])
@@ -1707,8 +1750,14 @@ with tab5:
     res = supabase.table("channels").select("*").execute()
     if res.data:
         df_all = pd.DataFrame(res.data)
-        st.markdown(f"Tổng số kênh hiện có: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
         
+        c_top1, c_top2 = st.columns([7, 3])
+        with c_top1:
+            st.markdown(f"Tổng số kênh hiện có: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
+        with c_top2:
+            if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
+                confirm_clear_db_dialog()
+                
         search_db = st.text_input("🔍 Tìm kiếm kênh trong Database (Handle hoặc Tên):", "")
         if search_db:
             df_filtered = df_all[
@@ -1753,6 +1802,8 @@ with tab5:
         st.divider()
         csv = df_all.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Tải về toàn bộ Database (CSV)", data=csv, file_name="master_youtube_database.csv", mime="text/csv", type="primary")
+    else:
+        st.info("Database hiện đang trống!")
 
 with tab6:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>✨ Soi Từ Khóa Kênh (Channel & Video Tags SEO Inspector)</h3>", unsafe_allow_html=True)
