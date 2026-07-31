@@ -79,6 +79,12 @@ def sync_pagination_bottom(top_key, bottom_key, state_key):
     st.session_state[state_key] = val
     st.session_state[top_key] = val
 
+def format_page_range(page_num, items_per_page, total_items):
+    if total_items == 0: return "0 / 0"
+    start_item = (page_num - 1) * items_per_page + 1
+    end_item = min(page_num * items_per_page, total_items)
+    return f"{start_item:,} - {end_item:,} / {total_items:,}"
+
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
 bg_color = "#1E1816" if is_dark else "#F4F2F1"
@@ -304,7 +310,7 @@ with st.sidebar:
     st.selectbox("🎨 Giao diện App:", options=["Studio Peach (Sáng)", "Studio Espresso (Tối)"], key="app_theme")
     st.divider()
 
-    # --- API HEALTH MONITOR ---
+    # --- API HEALTH MONITOR (ACCURATE DEAD/EXHAUSTED KEY MONITORING) ---
     st.markdown("<h4 style='font-weight: 700; font-size: 0.95rem;'>🛡️ Sức Khỏe API Quota</h4>", unsafe_allow_html=True)
     active_keys = st.session_state.get('api_keys', [])
     usage_data = st.session_state.get('api_usage', {})
@@ -313,13 +319,14 @@ with st.sidebar:
         used = usage_data.get(k, 0)
         pct = min(100, int((used / 10000) * 100))
         color = "#10B981" if pct < 70 else ("#F59E0B" if pct < 90 else "#EF4444")
+        status_label = f"{used:,}/10,000" if used < 10000 else "❌ Hết Quota / Key Lỗi"
         st.markdown(f"""
             <div style='margin-bottom: 8px;'>
                 <div style='font-size: 0.75rem; color: #6B7280; font-weight: 700;'>🔑 {k[:10]}...</div>
                 <div style='background-color: #E5E7EB; border-radius: 4px; height: 6px; width: 100%; margin-top: 4px;'>
                     <div style='background-color: {color}; width: {pct}%; height: 100%; border-radius: 4px;'></div>
                 </div>
-                <div style='font-size: 0.65rem; color: #9CA3AF; text-align: right; margin-top: 2px;'>{used:,}/10,000</div>
+                <div style='font-size: 0.65rem; color: #9CA3AF; text-align: right; margin-top: 2px;'>{status_label}</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -365,7 +372,7 @@ def delete_channel_from_system(pure_handle):
     audit_key = f"audit_file_{pure_handle}"
     if audit_key in st.session_state: del st.session_state[audit_key]
 
-# --- API QUOTA ROTATION MANAGER ---
+# --- API QUOTA ROTATION MANAGER WITH ACCURATE ERROR LOGGING ---
 def yt_execute(request_func, cost=1):
     keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     if not keys: keys = [DEFAULT_API_KEY]
@@ -384,6 +391,11 @@ def yt_execute(request_func, cost=1):
             return res
         except HttpError as e:
             if e.resp.status in [403, 400, 429]:
+                # MARK FAILED KEY AS EXHAUSTED/DEAD IMMEDIATELY
+                usage = st.session_state.get('api_usage', {})
+                usage[key] = 10000
+                st.session_state['api_usage'] = usage
+                
                 idx = (idx + 1) % len(keys)
                 st.session_state['api_key_idx'] = idx
             else: raise e
@@ -1474,13 +1486,13 @@ with tab1:
                 start_idx = (page_new - 1) * items_per_page
                 paged_new = new_handles[start_idx:start_idx + items_per_page]
 
-                # TOP PAGINATION CONTROL
+                # TOP PAGINATION CONTROL WITH DYNAMIC ITEM RANGE
                 col_p1, col_p2 = st.columns([2, 8])
                 with col_p1:
                     st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_top", on_change=sync_pagination_top, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
                 with col_p2:
                     st.write("")
-                    st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {len(paged_new)} / {len(new_handles)} kênh)*")
+                    st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {format_page_range(page_new, items_per_page, len(new_handles))} kênh)*")
 
                 for idx, item in enumerate(paged_new):
                     p_id = to_pure_id(item["Handle"])
@@ -1555,7 +1567,7 @@ with tab1:
                                     st.session_state['cart'][p_id]["Tag"] = new_tag
                                     add_to_cart_db(p_id, st.session_state['cart'][p_id])
 
-                # BOTTOM PAGINATION CONTROL
+                # BOTTOM PAGINATION CONTROL WITH DYNAMIC ITEM RANGE
                 if total_pages > 1:
                     st.divider()
                     col_pb1, col_pb2 = st.columns([2, 8])
@@ -1563,7 +1575,7 @@ with tab1:
                         st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_bottom", on_change=sync_pagination_bottom, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
                     with col_pb2:
                         st.write("")
-                        st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {len(paged_new)} / {len(new_handles)} kênh)*")
+                        st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {format_page_range(page_new, items_per_page, len(new_handles))} kênh)*")
             else:
                 st.info("Không có kênh mới nào đạt chuẩn!")
 
@@ -1604,7 +1616,7 @@ with tab1:
                     st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_top", on_change=sync_pagination_top, args=("page_ex_t1_top", "page_ex_t1_bottom", "p_state_t1_ex"))
                 with col_pe2:
                     st.write("")
-                    st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {len(paged_ex)} / {len(existing_handles)} kênh)*")
+                    st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {format_page_range(page_ex, items_per_page_ex, len(existing_handles))} kênh)*")
 
                 for idx, item in enumerate(paged_ex):
                     p_id = to_pure_id(item["Handle"])
@@ -1639,7 +1651,7 @@ with tab1:
                         st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_bottom", on_change=sync_pagination_bottom, args=("page_ex_t1_top", "page_ex_t1_bottom", "p_state_t1_ex"))
                     with col_peb2:
                         st.write("")
-                        st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {len(paged_ex)} / {len(existing_handles)} kênh)*")
+                        st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {format_page_range(page_ex, items_per_page_ex, len(existing_handles))} kênh)*")
 
         with res_tab3:
             if rejected_handles:
@@ -1703,7 +1715,7 @@ with tab1:
                     st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_top", on_change=sync_pagination_top, args=("page_rej_t1_top", "page_rej_t1_bottom", "p_state_t1_rej"))
                 with col_pr2:
                     st.write("")
-                    st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(rejected_handles)} kênh)*")
+                    st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {format_page_range(page_rej, items_per_page_rej, len(rejected_handles))} kênh)*")
 
                 for idx, item in enumerate(paged_rejected):
                     p_id = to_pure_id(item["Handle"])
@@ -1768,7 +1780,7 @@ with tab1:
                         st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_bottom", on_change=sync_pagination_bottom, args=("page_rej_t1_top", "page_rej_t1_bottom", "p_state_t1_rej"))
                     with col_prb2:
                         st.write("")
-                        st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(rejected_handles)} kênh)*")
+                        st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {format_page_range(page_rej, items_per_page_rej, len(rejected_handles))} kênh)*")
 
     render_shared_cart_ui(key_suffix="tab1")
 
@@ -2054,13 +2066,13 @@ with tab3:
                 start_idx = (page_pass - 1) * items_per_page
                 paged_passed = display_passed[start_idx:start_idx + items_per_page]
 
-                # TOP PAGINATION CONTROL
+                # TOP PAGINATION CONTROL WITH DYNAMIC ITEM RANGE
                 col_pp1, col_pp2 = st.columns([2, 8])
                 with col_pp1:
                     st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_top", on_change=sync_pagination_top, args=("page_pass_t3_top", "page_pass_t3_bottom", "p_state_t3_pass"))
                 with col_pp2:
                     st.write("")
-                    st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {len(paged_passed)} / {len(display_passed)} kênh)*")
+                    st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {format_page_range(page_pass, items_per_page, len(display_passed))} kênh)*")
 
                 for idx, row in enumerate(paged_passed):
                     p_id = to_pure_id(row['Handle'])
@@ -2152,7 +2164,7 @@ with tab3:
                         st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_bottom", on_change=sync_pagination_bottom, args=("page_pass_t3_top", "page_pass_t3_bottom", "p_state_t3_pass"))
                     with col_ppb2:
                         st.write("")
-                        st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {len(paged_passed)} / {len(display_passed)} kênh)*")
+                        st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {format_page_range(page_pass, items_per_page, len(display_passed))} kênh)*")
             else:
                 st.info("Không có kênh nào đạt chuẩn.")
                 
@@ -2225,7 +2237,7 @@ with tab3:
                     st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_top", on_change=sync_pagination_top, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
                 with col_prj2:
                     st.write("")
-                    st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(display_rejected)} kênh)*")
+                    st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {format_page_range(page_rej, items_per_page_rej, len(display_rejected))} kênh)*")
 
                 for idx, item in enumerate(paged_rejected):
                     p_id = to_pure_id(item["Handle"])
@@ -2311,7 +2323,7 @@ with tab3:
                         st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_bottom", on_change=sync_pagination_bottom, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
                     with col_prjb2:
                         st.write("")
-                        st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(display_rejected)} kênh)*")
+                        st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {format_page_range(page_rej, items_per_page_rej, len(display_rejected))} kênh)*")
 
     render_shared_cart_ui(key_suffix="tab3")
 
@@ -2562,13 +2574,13 @@ with tab5:
             end_idx = start_idx + items_per_page
             page_data = df_filtered.iloc[start_idx:end_idx]
 
-            # TOP PAGINATION CONTROL
+            # TOP PAGINATION CONTROL WITH DYNAMIC ITEM RANGE
             col_db_p1, col_db_p2 = st.columns([2, 8])
             with col_db_p1:
                 st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_top", on_change=sync_pagination_top, args=("page_db_viewer_top", "page_db_viewer_bottom", "p_state_t5_db"))
             with col_db_p2:
                 st.write("")
-                st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {len(page_data)} / {len(df_filtered)} kênh)*")
+                st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {format_page_range(int(page), items_per_page, len(df_filtered))} kênh)*")
 
             # PRE-FETCH METADATA IN PARALLEL FOR CURRENT 20 PAGED CARDS
             paged_handles = [to_pure_id(r['handle']) for _, r in page_data.iterrows() if to_pure_id(r['handle'])]
@@ -2642,7 +2654,7 @@ with tab5:
                             st.toast(f"🗑️ Đã xóa kênh @{p_id} khỏi Database!")
                             st.rerun()
 
-            # BOTTOM PAGINATION CONTROL
+            # BOTTOM PAGINATION CONTROL WITH DYNAMIC ITEM RANGE
             if total_pages > 1:
                 st.divider()
                 col_db_pb1, col_db_pb2 = st.columns([2, 8])
@@ -2650,7 +2662,7 @@ with tab5:
                     st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_bottom", on_change=sync_pagination_bottom, args=("page_db_viewer_top", "page_db_viewer_bottom", "p_state_t5_db"))
                 with col_db_pb2:
                     st.write("")
-                    st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {len(page_data)} / {len(df_filtered)} kênh)*")
+                    st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {format_page_range(int(page), items_per_page, len(df_filtered))} kênh)*")
 
         st.divider()
         csv = df_all.to_csv(index=False).encode('utf-8')
