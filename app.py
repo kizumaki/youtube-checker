@@ -66,7 +66,7 @@ def cb_clear_all():
 def clear_selected_channels():
     cb_clear_all()
 
-# Theme CSS Dynamic Injection
+# Theme CSS Dynamic Injection & UNLOCK OVERFLOW FOR FLOATING TOOLBAR
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
 bg_color = "#1E1816" if is_dark else "#F4F2F1"
 card_bg = "#2A221F" if is_dark else "#FFFFFF"
@@ -83,6 +83,11 @@ st.markdown(f"""
 section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_color} !important; box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05) !important; }}
 header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 
+/* UNLOCK INNER CONTAINERS FOR STICKY FLOATING ACTION BAR */
+[data-baseweb="tab-panel"], div[data-testid="stTabPanel"], div[data-testid="stVerticalBlock"] {{
+    overflow: visible !important;
+}}
+
 /* HIGH-END ARTISTIC TABS */
 .stTabs [data-baseweb="tab-list"] {{ gap: 32px; background-color: transparent; padding: 0 0 4px 0; border-bottom: 2px solid #D1D5DB; }}
 .stTabs [data-baseweb="tab"] {{ background-color: transparent !important; border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #6B7280 !important; font-weight: 700; font-size: 0.9rem; padding: 10px 4px; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s ease !important; cursor: pointer !important; }}
@@ -93,18 +98,18 @@ header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px !important; padding: 12px !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; }}
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important; }}
 
-/* STICKY FLOATING ACTION BAR */
+/* REAL FLOATING STICKY ACTION BAR */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.sticky-action-bar) {{
     position: -webkit-sticky !important;
     position: sticky !important;
-    top: 3.5rem !important;
+    top: 3.75rem !important;
     z-index: 9999 !important;
     background-color: {card_bg} !important;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.18) !important;
     border: 2px solid #D95F26 !important;
     border-top: 5px solid #D95F26 !important;
     border-radius: 12px !important;
-    padding: 12px 16px !important;
+    padding: 10px 14px !important;
     margin-bottom: 20px !important;
 }}
 
@@ -465,19 +470,28 @@ def render_social_badges_html(contacts_dict):
 
 # TAB 5 MULTI-THREADED CRM METADATA WORKER
 def process_single_crm_channel_meta(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return pure_handle, {"sub_count": 0, "sub_str": "N/A", "country": "N/A", "socials": {}}
-    playlist_id, sub_count, desc, joined, country_name, country_code, avatar = get_channel_details(cid)
-    recent_vids = get_6_recent_videos(pure_handle)
-    v_descs = " ".join([v.get('Description', '') for v in recent_vids])
-    corpus = f"{desc} {v_descs}"
-    socials = extract_contacts_and_socials(corpus)
-    return pure_handle, {
-        "sub_count": sub_count,
-        "sub_str": f"{sub_count:,}" if sub_count else "N/A",
-        "country": country_name if country_name else "N/A",
-        "socials": socials
-    }
+    if not pure_handle: return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}
+    try:
+        cid = get_channel_id_by_handle(pure_handle)
+        if cid:
+            playlist_id, sub_count, desc, joined, country_name, country_code, avatar = get_channel_details(cid)
+            recent_vids = get_6_recent_videos(pure_handle)
+            v_descs = " ".join([v.get('Description', '') for v in recent_vids]) if recent_vids else ""
+            corpus = f"{desc} {v_descs}"
+            socials = extract_contacts_and_socials(corpus)
+            return pure_handle, {
+                "sub_count": sub_count,
+                "sub_str": f"{sub_count:,}" if sub_count > 0 else "N/A",
+                "country": country_name if country_name else "N/A",
+                "socials": socials
+            }
+    except Exception: pass
+    return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_channel_crm_meta(pure_handle):
+    _, meta = process_single_crm_channel_meta(pure_handle)
+    return meta
 
 def extract_video_id(raw_url):
     if not raw_url or pd.isna(raw_url): return None
@@ -2010,7 +2024,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- MULTI-THREADED CRM DATABASE VIEWER WITH PARALLEL FILTERING & CACHING ---
+# --- MULTI-THREADED CRM DATABASE VIEWER WITH SAFE INSTANT ALL-SUBS & CACHING ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -2047,22 +2061,21 @@ with tab5:
         if sel_source != "-- Tất Cả Nguồn --":
             df_pre = df_pre[df_pre['source'] == sel_source]
 
-        # FAST PARALLEL SUBSCRIBER FILTERING WITH CACHING
-        cache_key = f"crm_cache_{search_db}_{sel_sub_range}_{sel_source}"
-        
-        if cache_key in st.session_state:
-            df_filtered, crm_meta_map = st.session_state[cache_key]
-        else:
-            crm_meta_map = {}
-            if sel_sub_range != "-- Tất Cả Mốc Subs --":
+        crm_meta_map = {}
+
+        if sel_sub_range != "-- Tất Cả Mốc Subs --":
+            cache_key = f"crm_cache_{search_db}_{sel_sub_range}_{sel_source}"
+            if cache_key in st.session_state:
+                df_filtered, crm_meta_map = st.session_state[cache_key]
+            else:
                 handles_to_check = [to_pure_id(h) for h in df_pre['handle'].tolist() if to_pure_id(h)]
                 tot_h = len(handles_to_check)
+                matched_handles = []
                 
                 if tot_h > 0:
                     prog_bar_db = st.progress(0)
                     stat_txt_db = st.empty()
                     comp_h = 0
-                    matched_handles = []
 
                     with ThreadPoolExecutor(max_workers=10) as executor:
                         futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in handles_to_check]
@@ -2072,7 +2085,7 @@ with tab5:
                             s_num = meta['sub_count']
                             
                             is_match = False
-                            if sel_sub_range == "< 100K Subs" and s_num < 100000: is_match = True
+                            if sel_sub_range == "< 100K Subs" and (0 <= s_num < 100000): is_match = True
                             elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): is_match = True
                             elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): is_match = True
                             elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: is_match = True
@@ -2088,10 +2101,10 @@ with tab5:
 
                     df_filtered = df_pre[df_pre['handle'].apply(to_pure_id).isin(matched_handles)]
                 else: df_filtered = df_pre
-            else:
-                df_filtered = df_pre
 
-            st.session_state[cache_key] = (df_filtered, crm_meta_map)
+                st.session_state[cache_key] = (df_filtered, crm_meta_map)
+        else:
+            df_filtered = df_pre
 
         st.caption(f"🎯 Kết quả khớp: **{len(df_filtered)}** / {len(df_all)} kênh")
 
@@ -2152,7 +2165,9 @@ with tab5:
                 is_active = (p_id == st.session_state.get('active_inspected_handle'))
                 stt_num_db = start_idx + idx + 1
                 
-                crm_meta = crm_meta_map.get(p_id) or get_channel_crm_meta(p_id)
+                crm_meta = crm_meta_map.get(p_id)
+                if not crm_meta or crm_meta.get("sub_count", -1) == -1:
+                    crm_meta = get_channel_crm_meta(p_id)
                 
                 with st.container(border=True):
                     if is_active:
