@@ -416,6 +416,15 @@ def extract_raw_inputs_from_file(uploaded_file):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return raw_list
 
+def extract_handle_from_filename(filename):
+    base = os.path.basename(filename)
+    base_no_ext = os.path.splitext(base)[0]
+    pattern = r'_(?:backlog|\d{4}|\d{2,4}[-_/.]\d{1,2}[-_/.]\d{1,2}|\d{1,2}[-_/.]\d{2,4}|\d{6,8})(?:_.*)?$'
+    cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
+    cleaned = re.sub(r'[\s]+', '', cleaned)
+    pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
+    return pure_id if pure_id else None
+
 def is_long_form_video(v, min_seconds=180):
     title = v.get('Title', '').lower()
     if '#shorts' in title or '#short' in title: return False
@@ -435,9 +444,14 @@ def is_within_last_90_days(date_str):
     return False
 
 EXCLUDED_COUNTRIES = {'CN', 'TW', 'HK', 'TH', 'IN', 'VN'}
-EXCLUDED_TEXT_REGEX = re.compile(r'[\u0E00-\u0E7F]|[\u4E00-\u9FFF]|[\u0900-\u097F]|[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', re.IGNORECASE)
 
-# EXPANDED CANCELED KEYWORDS FOR MUSIC, NEWS, LGBT
+# NON-LATIN CHARACTERS (Chinese, Thai, Hindi, Korean)
+NON_LATIN_REGEX = re.compile(r'[\u0E00-\u0E7F]|[\u4E00-\u9FFF]|[\u0900-\u097F]|[\uAC00-\uD7AF]', re.IGNORECASE)
+
+# STRICTLY UNIQUE VIETNAMESE CHARACTERS (WILL NOT TRIGGER ON SPANISH / PORTUGUESE / FRENCH LATIN ACCENTS)
+VIETNAMESE_UNIQUE_REGEX = re.compile(r'[ơờớởỡợưừứửữựđĐăằắẳẵặảẻỉỏủỷạẹịọụỵềếểễệồốổỗộầấẩẫậ]', re.IGNORECASE)
+
+# CANCELED KEYWORDS FOR MUSIC, NEWS, LGBT
 EXCLUDED_KEYWORDS = [
     'official mv', 'music video', 'official audio', 'album', 'song', 'records', 'lyrics', 'remix', 'vocal', 'cover', 'music', 'songs',
     'news', 'politics', 'tin tức', 'chính trị', 'thời sự', 'chiến tranh', 'đảng', 'quân sự', 'bản tin', 'điểm tin',
@@ -447,8 +461,17 @@ STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of'
 
 def passes_layer1_metadata_filter(title, desc, country_code):
     if country_code in EXCLUDED_COUNTRIES: return False, f"Quốc gia bị loại ({country_code})"
+    
     combined_text = f"{title} {desc}".lower()
-    if EXCLUDED_TEXT_REGEX.search(combined_text): return False, "Ngôn ngữ không phù hợp (Trung, Thái, Hindi, Việt)"
+    
+    # CHECK NON-LATIN SCRIPTS (Chinese, Thai, Hindi, Korean)
+    if NON_LATIN_REGEX.search(combined_text):
+        return False, "Ngôn ngữ không phù hợp (Trung, Thái, Hindi, Hàn)"
+        
+    # CHECK DISTINCTLY VIETNAMESE CHARACTERS ONLY
+    if VIETNAMESE_UNIQUE_REGEX.search(combined_text):
+        return False, "Kênh Ngôn Ngữ Tiếng Việt"
+        
     for kw in EXCLUDED_KEYWORDS:
         if kw in combined_text: return False, f"Loại nội dung cấm ({kw.upper()})"
     return True, "OK"
@@ -1634,14 +1657,17 @@ with tab3:
 
     render_shared_cart_ui(key_suffix="tab3")
 
-# --- TAB 4, TAB 5, TAB 6 ---
+# --- TAB 4: UPLOAD & UPDATE DATABASE DIRECTLY FROM EXCEL / ZIP / TXT ---
 with tab4:
-    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📤 Upload file .ZIP hoặc .TXT để cập nhật Database</h3>", unsafe_allow_html=True)
-    uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo Excel) hoặc file `.txt` vào đây:", type=["zip", "txt", "xlsx"], accept_multiple_files=True)
+    st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📤 Upload file .ZIP, .TXT hoặc .XLSX để cập nhật Database</h3>", unsafe_allow_html=True)
+    st.caption("💡 *Hỗ trợ tải lên trực tiếp các file Excel báo cáo lẻ (.xlsx), file nén .ZIP hoặc file danh sách .TXT.*")
+    
+    uploaded_files = st.file_uploader("Kéo thả file `.zip` (chứa các báo cáo), file `.txt` hoặc file Excel báo cáo `.xlsx` vào đây:", type=["zip", "txt", "xlsx", "xls"], accept_multiple_files=True)
+    
     if uploaded_files and st.button("🚀 Bắt đầu xử lý & Nạp vào Database", type="primary"):
         new_handles_to_insert = []
         for file in uploaded_files:
-            file_name = file.name
+            file_name = file.name.lower()
             if file_name.endswith('.zip'):
                 with zipfile.ZipFile(file, 'r') as zip_ref:
                     extract_path = "temp_zip_extract"
@@ -1650,16 +1676,30 @@ with tab4:
                         for fn in filenames:
                             if fn.endswith('.xlsx') or fn.endswith('.xls'):
                                 h = extract_handle_from_filename(fn)
-                                if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h, "source": file_name})
+                                if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name})
             elif file_name.endswith('.txt'):
                 content = file.read().decode("utf-8", errors="ignore")
                 for line in content.splitlines():
                     h = to_pure_id(line)
-                    if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h, "source": file_name})
+                    if h: new_handles_to_insert.append({"handle": h, "youtuber_name": h.upper(), "source": file.name})
+            elif file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+                # DIRECT EXCEL REPORT FILE UPLOAD HANDLING
+                h_from_fn = extract_handle_from_filename(file.name)
+                if h_from_fn:
+                    new_handles_to_insert.append({"handle": h_from_fn, "youtuber_name": h_from_fn.upper(), "source": file.name})
+                
+                # EXTRACT ALL HANDLES FROM COLUMNS INSIDE THE EXCEL FILE
+                file.seek(0)
+                extracted_handles = extract_handles_from_file(file)
+                for ch in extracted_handles:
+                    new_handles_to_insert.append({"handle": ch, "youtuber_name": ch.upper(), "source": file.name})
+
         if new_handles_to_insert:
             df_insert = pd.DataFrame(new_handles_to_insert).drop_duplicates(subset=["handle"])
             supabase.table("channels").upsert(df_insert.to_dict(orient="records"), on_conflict="handle").execute()
-            st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle vào Database đám mây!")
+            st.success(f"🎉 Đã xử lý & đồng bộ thành công {len(df_insert)} Handle vào Database đám mây Supabase!")
+        else:
+            st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Danh sách toàn bộ Channel trong Database</h3>", unsafe_allow_html=True)
