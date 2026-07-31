@@ -201,7 +201,7 @@ def clear_cart_db():
 def clear_entire_database():
     try:
         supabase.table("channels").delete().neq("handle", "___NONE___").execute()
-        keys_to_clear = ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'tab5_crm_cache']
         for k in keys_to_clear:
             if k in st.session_state: del st.session_state[k]
         cb_clear_all()
@@ -326,7 +326,7 @@ with st.sidebar:
     st.divider()
     if st.button("🔄 Làm Mới Màn Hình", use_container_width=True):
         cb_clear_all()
-        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'active_inspected_handle']
+        keys_to_clear = ['passed_channels', 'rejected_channels', 'last_inspected_data', 'last_inspected_handle', 'audit_success_msg', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'active_inspected_handle', 'tab5_crm_cache']
         for key in keys_to_clear:
             if key in st.session_state: del st.session_state[key]
         for key in list(st.session_state.keys()):
@@ -468,17 +468,16 @@ def render_social_badges_html(contacts_dict):
     html += "</div>"
     return html
 
-# TAB 5 CACHED METADATA & CONTACT EXTRACTION HELPER
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_channel_crm_meta(pure_handle):
+# TAB 5 MULTI-THREADED CRM METADATA WORKER
+def process_single_crm_channel_meta(pure_handle):
     cid = get_channel_id_by_handle(pure_handle)
-    if not cid: return {"sub_count": 0, "sub_str": "N/A", "country": "N/A", "socials": {}}
+    if not cid: return pure_handle, {"sub_count": 0, "sub_str": "N/A", "country": "N/A", "socials": {}}
     playlist_id, sub_count, desc, joined, country_name, country_code, avatar = get_channel_details(cid)
     recent_vids = get_6_recent_videos(pure_handle)
     v_descs = " ".join([v.get('Description', '') for v in recent_vids])
     corpus = f"{desc} {v_descs}"
     socials = extract_contacts_and_socials(corpus)
-    return {
+    return pure_handle, {
         "sub_count": sub_count,
         "sub_str": f"{sub_count:,}" if sub_count else "N/A",
         "country": country_name if country_name else "N/A",
@@ -1433,7 +1432,6 @@ with tab1:
                         with c2:
                             st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}`")
                             st.markdown(f"❌ **Lý do loại:** <span style='color:#EF4444; font-weight:700;'>{item.get('Lý do loại', item['Trạng thái'])}</span>", unsafe_allow_html=True)
-                            st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
                         with c3:
                             if st.button("🗑️ Xóa Kênh", key=f"del_t1_rej_{p_id}", use_container_width=True):
                                 delete_channel_from_system(p_id)
@@ -1982,7 +1980,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- ADVANCED DATABASE CRM VIEWER WITH REAL-TIME FILTERS & DEEP SOCIALS ---
+# --- MULTI-THREADED CRM DATABASE VIEWER WITH PARALLEL FILTERING & CACHING ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -1996,7 +1994,6 @@ with tab5:
             if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
                 confirm_clear_db_dialog()
 
-        # FULL ADVANCED FILTERS (4 COLUMNS)
         st.divider()
         st.markdown("#### 🔍 Bộ Lọc Database Chuyên Sâu:")
         fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
@@ -2011,32 +2008,62 @@ with tab5:
         with fc4:
             view_mode = st.radio("Chế độ hiển thị:", ["🎨 Card View (Thẻ chi tiết)", "📊 Table Grid View (Bảng nén gọn)"], horizontal=True)
 
-        df_filtered = df_all.copy()
+        df_pre = df_all.copy()
         if search_db:
-            df_filtered = df_filtered[
-                df_filtered['handle'].str.contains(search_db, case=False, na=False) | 
-                df_filtered['youtuber_name'].str.contains(search_db, case=False, na=False)
+            df_pre = df_pre[
+                df_pre['handle'].str.contains(search_db, case=False, na=False) | 
+                df_pre['youtuber_name'].str.contains(search_db, case=False, na=False)
             ]
         if sel_source != "-- Tất Cả Nguồn --":
-            df_filtered = df_filtered[df_filtered['source'] == sel_source]
+            df_pre = df_pre[df_pre['source'] == sel_source]
 
-        # AUTOMATIC SUBSCRIBER FILTERING
-        if sel_sub_range != "-- Tất Cả Mốc Subs --":
-            with st.spinner("Đang tính toán mốc Subs để lọc tự động..."):
-                valid_handles = []
-                for idx, r in df_filtered.iterrows():
-                    p_h = to_pure_id(r['handle'])
-                    meta = get_channel_crm_meta(p_h)
-                    s_num = meta['sub_count']
-                    
-                    if sel_sub_range == "< 100K Subs" and s_num < 100000: valid_handles.append(r['handle'])
-                    elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): valid_handles.append(r['handle'])
-                    elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): valid_handles.append(r['handle'])
-                    elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: valid_handles.append(r['handle'])
+        # FAST PARALLEL SUBSCRIBER FILTERING WITH CACHING
+        cache_key = f"crm_cache_{search_db}_{sel_sub_range}_{sel_source}"
+        
+        if cache_key in st.session_state:
+            df_filtered, crm_meta_map = st.session_state[cache_key]
+        else:
+            crm_meta_map = {}
+            if sel_sub_range != "-- Tất Cả Mốc Subs --":
+                handles_to_check = [to_pure_id(h) for h in df_pre['handle'].tolist() if to_pure_id(h)]
+                tot_h = len(handles_to_check)
                 
-                df_filtered = df_filtered[df_filtered['handle'].isin(valid_handles)]
+                if tot_h > 0:
+                    prog_bar_db = st.progress(0)
+                    stat_txt_db = st.empty()
+                    comp_h = 0
+                    matched_handles = []
 
-        st.caption(f"Đã lọc: **{len(df_filtered)}** / {len(df_all)} kênh")
+                    with ThreadPoolExecutor(max_workers=10) as executor:
+                        futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in handles_to_check]
+                        for future in as_completed(futures):
+                            p_h, meta = future.result()
+                            crm_meta_map[p_h] = meta
+                            s_num = meta['sub_count']
+                            
+                            is_match = False
+                            if sel_sub_range == "< 100K Subs" and s_num < 100000: is_match = True
+                            elif sel_sub_range == "100K - 500K Subs" and (100000 <= s_num < 500000): is_match = True
+                            elif sel_sub_range == "500K - 1M Subs" and (500000 <= s_num < 1000000): is_match = True
+                            elif sel_sub_range == "> 1M Subs" and s_num >= 1000000: is_match = True
+                            
+                            if is_match: matched_handles.append(p_h)
+                            
+                            comp_h += 1
+                            prog_bar_db.progress(comp_h / tot_h)
+                            stat_txt_db.markdown(f"⏳ **Đang phân tích siêu tốc:** `{comp_h}/{tot_h}` kênh | 🎯 **Khớp điều kiện:** `{len(matched_handles)}` kênh")
+
+                    prog_bar_db.empty()
+                    stat_txt_db.empty()
+
+                    df_filtered = df_pre[df_pre['handle'].apply(to_pure_id).isin(matched_handles)]
+                else: df_filtered = df_pre
+            else:
+                df_filtered = df_pre
+
+            st.session_state[cache_key] = (df_filtered, crm_meta_map)
+
+        st.caption(f"🎯 Kết quả khớp: **{len(df_filtered)}** / {len(df_all)} kênh")
 
         # RENDER MODE 1: TABLE GRID VIEW
         if view_mode == "📊 Table Grid View (Bảng nén gọn)":
@@ -2053,7 +2080,7 @@ with tab5:
                 "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
             })
         else:
-            # RENDER MODE 2: CARD VIEW WITH PAGINATION & STICKY ACTION BAR
+            # RENDER MODE 2: CARD VIEW WITH STICKY ACTION BAR
             items_per_page = 20
             total_pages = max(1, (len(df_filtered) + items_per_page - 1) // items_per_page)
             page = st.number_input("Trang:", min_value=1, max_value=total_pages, value=1, step=1)
@@ -2088,7 +2115,8 @@ with tab5:
                 p_id = to_pure_id(row['handle'])
                 is_active = (p_id == st.session_state.get('active_inspected_handle'))
                 stt_num_db = start_idx + idx + 1
-                crm_meta = get_channel_crm_meta(p_id)
+                
+                crm_meta = crm_meta_map.get(p_id) or get_channel_crm_meta(p_id)
                 
                 with st.container(border=True):
                     if is_active:
