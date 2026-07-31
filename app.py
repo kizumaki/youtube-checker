@@ -51,21 +51,21 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
-# SELECT ALL FROM A SPECIFIC LIST
+# SELECT ALL FROM A SPECIFIC LIST SAFELY
 def select_all_from_list(channel_list, key_prefix=""):
     for item in channel_list:
         raw_h = item.get('Handle') or item.get('handle')
         p_id = to_pure_id(raw_h)
         if p_id:
             st.session_state['selected_channels'].add(p_id)
-            st.session_state[f"{key_prefix}{p_id}"] = True
+            st.session_state.pop(f"{key_prefix}{p_id}", None)
 
-# CLEAR BOTH THE SET AND CHECKBOX WIDGET STATES SAFELY
+# CLEAR BOTH THE SET AND CHECKBOX WIDGET STATES SAFELY WITHOUT STREAMLIT API EXCEPTION
 def clear_selected_channels():
     st.session_state['selected_channels'].clear()
     for key in list(st.session_state.keys()):
         if key.startswith("chk_"):
-            st.session_state[key] = False
+            st.session_state.pop(key, None)
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -362,7 +362,6 @@ def to_pure_id(raw_val):
     s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
 
-    # COMPREHENSIVE REGEX TO STRIP FILENAME SUFFIXES (e.g. _backlog_june01,2026, _28-07-2026, _july28,2026)
     pattern = r'_(?:backlog|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,4})[_\-\s,.]?.*$'
     s = re.sub(pattern, '', s, flags=re.IGNORECASE)
 
