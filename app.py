@@ -66,16 +66,9 @@ def cb_clear_all():
 def clear_selected_channels():
     cb_clear_all()
 
-# CALLBACKS: DUAL-WAY PAGINATION SYNCHRONIZATION
-def sync_pagination_top(top_key, bottom_key, state_key):
-    val = st.session_state[top_key]
-    st.session_state[state_key] = val
-    st.session_state[bottom_key] = val
-
-def sync_pagination_bottom(top_key, bottom_key, state_key):
-    val = st.session_state[bottom_key]
-    st.session_state[state_key] = val
-    st.session_state[top_key] = val
+# CALLBACK: DYNAMIC PAGINATION MASTER SYNC
+def on_page_change(widget_key, state_key):
+    st.session_state[state_key] = st.session_state[widget_key]
 
 # Theme CSS Dynamic Injection
 is_dark = st.session_state['app_theme'] == 'Studio Espresso (Tối)'
@@ -1308,8 +1301,10 @@ with tab1:
                 if 'p_state_t1_new' not in st.session_state: st.session_state['p_state_t1_new'] = 1
                 total_pages = max(1, (len(new_handles) + items_per_page - 1) // items_per_page)
                 if st.session_state['p_state_t1_new'] > total_pages: st.session_state['p_state_t1_new'] = total_pages
-                if 'page_new_t1_top' not in st.session_state: st.session_state['page_new_t1_top'] = st.session_state['p_state_t1_new']
-                if 'page_new_t1_bottom' not in st.session_state: st.session_state['page_new_t1_bottom'] = st.session_state['p_state_t1_new']
+                if st.session_state['p_state_t1_new'] < 1: st.session_state['p_state_t1_new'] = 1
+
+                st.session_state['page_new_t1_top'] = st.session_state['p_state_t1_new']
+                st.session_state['page_new_t1_bottom'] = st.session_state['p_state_t1_new']
 
                 page_new = st.session_state['p_state_t1_new']
                 start_idx = (page_new - 1) * items_per_page
@@ -1318,7 +1313,7 @@ with tab1:
                 # TOP PAGINATION CONTROL
                 col_p1, col_p2 = st.columns([2, 8])
                 with col_p1:
-                    st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, value=page_new, step=1, key="page_new_t1_top", on_change=sync_pagination_top, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
+                    st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_top", on_change=on_page_change, args=("page_new_t1_top", "p_state_t1_new"))
                 with col_p2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {len(paged_new)} / {len(new_handles)} kênh)*")
@@ -1400,7 +1395,7 @@ with tab1:
                     st.divider()
                     col_pb1, col_pb2 = st.columns([2, 8])
                     with col_pb1:
-                        st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, value=page_new, step=1, key="page_new_t1_bottom", on_change=sync_pagination_bottom, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
+                        st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_bottom", on_change=on_page_change, args=("page_new_t1_bottom", "p_state_t1_new"))
                     with col_pb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {len(paged_new)} / {len(new_handles)} kênh)*")
@@ -1430,8 +1425,10 @@ with tab1:
                 if 'p_state_t1_ex' not in st.session_state: st.session_state['p_state_t1_ex'] = 1
                 total_pages_ex = max(1, (len(existing_handles) + items_per_page_ex - 1) // items_per_page_ex)
                 if st.session_state['p_state_t1_ex'] > total_pages_ex: st.session_state['p_state_t1_ex'] = total_pages_ex
-                if 'page_ex_t1_top' not in st.session_state: st.session_state['page_ex_t1_top'] = st.session_state['p_state_t1_ex']
-                if 'page_ex_t1_bottom' not in st.session_state: st.session_state['page_ex_t1_bottom'] = st.session_state['p_state_t1_ex']
+                if st.session_state['p_state_t1_ex'] < 1: st.session_state['p_state_t1_ex'] = 1
+
+                st.session_state['page_ex_t1_top'] = st.session_state['p_state_t1_ex']
+                st.session_state['page_ex_t1_bottom'] = st.session_state['p_state_t1_ex']
 
                 page_ex = st.session_state['p_state_t1_ex']
                 start_idx_ex = (page_ex - 1) * items_per_page_ex
@@ -1439,7 +1436,7 @@ with tab1:
 
                 col_pe1, col_pe2 = st.columns([2, 8])
                 with col_pe1:
-                    st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, value=page_ex, step=1, key="page_ex_t1_top", on_change=sync_pagination_top, args=("page_ex_t1_top", "page_ex_t1_bottom", "p_state_t1_ex"))
+                    st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_top", on_change=on_page_change, args=("page_ex_t1_top", "p_state_t1_ex"))
                 with col_pe2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {len(paged_ex)} / {len(existing_handles)} kênh)*")
@@ -1474,7 +1471,7 @@ with tab1:
                     st.divider()
                     col_peb1, col_peb2 = st.columns([2, 8])
                     with col_peb1:
-                        st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, value=page_ex, step=1, key="page_ex_t1_bottom", on_change=sync_pagination_bottom, args=("page_ex_t1_top", "page_ex_t1_bottom", "p_state_t1_ex"))
+                        st.number_input("Trang (Kênh Tồn Tại):", min_value=1, max_value=total_pages_ex, step=1, key="page_ex_t1_bottom", on_change=on_page_change, args=("page_ex_t1_bottom", "p_state_t1_ex"))
                     with col_peb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_ex} / {total_pages_ex}** *(Hiển thị {len(paged_ex)} / {len(existing_handles)} kênh)*")
@@ -1502,8 +1499,10 @@ with tab1:
                 if 'p_state_t1_rej' not in st.session_state: st.session_state['p_state_t1_rej'] = 1
                 total_pages_rej = max(1, (len(rejected_handles) + items_per_page_rej - 1) // items_per_page_rej)
                 if st.session_state['p_state_t1_rej'] > total_pages_rej: st.session_state['p_state_t1_rej'] = total_pages_rej
-                if 'page_rej_t1_top' not in st.session_state: st.session_state['page_rej_t1_top'] = st.session_state['p_state_t1_rej']
-                if 'page_rej_t1_bottom' not in st.session_state: st.session_state['page_rej_t1_bottom'] = st.session_state['p_state_t1_rej']
+                if st.session_state['p_state_t1_rej'] < 1: st.session_state['p_state_t1_rej'] = 1
+
+                st.session_state['page_rej_t1_top'] = st.session_state['p_state_t1_rej']
+                st.session_state['page_rej_t1_bottom'] = st.session_state['p_state_t1_rej']
 
                 page_rej = st.session_state['p_state_t1_rej']
                 start_idx_rej = (page_rej - 1) * items_per_page_rej
@@ -1511,7 +1510,7 @@ with tab1:
 
                 col_pr1, col_pr2 = st.columns([2, 8])
                 with col_pr1:
-                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=page_rej, step=1, key="page_rej_t1_top", on_change=sync_pagination_top, args=("page_rej_t1_top", "page_rej_t1_bottom", "p_state_t1_rej"))
+                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_top", on_change=on_page_change, args=("page_rej_t1_top", "p_state_t1_rej"))
                 with col_pr2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(rejected_handles)} kênh)*")
@@ -1547,7 +1546,7 @@ with tab1:
                     st.divider()
                     col_prb1, col_prb2 = st.columns([2, 8])
                     with col_prb1:
-                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=page_rej, step=1, key="page_rej_t1_bottom", on_change=sync_pagination_bottom, args=("page_rej_t1_top", "page_rej_t1_bottom", "p_state_t1_rej"))
+                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t1_bottom", on_change=on_page_change, args=("page_rej_t1_bottom", "p_state_t1_rej"))
                     with col_prb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(rejected_handles)} kênh)*")
@@ -1820,16 +1819,19 @@ with tab3:
                 if 'p_state_t3_pass' not in st.session_state: st.session_state['p_state_t3_pass'] = 1
                 total_pages = max(1, (len(display_passed) + items_per_page - 1) // items_per_page)
                 if st.session_state['p_state_t3_pass'] > total_pages: st.session_state['p_state_t3_pass'] = total_pages
-                if 'page_pass_t3_top' not in st.session_state: st.session_state['page_pass_t3_top'] = st.session_state['p_state_t3_pass']
-                if 'page_pass_t3_bottom' not in st.session_state: st.session_state['page_pass_t3_bottom'] = st.session_state['p_state_t3_pass']
+                if st.session_state['p_state_t3_pass'] < 1: st.session_state['p_state_t3_pass'] = 1
+
+                st.session_state['page_pass_t3_top'] = st.session_state['p_state_t3_pass']
+                st.session_state['page_pass_t3_bottom'] = st.session_state['p_state_t3_pass']
 
                 page_pass = st.session_state['p_state_t3_pass']
                 start_idx = (page_pass - 1) * items_per_page
                 paged_passed = display_passed[start_idx:start_idx + items_per_page]
 
+                # TOP PAGINATION CONTROL
                 col_pp1, col_pp2 = st.columns([2, 8])
                 with col_pp1:
-                    st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, value=page_pass, step=1, key="page_pass_t3_top", on_change=sync_pagination_top, args=("page_pass_t3_top", "page_pass_t3_bottom", "p_state_t3_pass"))
+                    st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_top", on_change=on_page_change, args=("page_pass_t3_top", "p_state_t3_pass"))
                 with col_pp2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {len(paged_passed)} / {len(display_passed)} kênh)*")
@@ -1920,7 +1922,7 @@ with tab3:
                     st.divider()
                     col_ppb1, col_ppb2 = st.columns([2, 8])
                     with col_ppb1:
-                        st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, value=page_pass, step=1, key="page_pass_t3_bottom", on_change=sync_pagination_bottom, args=("page_pass_t3_top", "page_pass_t3_bottom", "p_state_t3_pass"))
+                        st.number_input("Trang (Kênh Đạt Chuẩn):", min_value=1, max_value=total_pages, step=1, key="page_pass_t3_bottom", on_change=on_page_change, args=("page_pass_t3_bottom", "p_state_t3_pass"))
                     with col_ppb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_pass} / {total_pages}** *(Hiển thị {len(paged_passed)} / {len(display_passed)} kênh)*")
@@ -1957,8 +1959,10 @@ with tab3:
                 if 'p_state_t3_rej' not in st.session_state: st.session_state['p_state_t3_rej'] = 1
                 total_pages_rej = max(1, (len(display_rejected) + items_per_page_rej - 1) // items_per_page_rej)
                 if st.session_state['p_state_t3_rej'] > total_pages_rej: st.session_state['p_state_t3_rej'] = total_pages_rej
-                if 'page_rej_t3_top' not in st.session_state: st.session_state['page_rej_t3_top'] = st.session_state['p_state_t3_rej']
-                if 'page_rej_t3_bottom' not in st.session_state: st.session_state['page_rej_t3_bottom'] = st.session_state['p_state_t3_rej']
+                if st.session_state['p_state_t3_rej'] < 1: st.session_state['p_state_t3_rej'] = 1
+
+                st.session_state['page_rej_t3_top'] = st.session_state['p_state_t3_rej']
+                st.session_state['page_rej_t3_bottom'] = st.session_state['p_state_t3_rej']
 
                 page_rej = st.session_state['p_state_t3_rej']
                 start_idx_rej = (page_rej - 1) * items_per_page_rej
@@ -1966,7 +1970,7 @@ with tab3:
 
                 col_prj1, col_prj2 = st.columns([2, 8])
                 with col_prj1:
-                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=page_rej, step=1, key="page_rej_t3_top", on_change=sync_pagination_top, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
+                    st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_top", on_change=on_page_change, args=("page_rej_t3_top", "p_state_t3_rej"))
                 with col_prj2:
                     st.write("")
                     st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(display_rejected)} kênh)*")
@@ -2051,7 +2055,7 @@ with tab3:
                     st.divider()
                     col_prjb1, col_prjb2 = st.columns([2, 8])
                     with col_prjb1:
-                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=page_rej, step=1, key="page_rej_t3_bottom", on_change=sync_pagination_bottom, args=("page_rej_t3_top", "page_rej_t3_bottom", "p_state_t3_rej"))
+                        st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, step=1, key="page_rej_t3_bottom", on_change=on_page_change, args=("page_rej_t3_bottom", "p_state_t3_rej"))
                     with col_prjb2:
                         st.write("")
                         st.markdown(f"📄 **Trang {page_rej} / {total_pages_rej}** *(Hiển thị {len(paged_rejected)} / {len(display_rejected)} kênh)*")
@@ -2141,7 +2145,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- MULTI-THREADED CRM DATABASE VIEWER WITH DUAL PAGINATION CONTROLS ---
+# --- MULTI-THREADED CRM DATABASE VIEWER WITH PERFECT DUAL-WAY PAGINATION ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -2261,13 +2265,16 @@ with tab5:
                 "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
             })
         else:
-            # RENDER MODE 2: CARD VIEW WITH DUAL PAGINATION
+            # RENDER MODE 2: CARD VIEW WITH PERFECT DUAL PAGINATION
             items_per_page = 20
             if 'p_state_t5_db' not in st.session_state: st.session_state['p_state_t5_db'] = 1
             total_pages = max(1, (len(df_filtered) + items_per_page - 1) // items_per_page)
             if st.session_state['p_state_t5_db'] > total_pages: st.session_state['p_state_t5_db'] = total_pages
-            if 'page_db_viewer_top' not in st.session_state: st.session_state['page_db_viewer_top'] = st.session_state['p_state_t5_db']
-            if 'page_db_viewer_bottom' not in st.session_state: st.session_state['page_db_viewer_bottom'] = st.session_state['p_state_t5_db']
+            if st.session_state['p_state_t5_db'] < 1: st.session_state['p_state_t5_db'] = 1
+            
+            # PRE-SYNC WIDGET KEYS BEFORE RENDERING
+            st.session_state['page_db_viewer_top'] = st.session_state['p_state_t5_db']
+            st.session_state['page_db_viewer_bottom'] = st.session_state['p_state_t5_db']
             
             page = st.session_state['p_state_t5_db']
             start_idx = (int(page) - 1) * items_per_page
@@ -2277,7 +2284,7 @@ with tab5:
             # TOP PAGINATION CONTROL
             col_db_p1, col_db_p2 = st.columns([2, 8])
             with col_db_p1:
-                st.number_input("Trang:", min_value=1, max_value=total_pages, value=page, step=1, key="page_db_viewer_top", on_change=sync_pagination_top, args=("page_db_viewer_top", "page_db_viewer_bottom", "p_state_t5_db"))
+                st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_top", on_change=on_page_change, args=("page_db_viewer_top", "p_state_t5_db"))
             with col_db_p2:
                 st.write("")
                 st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {len(page_data)} / {len(df_filtered)} kênh)*")
@@ -2349,7 +2356,7 @@ with tab5:
                 st.divider()
                 col_db_pb1, col_db_pb2 = st.columns([2, 8])
                 with col_db_pb1:
-                    st.number_input("Trang:", min_value=1, max_value=total_pages, value=page, step=1, key="page_db_viewer_bottom", on_change=sync_pagination_bottom, args=("page_db_viewer_top", "page_db_viewer_bottom", "p_state_t5_db"))
+                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_db_viewer_bottom", on_change=on_page_change, args=("page_db_viewer_bottom", "p_state_t5_db"))
                 with col_db_pb2:
                     st.write("")
                     st.markdown(f"📄 **Trang {int(page)} / {total_pages}** *(Hiển thị {len(page_data)} / {len(df_filtered)} kênh)*")
