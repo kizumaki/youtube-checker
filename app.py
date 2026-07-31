@@ -58,14 +58,14 @@ def cb_select_all(channel_list, key_prefix=""):
         p_id = to_pure_id(raw_h)
         if p_id:
             st.session_state['selected_channels'].add(p_id)
-            st.session_state[f"{key_prefix}{p_id}"] = True
+            st.session_state.pop(f"{key_prefix}{p_id}", None)
 
 # CALLBACK: CLEAR ALL SELECTIONS SAFELY BEFORE WIDGET RENDERING
 def cb_clear_all():
     st.session_state['selected_channels'].clear()
     for key in list(st.session_state.keys()):
         if key.startswith("chk_"):
-            st.session_state[key] = False
+            st.session_state.pop(key, None)
 
 def clear_selected_channels():
     cb_clear_all()
@@ -1288,9 +1288,7 @@ with tab1:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
                             st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
-                        c0, c1, c2, c3 = st.columns([0.4, 3.6, 4.0, 2.0])
-                        with c0:
-                            st.checkbox("", key=f"chk_t1_rej_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                        c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
@@ -1541,7 +1539,7 @@ with tab3:
                     if st.button(f"🗑️ Xóa ({cnt_total_sel}) Đã Chọn", key="btn_del_sel_pass", use_container_width=True):
                         if cnt_total_sel > 0:
                             for p_id in list(selected_set): delete_channel_from_system(p_id)
-                            st.session_state['selected_channels'].clear()
+                            cb_clear_all()
                             st.success(f"🗑️ Đã xóa {cnt_total_sel} kênh!")
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
@@ -1694,7 +1692,7 @@ with tab3:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='{row['Link Kênh']}' style='text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
-                                show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
+                                show_video_dialog(p_id)
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row.get('Quốc gia', '')}`")
                             st.write(f"🎬 **Tổng Video:** `{row.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{row.get('Video Gần Nhất', '')}`")
@@ -1857,7 +1855,6 @@ with tab5:
         end_idx = start_idx + items_per_page
         page_data = df_filtered.iloc[start_idx:end_idx]
 
-        # DATABASE TOOLBAR FOR SELECTION & BULK DELETE
         cnt_total_sel_db = len(st.session_state['selected_channels'])
         db_act1, db_act2, db_act3, db_act4 = st.columns([3, 2, 2, 1.5])
         with db_act1:
