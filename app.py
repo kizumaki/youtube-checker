@@ -93,7 +93,7 @@ header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px !important; padding: 12px !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; }}
 div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important; }}
 
-/* ACTIVE INSPECTED CARD (TANGERINE) */
+/* ACTIVE INSPECTED CARD */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {{ border: 2px solid #D95F26 !important; box-shadow: 0 8px 24px rgba(217, 95, 38, 0.2) !important; }}
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {{ border: 2px solid #47A5D1 !important; box-shadow: 0 8px 24px rgba(71, 165, 209, 0.2) !important; }}
 
@@ -116,10 +116,10 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.in-cart-marker) {{ borde
 .stButton button[kind="primary"]:hover, .stButton button[kind="primary"]:hover *, .stButton button[kind="primary"]:hover p, .stButton button[kind="primary"]:hover span, .stButton button[kind="primary"]:hover div {{ background: linear-gradient(135deg, #C24E18 0%, #D95F26 100%) !important; color: #FFFFFF !important; transform: translateY(-1px) !important; box-shadow: 0 6px 16px rgba(217, 95, 38, 0.32) !important; }}
 
 /* Social Badges */
-.social-badge {{ display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; margin-right: 5px; margin-bottom: 5px; text-decoration: none !important; color: #FFFFFF !important; }}
+.social-badge {{ display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; margin-bottom: 6px; text-decoration: none !important; color: #FFFFFF !important; box-shadow: 0 2px 5px rgba(0,0,0,0.15); }}
 .social-email {{ background-color: #EA4335 !important; }}
 .social-ig {{ background-color: #E1306C !important; }}
-.social-tt {{ background-color: #000000 !important; border: 1px solid #444; }}
+.social-tt {{ background-color: #000000 !important; border: 1px solid #555; }}
 .social-x {{ background-color: #1DA1F2 !important; }}
 .social-discord {{ background-color: #5865F2 !important; }}
 .social-fb {{ background-color: #1877F2 !important; }}
@@ -355,7 +355,7 @@ def yt_execute(request_func, cost=1):
             else: raise e
     raise Exception("❌ Toàn bộ API Keys bạn nhập đã bị chết hoặc cạn sạch Quota!")
 
-# --- HELPER FUNCTIONS & ADVANCED CONTACT MINING ---
+# --- HELPER FUNCTIONS & ULTRA-DEEP CONTACT MINING ---
 def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]: return None
     s = str(raw_val).strip()
@@ -372,45 +372,72 @@ def to_pure_id(raw_val):
 
     return s if s else None
 
-# STEP 1 ADVANCED CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
+# ULTRA-DEEP CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
 def extract_contacts_and_socials(text_corpus):
     if not text_corpus: return {}
     corpus = str(text_corpus)
     contacts = {}
     
-    # Emails
-    emails = list(set(re.findall(r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b', corpus)))
-    if emails: contacts['Email'] = emails[0]
+    # 1. Emails
+    emails = re.findall(r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b', corpus)
+    valid_emails = []
+    for e in emails:
+        e_lower = e.lower()
+        if not any(e_lower.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']):
+            if e_lower not in ['user@domain.com', 'email@domain.com', 'yourname@email.com', 'info@youtube.com']:
+                valid_emails.append(e)
+    if valid_emails: contacts['Email'] = valid_emails[0]
     
-    # Instagram
-    ig_m = re.search(r'(?:instagram\.com/|ig:\s*@?)([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if ig_m and ig_m.group(1).lower() not in ['p', 'reel', 'stories']: contacts['Instagram'] = f"https://instagram.com/{ig_m.group(1)}"
-    
-    # TikTok
-    tt_m = re.search(r'(?:tiktok\.com/@|tt:\s*@?)([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if tt_m: contacts['TikTok'] = f"https://tiktok.com/@{tt_m.group(1)}"
-    
-    # Twitter / X
-    x_m = re.search(r'(?:twitter\.com/|x\.com/)([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if x_m and x_m.group(1).lower() not in ['intent', 'share']: contacts['Twitter'] = f"https://x.com/{x_m.group(1)}"
-    
-    # Discord
-    dc_m = re.search(r'(?:discord\.(?:gg|com/invite)/)([a-zA-Z0-9_-]+)', corpus, re.IGNORECASE)
-    if dc_m: contacts['Discord'] = f"https://discord.gg/{dc_m.group(1)}"
-    
-    # Facebook
-    fb_m = re.search(r'(?:facebook\.com/|fb\.com/)([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if fb_m and fb_m.group(1).lower() not in ['sharer', 'groups']: contacts['Facebook'] = f"https://facebook.com/{fb_m.group(1)}"
-    
-    # Website / Linktree
-    web_m = re.search(r'(https?://(?:linktr\.ee|beacons\.ai|bit\.ly|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/[^\s]+)', corpus, re.IGNORECASE)
-    if web_m: contacts['Website'] = web_m.group(1)
+    # 2. Instagram
+    ig_matches = re.findall(r'(?:https?://)?(?:www\.)?(?:instagram\.com|instagr\.am)/([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if not ig_matches:
+        ig_matches = re.findall(r'(?:ig|instagram)\s*[:@-]\s*@?([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if ig_matches:
+        handle = ig_matches[0].rstrip('./-_,')
+        if handle.lower() not in ['p', 'reel', 'reels', 'stories', 'tv', 'explore', 'direct']:
+            contacts['Instagram'] = f"https://instagram.com/{handle}"
+            
+    # 3. TikTok
+    tt_matches = re.findall(r'(?:https?://)?(?:www\.)?tiktok\.com/@?([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if not tt_matches:
+        tt_matches = re.findall(r'(?:tiktok|tt)\s*[:@-]\s*@?([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if tt_matches:
+        handle = tt_matches[0].rstrip('./-_,')
+        contacts['TikTok'] = f"https://tiktok.com/@{handle}"
+
+    # 4. Twitter / X
+    x_matches = re.findall(r'(?:https?://)?(?:www\.)?(?:twitter\.com|x\.com)/([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if not x_matches:
+        x_matches = re.findall(r'(?:twitter|x)\s*[:@-]\s*@?([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if x_matches:
+        handle = x_matches[0].rstrip('./-_,')
+        if handle.lower() not in ['intent', 'share', 'home', 'search', 'hashtag', 'i', 'widgets']:
+            contacts['Twitter'] = f"https://x.com/{handle}"
+
+    # 5. Discord
+    dc_matches = re.findall(r'(?:https?://)?(?:www\.)?(?:discord\.(?:gg|com/invite))/([a-zA-Z0-9_-]+)', corpus, re.IGNORECASE)
+    if dc_matches:
+        contacts['Discord'] = f"https://discord.gg/{dc_matches[0]}"
+
+    # 6. Facebook
+    fb_matches = re.findall(r'(?:https?://)?(?:www\.)?(?:facebook\.com|fb\.com|fb\.me)/([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
+    if fb_matches:
+        handle = fb_matches[0].rstrip('./-_,')
+        if handle.lower() not in ['sharer', 'groups', 'pages', 'photo', 'permalink', 'dialog']:
+            contacts['Facebook'] = f"https://facebook.com/{handle}"
+
+    # 7. Website / Linktree / Beacons
+    web_matches = re.findall(r'(https?://(?:linktr\.ee|beacons\.ai|beacons\.page|bit\.ly|twitch\.tv|kick\.com|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/[^\s),"\']+)', corpus, re.IGNORECASE)
+    if web_matches:
+        url = web_matches[0]
+        if not any(domain in url.lower() for domain in ['youtube.com', 'youtu.be', 'instagram.com', 'tiktok.com', 'twitter.com', 'x.com', 'facebook.com', 'discord.gg']):
+            contacts['Website'] = url
 
     return contacts
 
 def render_social_badges_html(contacts_dict):
     if not contacts_dict: return "<span style='font-size:0.75rem; color:#9CA3AF;'>Chưa có thông tin MXH</span>"
-    html = ""
+    html = "<div style='margin-top: 6px;'>"
     if 'Email' in contacts_dict: html += f"<a href='mailto:{contacts_dict['Email']}' class='social-badge social-email'>✉️ {contacts_dict['Email']}</a>"
     if 'Instagram' in contacts_dict: html += f"<a href='{contacts_dict['Instagram']}' target='_blank' class='social-badge social-ig'>📸 IG</a>"
     if 'TikTok' in contacts_dict: html += f"<a href='{contacts_dict['TikTok']}' target='_blank' class='social-badge social-tt'>🎵 TikTok</a>"
@@ -418,6 +445,7 @@ def render_social_badges_html(contacts_dict):
     if 'Discord' in contacts_dict: html += f"<a href='{contacts_dict['Discord']}' target='_blank' class='social-badge social-discord'>💬 Discord</a>"
     if 'Facebook' in contacts_dict: html += f"<a href='{contacts_dict['Facebook']}' target='_blank' class='social-badge social-fb'>📘 FB</a>"
     if 'Website' in contacts_dict: html += f"<a href='{contacts_dict['Website']}' target='_blank' class='social-badge social-web'>🌐 Web</a>"
+    html += "</div>"
     return html
 
 def extract_video_id(raw_url):
@@ -631,6 +659,7 @@ def get_video_details(video_ids):
                 
                 video_data.append({
                     'Title': item['snippet']['title'], 
+                    'Description': item['snippet'].get('description', ''),
                     'Link': f"https://youtube.com/watch?v={item['id']}",
                     'Length (Exact)': dur_str, 
                     'Seconds': duration_seconds,
@@ -1012,9 +1041,8 @@ def sort_and_filter_channels(channel_list, search_query, sort_by):
     elif sort_by == "Mới Đăng Video": filtered.sort(key=lambda x: x.get('Video Gần Nhất', ''), reverse=True)
     return filtered
 
-# --- STEP 2: DATABASE-FIRST WORKER FOR TAB 1 ---
+# --- DATABASE-FIRST WORKER FOR TAB 1 ---
 def process_tab1_single_handle(p_id, db_matches):
-    # 1. DATABASE-FIRST CACHING STRATEGY
     if p_id in db_matches:
         db_item = db_matches[p_id]
         return "EXISTING", {
@@ -1042,9 +1070,10 @@ def process_tab1_single_handle(p_id, db_matches):
             country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
             sub_count = int(item['statistics'].get('subscriberCount', 0))
             
-            # STEP 1: DEEP SOCIAL CONTACT MINING
+            # STEP 1: DEEP SOCIAL CONTACT MINING WITH VIDEO DESCRIPTIONS
             recent_vids = get_6_recent_videos(p_id)
-            combined_text_corpus = f"{ch_title} {ch_desc} " + " ".join([v.get('Title', '') for v in recent_vids])
+            v_descs = " ".join([v.get('Description', '') for v in recent_vids])
+            combined_text_corpus = f"{ch_title} {ch_desc} {v_descs}"
             social_contacts = extract_contacts_and_socials(combined_text_corpus)
             
             # FILTER 1: MUST HAVE >= 1,000,000 SUBS
@@ -1110,7 +1139,6 @@ with tab1:
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # DATABASE-FIRST CHECK IN BULK
             response = supabase.table("channels").select("handle, youtuber_name").in_("handle", target_list).execute()
             db_matches = {item["handle"].lower(): item for item in response.data} if response.data else {}
             
@@ -1367,6 +1395,7 @@ with tab1:
                         with c2:
                             st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}`")
                             st.markdown(f"❌ **Lý do loại:** <span style='color:#EF4444; font-weight:700;'>{item.get('Lý do loại', item['Trạng thái'])}</span>", unsafe_allow_html=True)
+                            st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
                         with c3:
                             if st.button("🗑️ Xóa Kênh", key=f"del_t1_rej_{p_id}", use_container_width=True):
                                 delete_channel_from_system(p_id)
@@ -1425,8 +1454,9 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
                         score = min(100, int((er_rate / 10.0) * 100))
         except Exception: pass
 
-    # STEP 1 CONTACT EXTRACTION
-    combined_corpus = f"{c_title} {c_desc} " + " ".join([v.get('Title', '') for v in recent_vids])
+    # STEP 1 CONTACT EXTRACTION WITH VIDEO DESCRIPTIONS
+    v_descs = " ".join([v.get('Description', '') for v in recent_vids])
+    combined_corpus = f"{c_title} {c_desc} {v_descs}"
     social_contacts = extract_contacts_and_socials(combined_corpus)
 
     base_data = {
@@ -1913,7 +1943,7 @@ with tab4:
         else:
             st.warning("⚠️ Không tìm thấy Handle hợp lệ nào trong các file đã tải lên!")
 
-# --- STEP 3: ADVANCED DATABASE CRM VIEWER & GRID / CARD TOGGLE ---
+# --- ADVANCED DATABASE CRM VIEWER WITH ALL 4 FILTERS ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     res = supabase.table("channels").select("*").execute()
@@ -1927,16 +1957,19 @@ with tab5:
             if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
                 confirm_clear_db_dialog()
 
-        # STEP 3 ADVANCED FILTERS
+        # FULL ADVANCED FILTERS (4 COLUMNS INCLUDING SUBSCRIBER RANGE)
         st.divider()
         st.markdown("#### 🔍 Bộ Lọc Database Chuyên Sâu:")
-        fc1, fc2, fc3 = st.columns([2, 2, 2])
+        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
         with fc1:
             search_db = st.text_input("Tìm kiếm theo Handle hoặc Tên:", "")
         with fc2:
-            source_options = ["-- Tất Cả Nguồn --"] + list(df_all['source'].dropna().unique())
-            sel_source = st.selectbox("Lọc theo Nguồn Nạp (File ZIP / Source):", options=source_options)
+            sub_range_options = ["-- Tất Cả Mốc Subs --", "< 100K Subs", "100K - 500K Subs", "500K - 1M Subs", "> 1M Subs"]
+            sel_sub_range = st.selectbox("Lọc theo Mốc Subscribers:", options=sub_range_options)
         with fc3:
+            source_options = ["-- Tất Cả Nguồn --"] + list(df_all['source'].dropna().unique()) if 'source' in df_all.columns else ["-- Tất Cả Nguồn --"]
+            sel_source = st.selectbox("Lọc theo Nguồn Nạp (File ZIP / Source):", options=source_options)
+        with fc4:
             view_mode = st.radio("Chế độ hiển thị:", ["🎨 Card View (Thẻ chi tiết)", "📊 Table Grid View (Bảng nén gọn)"], horizontal=True)
 
         df_filtered = df_all.copy()
@@ -1947,6 +1980,28 @@ with tab5:
             ]
         if sel_source != "-- Tất Cả Nguồn --":
             df_filtered = df_filtered[df_filtered['source'] == sel_source]
+
+        # SUBSCRIBER FILTERING
+        def parse_sub_num(val):
+            if pd.isna(val) or not val: return 0
+            s = str(val).replace(',', '').replace(' ', '').upper()
+            m_k = re.search(r'([\d.]+)\s*K', s)
+            if m_k: return int(float(m_k.group(1)) * 1000)
+            m_m = re.search(r'([\d.]+)\s*M', s)
+            if m_m: return int(float(m_m.group(1)) * 1000000)
+            try: return int(float(s))
+            except Exception: return 0
+
+        if sel_sub_range != "-- Tất Cả Mốc Subs --" and 'subscribers' in df_filtered.columns:
+            df_filtered['sub_num'] = df_filtered['subscribers'].apply(parse_sub_num)
+            if sel_sub_range == "< 100K Subs":
+                df_filtered = df_filtered[df_filtered['sub_num'] < 100000]
+            elif sel_sub_range == "100K - 500K Subs":
+                df_filtered = df_filtered[(df_filtered['sub_num'] >= 100000) & (df_filtered['sub_num'] < 500000)]
+            elif sel_sub_range == "500K - 1M Subs":
+                df_filtered = df_filtered[(df_filtered['sub_num'] >= 500000) & (df_filtered['sub_num'] < 1000000)]
+            elif sel_sub_range == "> 1M Subs":
+                df_filtered = df_filtered[df_filtered['sub_num'] >= 1000000]
 
         st.caption(f"Đã lọc: **{len(df_filtered)}** / {len(df_all)} kênh")
 
