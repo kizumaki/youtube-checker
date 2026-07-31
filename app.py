@@ -43,6 +43,7 @@ supabase = init_supabase()
 if 'app_theme' not in st.session_state: st.session_state['app_theme'] = 'Studio Peach (Sáng)'
 if 'selected_channels' not in st.session_state: st.session_state['selected_channels'] = set()
 if 'api_usage' not in st.session_state: st.session_state['api_usage'] = {}
+if 'chk_counter' not in st.session_state: st.session_state['chk_counter'] = 0
 
 # Callback for Selection Sync
 def toggle_select_channel(pure_handle):
@@ -51,21 +52,18 @@ def toggle_select_channel(pure_handle):
     else:
         st.session_state['selected_channels'].add(pure_handle)
 
-# CALLBACK: SELECT ALL FROM A SPECIFIC LIST SAFELY BEFORE WIDGET RENDERING
-def cb_select_all(channel_list, key_prefix=""):
+# CALLBACK: DYNAMICALLY SELECT ALL & RE-SEED CHECKBOXES
+def cb_select_all(channel_list):
     for item in channel_list:
         raw_h = item.get('Handle') or item.get('handle')
         p_id = to_pure_id(raw_h)
-        if p_id:
-            st.session_state['selected_channels'].add(p_id)
-            st.session_state.pop(f"{key_prefix}{p_id}", None)
+        if p_id: st.session_state['selected_channels'].add(p_id)
+    st.session_state['chk_counter'] += 1
 
-# CALLBACK: CLEAR ALL SELECTIONS SAFELY BEFORE WIDGET RENDERING
+# CALLBACK: DYNAMICALLY CLEAR ALL SELECTIONS & RE-SEED CHECKBOXES
 def cb_clear_all():
     st.session_state['selected_channels'].clear()
-    for key in list(st.session_state.keys()):
-        if key.startswith("chk_"):
-            st.session_state.pop(key, None)
+    st.session_state['chk_counter'] += 1
 
 def clear_selected_channels():
     cb_clear_all()
@@ -318,9 +316,6 @@ def delete_channel_from_system(pure_handle):
     if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
     if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
     if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
-
-    for prefix in ["chk_t1_", "chk_t1_ext_", "chk_t1_rej_", "chk_p_", "chk_r_", "chk_db_"]:
-        st.session_state.pop(f"{prefix}{pure_handle}", None)
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']:
         if key_list in st.session_state:
@@ -1133,7 +1128,7 @@ with tab1:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with tb5:
-                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_new", on_click=cb_select_all, args=(new_handles, "chk_t1_"), use_container_width=True)
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_new", on_click=cb_select_all, args=(new_handles,), use_container_width=True)
                 with tb6:
                     st.button("❌ Bỏ Chọn", key="btn_clear_sel_t1_new", on_click=cb_clear_all, use_container_width=True)
 
@@ -1161,7 +1156,7 @@ with tab1:
 
                         c0, c1, c2, c3 = st.columns([0.4, 3.1, 3.5, 3.0])
                         with c0:
-                            st.checkbox("", key=f"chk_t1_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                            st.checkbox("", key=f"chk_t1_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num}</span><a href='{item['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
@@ -1215,7 +1210,7 @@ with tab1:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with te2:
-                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_ext", on_click=cb_select_all, args=(existing_handles, "chk_t1_ext_"), use_container_width=True)
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_ext", on_click=cb_select_all, args=(existing_handles,), use_container_width=True)
                 with te3:
                     st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_ext", on_click=cb_clear_all, use_container_width=True)
 
@@ -1239,7 +1234,7 @@ with tab1:
 
                         c0, c1, c2, c3 = st.columns([0.4, 3.6, 4.0, 2.0])
                         with c0:
-                            st.checkbox("", key=f"chk_t1_ext_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                            st.checkbox("", key=f"chk_t1_ext_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_ex}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
@@ -1266,7 +1261,7 @@ with tab1:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with tr2:
-                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_rej", on_click=cb_select_all, args=(rejected_handles, "chk_t1_rej_"), use_container_width=True)
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t1_rej", on_click=cb_select_all, args=(rejected_handles,), use_container_width=True)
                 with tr3:
                     st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t1_rej", on_click=cb_clear_all, use_container_width=True)
 
@@ -1288,7 +1283,9 @@ with tab1:
                             st.markdown('<div class="active-card-marker"></div>', unsafe_allow_html=True)
                             st.markdown('<div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI CỦA KÊNH NÀY</div>', unsafe_allow_html=True)
 
-                        c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                        c0, c1, c2, c3 = st.columns([4.0, 4.0, 2.0])
+                        with c0:
+                            st.checkbox("", key=f"chk_t1_rej_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{item.get('Tên Kênh', 'N/A')}**")
@@ -1544,7 +1541,7 @@ with tab3:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with ba4:
-                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_pass_t3", on_click=cb_select_all, args=(display_passed, "chk_p_"), use_container_width=True)
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_pass_t3", on_click=cb_select_all, args=(display_passed,), use_container_width=True)
                 with ba5:
                     st.button("❌ Bỏ Chọn", key="btn_clear_sel_pass", on_click=cb_clear_all, use_container_width=True)
 
@@ -1572,7 +1569,7 @@ with tab3:
 
                         c0, c1, c2, c3, c4 = st.columns([0.4, 2.2, 3.0, 1.8, 3.0])
                         with c0:
-                            st.checkbox("", key=f"chk_p_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                            st.checkbox("", key=f"chk_p_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_pass}</span><a href='{row['Link Kênh']}' style='color:#D95F26; text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
@@ -1659,7 +1656,7 @@ with tab3:
                             st.rerun()
                         else: st.warning("Vui lòng tick chọn ít nhất 1 kênh!")
                 with ra2:
-                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_rej", on_click=cb_select_all, args=(display_rejected, "chk_r_"), use_container_width=True)
+                    st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_rej", on_click=cb_select_all, args=(display_rejected,), use_container_width=True)
                 with ra3:
                     st.button("❌ Bỏ Chọn Tất Cả", key="btn_clear_sel_t3_rej", on_click=cb_clear_all, use_container_width=True)
 
@@ -1669,10 +1666,10 @@ with tab3:
                 total_pages_rej = max(1, (len(display_rejected) + items_per_page_rej - 1) // items_per_page_rej)
                 page_rej = st.number_input("Trang (Kênh Bị Loại):", min_value=1, max_value=total_pages_rej, value=1, step=1, key="page_rej_t3")
                 start_idx_rej = (page_rej - 1) * items_per_page_rej
-                paged_rejected = display_rejected[start_idx_rej:start_idx_rej + items_per_page_rej]
+                paged_rej = display_rejected[start_idx_rej:start_idx_rej + items_per_page_rej]
 
-                for idx, row in enumerate(paged_rejected):
-                    p_id = to_pure_id(row['Handle'])
+                for idx, item in enumerate(paged_rej):
+                    p_id = to_pure_id(item["Handle"])
                     is_active = (p_id == st.session_state.get('active_inspected_handle'))
                     is_in_cart = p_id in st.session_state['cart']
                     stt_num_rej = start_idx_rej + idx + 1
@@ -1687,12 +1684,12 @@ with tab3:
 
                         c0, c1, c2, c3, c4 = st.columns([0.4, 2.2, 3.0, 1.8, 3.0])
                         with c0:
-                            st.checkbox("", key=f"chk_r_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                            st.checkbox("", key=f"chk_r_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                         with c1:
                             st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_rej}</span><a href='{row['Link Kênh']}' style='text-decoration:none;'>{row['Handle']}</a></h3>", unsafe_allow_html=True)
                             st.write(f"**{row['Tên Kênh']}**")
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
-                                show_video_dialog(p_id)
+                                show_video_dialog(p_id, pre_fetched_videos=row.get('recent_videos'))
                         with c2:
                             st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row.get('Quốc gia', '')}`")
                             st.write(f"🎬 **Tổng Video:** `{row.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{row.get('Video Gần Nhất', '')}`")
@@ -1867,9 +1864,9 @@ with tab5:
                     st.rerun()
                 else: st.warning("Vui lòng tick chọn ít nhất 1 kênh trong DB!")
         with db_act2:
-            st.button("✅ Chọn Tất Cả (Trang Này)", key="btn_sel_page_db", on_click=cb_select_all, args=(page_data.to_dict('records'), "chk_db_"), use_container_width=True)
+            st.button("✅ Chọn Tất Cả (Trang Này)", key="btn_sel_page_db", on_click=cb_select_all, args=(page_data.to_dict('records'),), use_container_width=True)
         with db_act3:
-            st.button("✅ Chọn Tất Cả (Toàn DB)", key="btn_sel_all_db", on_click=cb_select_all, args=(df_filtered.to_dict('records'), "chk_db_"), use_container_width=True)
+            st.button("✅ Chọn Tất Cả (Toàn DB)", key="btn_sel_all_db", on_click=cb_select_all, args=(df_filtered.to_dict('records'),), use_container_width=True)
         with db_act4:
             st.button("❌ Bỏ Chọn", key="btn_clear_sel_db", on_click=cb_clear_all, use_container_width=True)
 
@@ -1886,7 +1883,7 @@ with tab5:
 
                 c0, c1, c2, c3 = st.columns([0.4, 3.8, 3.8, 2.0])
                 with c0:
-                    st.checkbox("", key=f"chk_db_{p_id}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                    st.checkbox("", key=f"chk_db_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                 with c1:
                     st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_db}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>@{p_id}</a></h3>", unsafe_allow_html=True)
                     st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
