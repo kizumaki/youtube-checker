@@ -193,7 +193,6 @@ def add_to_cart_db(pure_handle, channel_data):
         supabase.table("cart_items").upsert({"handle": pure_handle, "channel_data": data_clean}, on_conflict="handle").execute()
     except Exception: pass
 
-# ULTRA-FAST SINGLE QUERY BULK UPSERT FOR BATCH CART ADDITION
 def add_batch_to_cart_db(channels_list):
     try:
         rows = []
@@ -235,6 +234,32 @@ def load_campaigns():
 def save_campaigns(camps_dict):
     try: supabase.table("app_config").upsert({"key": "campaigns", "value": json.dumps(camps_dict)}, on_conflict="key").execute()
     except Exception: pass
+
+# THREAD-SAFE API EXECUTION ENGINE
+def yt_execute_safe(request_func, api_keys, cost=1):
+    if not api_keys:
+        api_keys = [DEFAULT_API_KEY]
+    
+    last_err = None
+    for key in api_keys:
+        try:
+            yt = build("youtube", "v3", developerKey=key)
+            req = request_func(yt)
+            res = req.execute()
+            return res, key, cost
+        except HttpError as e:
+            last_err = e
+            if e.resp.status in [403, 400, 429]:
+                continue
+            else:
+                raise e
+        except Exception as e:
+            last_err = e
+            continue
+            
+    if last_err:
+        raise last_err
+    raise Exception("❌ Toàn bộ API Keys bạn nhập đã bị chết hoặc cạn sạch Quota!")
 
 # REAL-TIME API KEY HEALTH DIAGNOSTIC FUNCTION
 def test_all_api_keys():
@@ -334,6 +359,11 @@ with st.sidebar:
     st.selectbox("🎨 Giao diện App:", options=["Studio Peach (Sáng)", "Studio Espresso (Tối)"], key="app_theme")
     st.divider()
 
+    # --- AUTO-DIAGNOSE API KEYS ONCE ON STARTUP ---
+    if 'api_status_tested' not in st.session_state:
+        test_all_api_keys()
+        st.session_state['api_status_tested'] = True
+
     # --- API HEALTH MONITOR (ACCURATE REAL-TIME MONITORING) ---
     st.markdown("<h4 style='font-weight: 700; font-size: 0.95rem;'>🛡️ Sức Khỏe API Quota</h4>", unsafe_allow_html=True)
     active_keys = st.session_state.get('api_keys', [])
@@ -364,7 +394,7 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
     if st.button("🧪 Kiểm Tra Sức Khỏe Keys", use_container_width=True, key="btn_test_keys"):
-        with st.spinner("Đang gửi truy vấn test sức khỏe 6 API Keys..."):
+        with st.spinner("Đang kiểm tra thực tế sức khỏe 6 API Keys..."):
             test_all_api_keys()
             st.rerun()
 
@@ -411,39 +441,6 @@ def delete_channel_from_system(pure_handle):
 
     audit_key = f"audit_file_{pure_handle}"
     if audit_key in st.session_state: del st.session_state[audit_key]
-
-# --- API QUOTA ROTATION MANAGER WITH ACCURATE ERROR LOGGING ---
-def yt_execute(request_func, cost=1):
-    keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
-    if not keys: keys = [DEFAULT_API_KEY]
-    idx = st.session_state.get('api_key_idx', 0)
-    for attempt in range(len(keys)):
-        key = keys[idx]
-        try:
-            yt = build("youtube", "v3", developerKey=key)
-            req = request_func(yt)
-            res = req.execute()
-            
-            usage = st.session_state.get('api_usage', {})
-            usage[key] = usage.get(key, 0) + cost
-            st.session_state['api_usage'] = usage
-            
-            return res
-        except HttpError as e:
-            if e.resp.status in [403, 400, 429]:
-                # MARK FAILED KEY AS EXHAUSTED/DEAD IMMEDIATELY
-                usage = st.session_state.get('api_usage', {})
-                usage[key] = 10000
-                st.session_state['api_usage'] = usage
-                
-                status_map = st.session_state.get('api_status_map', {})
-                status_map[key] = ("EXHAUSTED", 10000)
-                st.session_state['api_status_map'] = status_map
-                
-                idx = (idx + 1) % len(keys)
-                st.session_state['api_key_idx'] = idx
-            else: raise e
-    raise Exception("❌ Toàn bộ API Keys bạn nhập đã bị chết hoặc cạn sạch Quota!")
 
 # --- HELPER FUNCTIONS & ULTRA-DEEP CONTACT MINING ---
 def to_pure_id(raw_val):
@@ -538,29 +535,133 @@ def render_social_badges_html(contacts_dict):
     html += "</div>"
     return html
 
-# TAB 5 MULTI-THREADED CRM METADATA WORKER
-def process_single_crm_channel_meta(pure_handle):
-    if not pure_handle: return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}
+# THREAD-SAFE DIRECT API FETCHERS
+def get_channel_id_by_handle_direct(handle, api_keys):
+    clean = handle.replace('@', '').split('/')[-1].strip()
     try:
-        cid = get_channel_id_by_handle(pure_handle)
+        res, key_used, cost = yt_execute_safe(lambda yt: yt.channels().list(part="id", forHandle=clean), api_keys, cost=1)
+        if 'items' in res and len(res['items']) > 0:
+            return res['items'][0]['id'], key_used, cost
+    except Exception: pass
+    try:
+        res, key_used, cost = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1), api_keys, cost=100)
+        if 'items' in res and len(res['items']) > 0:
+            return res['items'][0]['snippet']['channelId'], key_used, cost
+    except Exception: pass
+    return None, None, 0
+
+def get_channel_details_direct(channel_id, api_keys):
+    res, key_used, cost = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=channel_id), api_keys, cost=1)
+    if 'items' in res and len(res['items']) > 0:
+        item = res['items'][0]
+        playlist_id = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+        sub_count = int(item['statistics'].get('subscriberCount', 0))
+        description = item['snippet'].get('description', 'No description available.')
+        joined_date_raw = item['snippet'].get('publishedAt', '')
+        joined_date = ""
+        if joined_date_raw:
+            try: joined_date = pd.to_datetime(joined_date_raw).strftime("%b %d, %Y")
+            except Exception: joined_date = joined_date_raw[:10]
+        country_code = item['snippet'].get('country', 'N/A')
+        country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
+        avatar_url = item['snippet'].get('thumbnails', {}).get('high', {}).get('url', '')
+        return playlist_id, sub_count, description, joined_date, country_name, country_code, avatar_url, key_used, cost
+    return None, 0, "", "", "", "", "", None, 0
+
+def get_video_details_direct(video_ids, api_keys):
+    video_data = []
+    total = len(video_ids)
+    if total == 0: return video_data
+    for i in range(0, total, 50):
+        try:
+            chunk = video_ids[i:i+50]
+            res, key_used, cost = yt_execute_safe(lambda yt: yt.videos().list(part="snippet,contentDetails,statistics", id=','.join(chunk)), api_keys, cost=1)
+            for item in res.get('items', []):
+                duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
+                h, rem = divmod(duration_seconds, 3600)
+                m, s = divmod(rem, 60)
+                dur_str = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
+
+                pub_date = item['snippet']['publishedAt']
+                try: formatted_date = pd.to_datetime(pub_date).strftime("%d-%m-%Y")
+                except Exception: formatted_date = pub_date[:10]
+                
+                video_data.append({
+                    'Title': item['snippet']['title'], 
+                    'Description': item['snippet'].get('description', ''),
+                    'Link': f"https://youtube.com/watch?v={item['id']}",
+                    'Length (Exact)': dur_str, 
+                    'Seconds': duration_seconds,
+                    'Views': int(item['statistics'].get('viewCount', 0)), 
+                    'Published Date': formatted_date,
+                    'Video ID': item['id']
+                })
+        except Exception: pass
+    return video_data
+
+def get_6_recent_videos_direct(pure_handle, cid, api_keys):
+    long_vids = []
+    try:
         if cid:
-            playlist_id, sub_count, desc, joined, country_name, country_code, avatar = get_channel_details(cid)
-            recent_vids = get_6_recent_videos(pure_handle)
+            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+            resp = requests.get(rss_url, timeout=4)
+            if resp.status_code == 200:
+                root = ET.fromstring(resp.content)
+                ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+                rss_v_ids = []
+                for entry in root.findall('atom:entry', ns):
+                    v_id_el = entry.find('yt:videoId', ns)
+                    if v_id_el is not None and v_id_el.text: rss_v_ids.append(v_id_el.text)
+                    if len(rss_v_ids) >= 12: break
+                if rss_v_ids:
+                    v_details = get_video_details_direct(rss_v_ids, api_keys)
+                    for v in v_details:
+                        if is_long_form_video(v, min_seconds=180): long_vids.append(v)
+                        if len(long_vids) >= 6: break
+
+            if len(long_vids) < 6:
+                playlist_id, sub_count, desc, joined, country_name, country_code, avatar, key_used, cost = get_channel_details_direct(cid, api_keys)
+                if playlist_id:
+                    v_res, key_used2, cost2 = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=30), api_keys, cost=1)
+                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                    if v_ids:
+                        v_details = get_video_details_direct(v_ids, api_keys)
+                        for v in v_details:
+                            if is_long_form_video(v, min_seconds=180) and v not in long_vids: long_vids.append(v)
+                            if len(long_vids) >= 6: break
+    except Exception: pass
+    return long_vids[:6]
+
+# TAB 5 THREAD-SAFE CRM METADATA WORKER
+def process_single_crm_channel_meta(pure_handle, api_keys):
+    if not pure_handle: return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}, []
+    logs = []
+    try:
+        cid, k1, c1 = get_channel_id_by_handle_direct(pure_handle, api_keys)
+        if k1: logs.append((k1, c1))
+        
+        if cid:
+            playlist_id, sub_count, desc, joined, country_name, country_code, avatar, k2, c2 = get_channel_details_direct(cid, api_keys)
+            if k2: logs.append((k2, c2))
+            
+            recent_vids = get_6_recent_videos_direct(pure_handle, cid, api_keys)
             v_descs = " ".join([v.get('Description', '') for v in recent_vids]) if recent_vids else ""
             corpus = f"{desc} {v_descs}"
             socials = extract_contacts_and_socials(corpus)
+            
             return pure_handle, {
                 "sub_count": sub_count,
                 "sub_str": f"{sub_count:,}" if sub_count > 0 else "N/A",
                 "country": country_name if country_name else "N/A",
                 "socials": socials
-            }
+            }, logs
     except Exception: pass
-    return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}
+    return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}, logs
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_channel_crm_meta(pure_handle):
-    _, meta = process_single_crm_channel_meta(pure_handle)
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+    _, meta, _ = process_single_crm_channel_meta(pure_handle, active_keys)
     return meta
 
 def extract_video_id(raw_url):
@@ -571,11 +672,12 @@ def extract_video_id(raw_url):
 
 def get_handles_from_video_ids(video_ids):
     if not video_ids: return []
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     channel_ids = set()
     for i in range(0, len(video_ids), 50):
         chunk = video_ids[i:i+50]
         try:
-            res = yt_execute(lambda yt: yt.videos().list(part="snippet", id=','.join(chunk)), cost=1)
+            res, k, c = yt_execute_safe(lambda yt: yt.videos().list(part="snippet", id=','.join(chunk)), active_keys, cost=1)
             for item in res.get('items', []):
                 c_id = item.get('snippet', {}).get('channelId')
                 if c_id: channel_ids.add(c_id)
@@ -587,7 +689,7 @@ def get_handles_from_video_ids(video_ids):
         for i in range(0, len(c_ids_list), 50):
             chunk = c_ids_list[i:i+50]
             try:
-                res = yt_execute(lambda yt: yt.channels().list(part="snippet", id=','.join(chunk)), cost=1)
+                res, k, c = yt_execute_safe(lambda yt: yt.channels().list(part="snippet", id=','.join(chunk)), active_keys, cost=1)
                 for item in res.get('items', []):
                     custom_url = item.get('snippet', {}).get('customUrl', '')
                     pure = to_pure_id(custom_url) or to_pure_id(item.get('id'))
@@ -690,25 +792,12 @@ def clean_and_extract_keywords(text, seed_handle=""):
     filtered = [w for w in words if w not in STOP_WORDS and w not in seed_clean]
     return filtered
 
-# --- YOUTUBE API OPERATIONS ---
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_channel_id_by_handle(handle):
-    clean = handle.replace('@', '').split('/')[-1].strip()
-    try:
-        res = yt_execute(lambda yt: yt.channels().list(part="id", forHandle=clean), cost=1)
-        if 'items' in res and len(res['items']) > 0: return res['items'][0]['id']
-    except Exception: pass
-    try:
-        res = yt_execute(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1), cost=100)
-        if 'items' in res and len(res['items']) > 0: return res['items'][0]['snippet']['channelId']
-    except Exception: pass
-    return None
-
 @st.cache_data(ttl=86400, show_spinner=False)
 def extract_channel_master_keywords(channel_id):
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     keywords_pool, channel_keywords, top_tags, categories = [], [], [], []
     try:
-        ch_res = yt_execute(lambda yt: yt.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id), cost=1)
+        ch_res, k, c = yt_execute_safe(lambda yt: yt.channels().list(part="brandingSettings,contentDetails,snippet,topicDetails", id=channel_id), active_keys, cost=1)
         if 'items' in ch_res and len(ch_res['items']) > 0:
             item = ch_res['items'][0]
             raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
@@ -722,10 +811,10 @@ def extract_channel_master_keywords(channel_id):
             for t in topics: categories.append(t.split('/')[-1].replace('_', ' '))
             uploads_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
             if uploads_playlist:
-                v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15), cost=1)
+                v_res, k2, c2 = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=uploads_playlist, maxResults=15), active_keys, cost=1)
                 v_ids = [v['snippet']['resourceId']['videoId'] for v in v_res.get('items', [])]
                 if v_ids:
-                    v_detail_res = yt_execute(lambda yt: yt.videos().list(part="snippet", id=','.join(v_ids)), cost=1)
+                    v_detail_res, k3, c3 = yt_execute_safe(lambda yt: yt.videos().list(part="snippet", id=','.join(v_ids)), active_keys, cost=1)
                     for v_item in v_detail_res.get('items', []):
                         for tag in v_item.get('snippet', {}).get('tags', []):
                             if len(tag) > 2 and tag.lower() not in STOP_WORDS:
@@ -735,91 +824,6 @@ def extract_channel_master_keywords(channel_id):
     most_common_kws = [word for word, count in Counter(keywords_pool).most_common(15)]
     top_tag_counts = [word for word, count in Counter(top_tags).most_common(10)]
     return {"master_keywords": most_common_kws, "channel_keywords": list(set(channel_keywords))[:10], "top_tags": top_tag_counts, "categories": categories}
-
-def get_channel_details(channel_id):
-    res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=channel_id), cost=1)
-    if 'items' in res and len(res['items']) > 0:
-        item = res['items'][0]
-        playlist_id = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
-        sub_count = int(item['statistics'].get('subscriberCount', 0))
-        description = item['snippet'].get('description', 'No description available.')
-        joined_date_raw = item['snippet'].get('publishedAt', '')
-        joined_date = ""
-        if joined_date_raw:
-            try: joined_date = pd.to_datetime(joined_date_raw).strftime("%b %d, %Y")
-            except Exception: joined_date = joined_date_raw[:10]
-        country_code = item['snippet'].get('country', 'N/A')
-        country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
-        avatar_url = item['snippet'].get('thumbnails', {}).get('high', {}).get('url', '')
-        return playlist_id, sub_count, description, joined_date, country_name, country_code, avatar_url
-    return None, 0, "", "", "", "", ""
-
-def get_video_details(video_ids):
-    video_data = []
-    total = len(video_ids)
-    if total == 0: return video_data
-    for i in range(0, total, 50):
-        try:
-            chunk = video_ids[i:i+50]
-            res = yt_execute(lambda yt: yt.videos().list(part="snippet,contentDetails,statistics", id=','.join(chunk)), cost=1)
-            for item in res.get('items', []):
-                duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
-                h, rem = divmod(duration_seconds, 3600)
-                m, s = divmod(rem, 60)
-                dur_str = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
-
-                pub_date = item['snippet']['publishedAt']
-                try: formatted_date = pd.to_datetime(pub_date).strftime("%d-%m-%Y")
-                except Exception: formatted_date = pub_date[:10]
-                
-                video_data.append({
-                    'Title': item['snippet']['title'], 
-                    'Description': item['snippet'].get('description', ''),
-                    'Link': f"https://youtube.com/watch?v={item['id']}",
-                    'Length (Exact)': dur_str, 
-                    'Seconds': duration_seconds,
-                    'Views': int(item['statistics'].get('viewCount', 0)), 
-                    'Published Date': formatted_date,
-                    'Video ID': item['id']
-                })
-        except Exception: pass
-    return video_data
-
-# --- ULTRA-FAST 0-QUOTA RSS PREVIEW FETCH ---
-@st.cache_data(ttl=43200, show_spinner=False)
-def get_6_recent_videos(pure_handle):
-    long_vids = []
-    try:
-        cid = get_channel_id_by_handle(pure_handle)
-        if cid:
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
-            resp = requests.get(rss_url, timeout=4)
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.content)
-                ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
-                rss_v_ids = []
-                for entry in root.findall('atom:entry', ns):
-                    v_id_el = entry.find('yt:videoId', ns)
-                    if v_id_el is not None and v_id_el.text: rss_v_ids.append(v_id_el.text)
-                    if len(rss_v_ids) >= 12: break
-                if rss_v_ids:
-                    v_details = get_video_details(rss_v_ids)
-                    for v in v_details:
-                        if is_long_form_video(v, min_seconds=180): long_vids.append(v)
-                        if len(long_vids) >= 6: break
-
-            if len(long_vids) < 6:
-                playlist_id, _, _, _, _, _, _ = get_channel_details(cid)
-                if playlist_id:
-                    v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=30), cost=1)
-                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                    if v_ids:
-                        v_details = get_video_details(v_ids)
-                        for v in v_details:
-                            if is_long_form_video(v, min_seconds=180) and v not in long_vids: long_vids.append(v)
-                            if len(long_vids) >= 6: break
-    except Exception: pass
-    return long_vids[:6]
 
 # --- AI OUTREACH EMAIL DRAFT MODAL ---
 @st.dialog("🤖 AI Soạn Mail Hợp Tác", width="large")
@@ -872,9 +876,12 @@ def show_video_dialog(pure_handle, pre_fetched_videos=None):
     st.markdown(f"<h3 style='font-weight: 800;'>📺 Kênh đang xem: <span style='color: #D95F26;'>@{pure_handle}</span></h3>", unsafe_allow_html=True)
     st.markdown(f"🔗 **[Mở thẳng Tab Videos trên YouTube](https://youtube.com/@{pure_handle}/videos)**")
     
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     vids = []
     if pre_fetched_videos: vids = [v for v in pre_fetched_videos if is_long_form_video(v, min_seconds=180)]
-    if len(vids) < 6: vids = get_6_recent_videos(pure_handle)
+    if len(vids) < 6:
+        cid, _, _ = get_channel_id_by_handle_direct(pure_handle, active_keys)
+        vids = get_6_recent_videos_direct(pure_handle, cid, active_keys)
     vids = vids[:6]
     
     if vids:
@@ -917,6 +924,7 @@ def compare_channels_dialog(channel_data_list):
         st.warning("Không có dữ liệu kênh để so sánh.")
         return
     st.markdown("<h3 style='text-align: center; color: #D95F26; font-weight: 800; margin-bottom: 20px;'>📊 SO SÁNH CHỈ SỐ KÊNH</h3>", unsafe_allow_html=True)
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     
     enriched_list = []
     with st.spinner("Đang kết nối API cào dữ liệu chi tiết để so sánh..."):
@@ -925,13 +933,13 @@ def compare_channels_dialog(channel_data_list):
             pure_h = to_pure_id(c_dict.get('Handle'))
             if pure_h:
                 if c_dict.get('Tổng Số Video') is None or c_dict.get('Tổng Số Video') == 'N/A' or c_dict.get('Video Gần Nhất') is None or c_dict.get('Video Gần Nhất') == 'N/A':
-                    cid = get_channel_id_by_handle(pure_h)
+                    cid, _, _ = get_channel_id_by_handle_direct(pure_h, active_keys)
                     if cid:
-                        playlist_id, sub_count, channel_desc, channel_joined, country_name, country_code, avatar_url = get_channel_details(cid)
-                        recent_vids = get_6_recent_videos(pure_h)
+                        playlist_id, sub_count, channel_desc, channel_joined, country_name, country_code, avatar_url, _, _ = get_channel_details_direct(cid, active_keys)
+                        recent_vids = get_6_recent_videos_direct(pure_h, cid, active_keys)
                         latest_date = recent_vids[0]['Published Date'] if recent_vids else 'N/A'
                         try:
-                            c_res = yt_execute(lambda yt: yt.channels().list(part="statistics", id=cid), cost=1)
+                            c_res, _, _ = yt_execute_safe(lambda yt: yt.channels().list(part="statistics", id=cid), active_keys, cost=1)
                             video_count = int(c_res['items'][0]['statistics'].get('videoCount', 0)) if (c_res.get('items') and len(c_res['items']) > 0) else 0
                         except Exception: video_count = 0
                         
@@ -979,17 +987,18 @@ def compare_channels_dialog(channel_data_list):
     if st.button("❌ Đóng Cửa Sổ So Sánh", type="primary", use_container_width=True): st.rerun()
 
 def run_single_channel_audit(pure_handle):
-    cid = get_channel_id_by_handle(pure_handle)
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+    cid, _, _ = get_channel_id_by_handle_direct(pure_handle, active_keys)
     if not cid: return None, None
-    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url = get_channel_details(cid)
+    playlist_id, sub_count, channel_desc, channel_joined, channel_country, c_code, avatar_url, _, _ = get_channel_details_direct(cid, active_keys)
     v_ids = []
     next_token = None
     while True:
-        res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token), cost=1)
+        res, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50, pageToken=next_token), active_keys, cost=1)
         for v_item in res.get('items', []): v_ids.append(v_item['snippet']['resourceId']['videoId'])
         next_token = res.get('nextPageToken')
         if not next_token: break
-    v_data = get_video_details(v_ids)
+    v_data = get_video_details_direct(v_ids, active_keys)
     excel_bytes = generate_v414_excel_report(pure_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, v_data)
     out_fname = f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     return excel_bytes, out_fname
@@ -1296,27 +1305,32 @@ def sort_and_filter_channels(channel_list, search_query, sort_by):
     elif sort_by == "Mới Đăng Video": filtered.sort(key=lambda x: x.get('Video Gần Nhất', ''), reverse=True)
     return filtered
 
-# --- DATABASE-FIRST WORKER FOR TAB 1 ---
-def process_tab1_single_handle(p_id, db_matches):
+# --- THREAD-SAFE WORKER FOR TAB 1 ---
+def process_tab1_single_handle(p_id, db_matches, api_keys):
     if p_id in db_matches:
         db_item = db_matches[p_id]
         return "EXISTING", {
             "Handle": f"@{p_id}",
             "Tên Kênh": db_item.get("youtuber_name", p_id.upper()),
             "Trạng thái": "❌ Đã có trong DB"
-        }
+        }, []
     
-    cid = get_channel_id_by_handle(p_id)
+    cid, k1, c1 = get_channel_id_by_handle_direct(p_id, api_keys)
+    logs = []
+    if k1: logs.append((k1, c1))
+    
     if not cid:
         return "REJECTED", {
             "Handle": f"@{p_id}",
             "Tên Kênh": p_id.upper(),
             "Trạng thái": "❌ Không tìm thấy kênh",
             "Lý do loại": "Không tồn tại trên YT"
-        }
+        }, logs
     
     try:
-        res = yt_execute(lambda yt: yt.channels().list(part="snippet,statistics", id=cid), cost=1)
+        res, k2, c2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,statistics", id=cid), api_keys, cost=1)
+        if k2: logs.append((k2, c2))
+        
         if res.get('items'):
             item = res['items'][0]
             ch_title = item['snippet'].get('title', p_id.upper())
@@ -1325,13 +1339,11 @@ def process_tab1_single_handle(p_id, db_matches):
             country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
             sub_count = int(item['statistics'].get('subscriberCount', 0))
             
-            # STEP 1: DEEP SOCIAL CONTACT MINING WITH VIDEO DESCRIPTIONS
-            recent_vids = get_6_recent_videos(p_id)
+            recent_vids = get_6_recent_videos_direct(p_id, cid, api_keys)
             v_descs = " ".join([v.get('Description', '') for v in recent_vids])
             combined_text_corpus = f"{ch_title} {ch_desc} {v_descs}"
             social_contacts = extract_contacts_and_socials(combined_text_corpus)
             
-            # FILTER 1: MUST HAVE >= 1,000,000 SUBS
             if sub_count < 1000000:
                 return "REJECTED", {
                     "Handle": f"@{p_id}",
@@ -1340,7 +1352,7 @@ def process_tab1_single_handle(p_id, db_matches):
                     "Trạng thái": f"❌ Dưới 1 triệu Subs ({sub_count:,})",
                     "Lý do loại": f"Dưới 1M Subs ({sub_count:,})",
                     "Socials": social_contacts
-                }
+                }, logs
             
             passes_l1, l1_reason = passes_layer1_metadata_filter(ch_title, ch_desc, country_code)
             if not passes_l1:
@@ -1351,7 +1363,7 @@ def process_tab1_single_handle(p_id, db_matches):
                     "Trạng thái": f"❌ {l1_reason}",
                     "Lý do loại": l1_reason,
                     "Socials": social_contacts
-                }
+                }, logs
             
             return "NEW", {
                 "Handle": f"@{p_id}",
@@ -1361,7 +1373,7 @@ def process_tab1_single_handle(p_id, db_matches):
                 "Link Kênh": f"https://www.youtube.com/@{p_id}",
                 "Trạng thái": "✅ Kênh Mới Đạt Chuẩn",
                 "Socials": social_contacts
-            }
+            }, logs
     except Exception: pass
     
     return "REJECTED", {
@@ -1370,7 +1382,7 @@ def process_tab1_single_handle(p_id, db_matches):
         "Trạng thái": "❌ Lỗi đọc dữ liệu API",
         "Lý do loại": "Lỗi API",
         "Socials": {}
-    }
+    }, logs
 
 # --- TAB 1: BATCH SEARCH WITH DUAL PAGINATION CONTROLS ---
 with tab1:
@@ -1401,14 +1413,18 @@ with tab1:
             total_items = len(target_list)
             completed_count = 0
             
+            active_keys_t1 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+
             with ThreadPoolExecutor(max_workers=8) as executor:
-                futures = [executor.submit(process_tab1_single_handle, p_id, db_matches) for p_id in target_list]
+                futures = [executor.submit(process_tab1_single_handle, p_id, db_matches, active_keys_t1) for p_id in target_list]
                 for future in as_completed(futures):
                     try:
-                        status, res_data = future.result()
+                        status, res_data, logs = future.result()
                         if status == "NEW": new_handles.append(res_data)
                         elif status == "EXISTING": existing_handles.append(res_data)
                         else: rejected_handles.append(res_data)
+                        for k, cost in logs:
+                            if k: st.session_state['api_usage'][k] = st.session_state['api_usage'].get(k, 0) + cost
                     except Exception: pass
                     
                     completed_count += 1
@@ -1846,7 +1862,7 @@ with tab2:
             except Exception as e: st.error(f"Lỗi: {e}")
 
 # --- TAB 3: MULTI-THREADED SMART RELATED FINDER ---
-def process_single_candidate(item, min_subs_choice, min_duration_choice, db_existing_set):
+def process_single_candidate(item, min_subs_choice, min_duration_choice, db_existing_set, api_keys):
     c_handle = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
     c_title = item['snippet']['title']
     c_desc = item['snippet'].get('description', '')
@@ -1863,10 +1879,10 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     
     if c_playlist and c_video_count > 0:
         try:
-            v_res = yt_execute(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50), cost=1)
+            v_res, k, c = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=c_playlist, maxResults=50), api_keys, cost=1)
             v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
             if v_ids:
-                v_details = get_video_details(v_ids)
+                v_details = get_video_details_direct(v_ids, api_keys)
                 long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
                 if long_vids:
                     latest_date = long_vids[0]['Published Date']
@@ -1933,7 +1949,8 @@ with tab3:
             pure_s_auto = to_pure_id(seed_channel_input)
             if pure_s_auto:
                 try:
-                    cid_auto = get_channel_id_by_handle(pure_s_auto)
+                    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+                    cid_auto, _, _ = get_channel_id_by_handle_direct(pure_s_auto, active_keys)
                     if cid_auto:
                         ext = extract_channel_master_keywords(cid_auto)
                         st.session_state['pending_keywords'] = ", ".join(ext['master_keywords'][:6])
@@ -1952,10 +1969,11 @@ with tab3:
         pure_seed = to_pure_id(seed_channel_input)
         try:
             st.info(f"🔍 Đang kết nối API và phân tích `{pure_seed}`...")
-            seed_id = get_channel_id_by_handle(pure_seed)
+            active_keys_t3 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+            seed_id, _, _ = get_channel_id_by_handle_direct(pure_seed, active_keys_t3)
             if not seed_id: st.error("Không tìm thấy kênh mồi này trên YouTube!")
             else:
-                playlist_id, _, seed_desc, _, _, _, _ = get_channel_details(seed_id)
+                playlist_id, _, seed_desc, _, _, _, _, _, _ = get_channel_details_direct(seed_id, active_keys_t3)
                 
                 if custom_keywords_input: top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed)
                 else:
@@ -1966,14 +1984,14 @@ with tab3:
                 
                 candidate_channel_ids = set()
                 q_chan = " ".join(top_kw_list[:2])
-                c_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50), cost=100)
+                c_search_res, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50), active_keys_t3, cost=100)
                 for c_item in c_search_res.get('items', []):
                     if c_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(c_item['snippet']['channelId'])
                     
                 search_queries = [" ".join(top_kw_list[:2]), " ".join(top_kw_list[2:4])] if len(top_kw_list) >= 4 else [" ".join(top_kw_list)]
                 for q in search_queries:
                     if not q.strip(): continue
-                    v_search_res = yt_execute(lambda yt: yt.search().list(part="snippet", q=q, type="video", maxResults=50), cost=100)
+                    v_search_res, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q, type="video", maxResults=50), active_keys_t3, cost=100)
                     for v_item in v_search_res.get('items', []):
                         if v_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(v_item['snippet']['channelId'])
                         
@@ -1985,7 +2003,7 @@ with tab3:
                     channel_items, candidate_handles = [], []
                     
                     for i in range(0, len(candidate_ids_list), 50):
-                        chan_res = yt_execute(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])), cost=1)
+                        chan_res, _, _ = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])), active_keys_t3, cost=1)
                         for item in chan_res.get('items', []):
                             c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
                             candidate_handles.append(c_h)
@@ -2000,7 +2018,7 @@ with tab3:
                     comp_cand = 0
 
                     with ThreadPoolExecutor(max_workers=8) as executor:
-                        futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set) for item in channel_items]
+                        futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set, active_keys_t3) for item in channel_items]
                         for future in as_completed(futures):
                             try:
                                 is_pass, res_data = future.result()
@@ -2188,7 +2206,8 @@ with tab3:
 
                             bc3, bc4 = st.columns(2)
                             if bc3.button("🎯 Đào Sâu", key=f"deep_p_{p_id}", type="secondary", use_container_width=True):
-                                cid_deep = get_channel_id_by_handle(p_id)
+                                active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+                                cid_deep, _, _ = get_channel_id_by_handle_direct(p_id, active_keys)
                                 if cid_deep:
                                     ext_deep = extract_channel_master_keywords(cid_deep)
                                     st.session_state['pending_keywords'] = ", ".join(ext_deep['master_keywords'][:6])
@@ -2347,7 +2366,8 @@ with tab3:
 
                             bc3, bc4 = st.columns(2)
                             if bc3.button("🎯 Đào Sâu", key=f"deep_r_{p_id}", type="secondary", use_container_width=True):
-                                cid_deep = get_channel_id_by_handle(p_id)
+                                active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+                                cid_deep, _, _ = get_channel_id_by_handle_direct(p_id, active_keys)
                                 if cid_deep:
                                     ext_deep = extract_channel_master_keywords(cid_deep)
                                     st.session_state['pending_keywords'] = ", ".join(ext_deep['master_keywords'][:6])
@@ -2545,13 +2565,17 @@ with tab5:
                     stat_txt_db = st.empty()
                     comp_h = 0
 
+                    active_keys_t5_filter = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+
                     with ThreadPoolExecutor(max_workers=10) as executor:
-                        futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in handles_to_check]
+                        futures = [executor.submit(process_single_crm_channel_meta, p_h, active_keys_t5_filter) for p_h in handles_to_check]
                         for future in as_completed(futures):
                             try:
-                                p_h, meta = future.result()
+                                p_h, meta, logs = future.result()
                                 crm_meta_map[p_h] = meta
                                 s_num = meta['sub_count']
+                                for k, cost in logs:
+                                    if k: st.session_state['api_usage'][k] = st.session_state['api_usage'].get(k, 0) + cost
                                 
                                 is_match = False
                                 if sel_sub_range == "< 100K Subs" and (0 < s_num < 100000): is_match = True
@@ -2636,13 +2660,18 @@ with tab5:
             # PRE-FETCH METADATA IN PARALLEL FOR CURRENT 20 PAGED CARDS
             paged_handles = [to_pure_id(r['handle']) for _, r in page_data.iterrows() if to_pure_id(r['handle'])]
             missing_paged = [p_h for p_h in paged_handles if p_h not in crm_meta_map]
+            
+            active_keys_t5 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+
             if missing_paged and not all_keys_dead:
                 with ThreadPoolExecutor(max_workers=10) as executor:
-                    futures = [executor.submit(process_single_crm_channel_meta, p_h) for p_h in missing_paged]
+                    futures = [executor.submit(process_single_crm_channel_meta, p_h, active_keys_t5) for p_h in missing_paged]
                     for future in as_completed(futures):
                         try:
-                            p_h, meta = future.result()
+                            p_h, meta, logs = future.result()
                             crm_meta_map[p_h] = meta
+                            for k, cost in logs:
+                                if k: st.session_state['api_usage'][k] = st.session_state['api_usage'].get(k, 0) + cost
                         except Exception: pass
 
             # STATIC ACTION BAR
@@ -2728,7 +2757,7 @@ with tab6:
         pure_inspect = to_pure_id(inspect_handle_input)
         if pure_inspect:
             try:
-                cid_insp = get_channel_id_by_handle(pure_inspect)
+                cid_insp, _, _ = get_channel_id_by_handle_direct(pure_inspect, st.session_state.get('api_keys', [DEFAULT_API_KEY]))
                 if not cid_insp: st.error("Không tìm thấy Channel ID cho kênh này!")
                 else:
                     ext_data = extract_channel_master_keywords(cid_insp)
