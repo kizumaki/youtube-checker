@@ -1,10 +1,12 @@
-streamlit
+streamlit>=1.35.0
+starlette>=0.37.0,<0.40.0
 supabase
-pandas
-openpyxl
-requests
-beautifulsoup4
 google-api-python-client
+google-auth
+google-auth-httplib2
 isodate
 pycountry
+openpyxl
 pillow
+pandas
+requests
