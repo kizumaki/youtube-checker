@@ -16,6 +16,7 @@ import re
 import datetime
 import io
 import json
+import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
 from PIL import Image as PILImage
@@ -46,16 +47,6 @@ if 'api_usage' not in st.session_state: st.session_state['api_usage'] = {}
 if 'api_status_map' not in st.session_state: st.session_state['api_status_map'] = {}
 if 'exhausted_keys_set' not in st.session_state: st.session_state['exhausted_keys_set'] = set()
 if 'chk_counter' not in st.session_state: st.session_state['chk_counter'] = 0
-
-# Helper: Convert Country Code to Flag Emoji
-def get_country_flag(country_code):
-    if not country_code or country_code == 'N/A' or len(str(country_code).strip()) != 2:
-        return "🌐"
-    try:
-        cc = str(country_code).strip().upper()
-        return chr(ord(cc[0]) + 127397) + chr(ord(cc[1]) + 127397)
-    except Exception:
-        return "🌐"
 
 # Callback for Selection Sync
 def toggle_select_channel(pure_handle):
@@ -114,21 +105,15 @@ st.markdown(f"""
 section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_color} !important; box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05) !important; }}
 header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {{ width: 8px; height: 8px; }}
-::-webkit-scrollbar-track {{ background: {bg_color}; }}
-::-webkit-scrollbar-thumb {{ background: #D95F26; border-radius: 4px; }}
-::-webkit-scrollbar-thumb:hover {{ background: #C24E18; }}
-
 /* HIGH-END ARTISTIC TABS */
-.stTabs [data-baseweb="tab-list"] {{ gap: 24px; background-color: transparent; padding: 0 0 4px 0; border-bottom: 2px solid #D1D5DB; }}
+.stTabs [data-baseweb="tab-list"] {{ gap: 32px; background-color: transparent; padding: 0 0 4px 0; border-bottom: 2px solid #D1D5DB; }}
 .stTabs [data-baseweb="tab"] {{ background-color: transparent !important; border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #6B7280 !important; font-weight: 700; font-size: 0.9rem; padding: 10px 4px; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s ease !important; cursor: pointer !important; }}
 .stTabs [data-baseweb="tab"]:hover {{ color: #D95F26 !important; transform: translateY(-1px); }}
 .stTabs [aria-selected="true"] {{ color: #D95F26 !important; border-bottom: 3px solid #D95F26 !important; transform: translateY(0); }}
 
-/* Standard Card Container Styling with Motion Hover */
-div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 14px !important; padding: 14px !important; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03) !important; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); margin-bottom: 16px !important; }}
-div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ transform: translateY(-2px); box-shadow: 0 8px 24px rgba(217, 95, 38, 0.12) !important; border-color: #D95F26 !important; }}
+/* Standard Card Container Styling */
+div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px !important; padding: 12px !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; margin-bottom: 15px !important; }}
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {{ box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important; }}
 
 /* ACTIVE INSPECTED CARD */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-card-marker) {{ border: 2px solid #D95F26 !important; box-shadow: 0 8px 24px rgba(217, 95, 38, 0.2) !important; }}
@@ -165,16 +150,11 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.action-bar-marker) {{ borde
 .social-fb {{ background-color: #1877F2 !important; }}
 .social-web {{ background-color: #10B981 !important; }}
 
-/* Badges & Pill Badges */
+/* Badges */
 .badge-pro {{ display: inline-block; padding: 6px 12px; border-radius: 9999px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }}
 .badge-ocean, .badge-ocean * {{ background-color: #47A5D1 !important; color: #FFFFFF !important; border: none !important; }}
-.badge-score {{ padding: 4px 10px; border-radius: 8px; font-weight: 800; font-size: 0.8rem; background: linear-gradient(135deg, #FFF2EB 0%, #FFE4D6 100%); color: #D95F26; border: 1px solid #D95F26; display: inline-block; box-shadow: 0 2px 6px rgba(217, 95, 38, 0.15); }}
-.badge-stt {{ font-weight: 800; font-size: 0.85rem; color: #4B5563; background-color: #E5E7EB; padding: 3px 9px; border-radius: 8px; margin-right: 8px; inline-block; }}
-
-.pill-badge {{ display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; margin-right: 6px; }}
-.pill-green {{ background-color: #DEF7EC; color: #03543F; }}
-.pill-orange {{ background-color: #FEF3C7; color: #92400E; }}
-.pill-blue {{ background-color: #E0F2FE; color: #1E40AF; }}
+.badge-score {{ padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 0.8rem; background-color: #FFF2EB; color: #D95F26; border: 1px solid #D95F26; display: inline-block; }}
+.badge-stt {{ font-weight: 800; font-size: 0.85rem; color: #6B7280; background-color: #E5E7EB; padding: 2px 8px; border-radius: 6px; margin-right: 8px; inline-block; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -491,7 +471,7 @@ def to_pure_id(raw_val):
     m_url = re.search(r'youtube\.com/(?:@|c/|user/|channel/)?([^\s?#/]+)', s, re.IGNORECASE)
     if m_url:
         val = m_url.group(1)
-        if val.lower() in ['watch', 'shorts', 'feed', 'embed']: return None
+        if val.lower() in ['watch', 'shorts', 'feed', 'embed', 'results']: return None
         s = val
     s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
@@ -500,6 +480,16 @@ def to_pure_id(raw_val):
     s = re.sub(pattern, '', s, flags=re.IGNORECASE)
 
     return s if s else None
+
+def extract_search_query(raw_url):
+    if not raw_url or pd.isna(raw_url): return None
+    s = str(raw_url).strip()
+    m = re.search(r'youtube\.com/results\?[^#]*search_query=([^&#]+)', s, re.IGNORECASE)
+    if m:
+        raw_q = m.group(1)
+        decoded = urllib.parse.unquote(raw_q).replace('+', ' ').strip()
+        return decoded
+    return None
 
 # ULTRA-DEEP CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
 def extract_contacts_and_socials(text_corpus):
@@ -678,7 +668,7 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
 
 # TAB 5 THREAD-SAFE CRM METADATA WORKER
 def process_single_crm_channel_meta(pure_handle, api_keys, exhausted_keys=None):
-    if not pure_handle: return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "country_code": "N/A", "avatar": "", "socials": {}}, []
+    if not pure_handle: return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}, []
     logs = []
     try:
         cid, k1, c1, l1 = get_channel_id_by_handle_direct(pure_handle, api_keys, exhausted_keys)
@@ -697,12 +687,10 @@ def process_single_crm_channel_meta(pure_handle, api_keys, exhausted_keys=None):
                 "sub_count": sub_count,
                 "sub_str": f"{sub_count:,}" if sub_count > 0 else "N/A",
                 "country": country_name if country_name else "N/A",
-                "country_code": country_code if country_code else "N/A",
-                "avatar": avatar if avatar else "",
                 "socials": socials
             }, logs
     except Exception: pass
-    return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "country_code": "N/A", "avatar": "", "socials": {}}, logs
+    return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}, logs
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_channel_crm_meta(pure_handle):
@@ -744,14 +732,45 @@ def get_handles_from_video_ids(video_ids):
             except Exception: pass
     return handles
 
+def get_handles_from_search_queries(search_queries):
+    if not search_queries: return []
+    active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+    exhausted_set = set(st.session_state.get('exhausted_keys_set', set()))
+    handles = []
+    for q in search_queries:
+        clean_q = to_pure_id(q)
+        if clean_q and ' ' not in q:
+            cid, k, c, l = get_channel_id_by_handle_direct(clean_q, active_keys, exhausted_set)
+            if cid:
+                handles.append(clean_q)
+                continue
+        try:
+            res, k, c, l = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q, type="channel", maxResults=1), active_keys, exhausted_set, cost=100)
+            if res.get('items'):
+                c_id = res['items'][0]['snippet']['channelId']
+                c_res, k2, c2, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet", id=c_id), active_keys, exhausted_set, cost=1)
+                if c_res.get('items'):
+                    custom_url = c_res['items'][0]['snippet'].get('customUrl', '')
+                    pure = to_pure_id(custom_url) or to_pure_id(c_id)
+                    if pure and pure not in handles:
+                        handles.append(pure)
+        except Exception: pass
+    return handles
+
 def parse_raw_inputs_to_handles(raw_inputs_list):
     handles = set()
     video_ids = set()
+    search_queries = set()
     for raw in raw_inputs_list:
         if not raw or pd.isna(raw): continue
         s = str(raw).strip()
         if not s: continue
         
+        sq = extract_search_query(s)
+        if sq:
+            search_queries.add(sq)
+            continue
+
         v_id = extract_video_id(s)
         if v_id:
             video_ids.add(v_id)
@@ -763,6 +782,11 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
         with st.spinner(f"🔍 Đang giải mã {len(video_ids)} Link Video sang Handle Kênh..."):
             resolved_h = get_handles_from_video_ids(list(video_ids))
             for h in resolved_h: handles.add(h)
+
+    if search_queries:
+        with st.spinner(f"🔍 Đang tìm kiếm Kênh từ {len(search_queries)} Link Kết Quả Tìm Kiếm..."):
+            resolved_sq_h = get_handles_from_search_queries(list(search_queries))
+            for h in resolved_sq_h: handles.add(h)
             
     return list(handles)
 
@@ -1039,7 +1063,7 @@ def compare_channels_dialog(channel_data_list):
                             c_dict['Subscribers'] = f"{sub_count:,}"
                         c_dict['Tổng Số Video'] = f"{video_count:,}"
                         if not c_dict.get('Quốc gia') or c_dict.get('Quốc gia') == 'N/A':
-                            c_dict['Quốc gia'] = f"{get_country_flag(country_code)} {country_name}" if country_name else 'N/A'
+                            c_dict['Quốc gia'] = country_name if country_name else 'N/A'
                         c_dict['Video Gần Nhất'] = latest_date
                         
                         if recent_vids and sub_count > 0:
@@ -1121,7 +1145,7 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
     
-    # SHEET 1: MAIN SUMMARY REPORT
+    # SHEET 1: MAIN SUMMARY REPORT (UNCHANGED)
     ws = wb.active
     ws.title = clean_handle[:31]
     date_str = datetime.datetime.now().strftime("%d-%m-%Y")
@@ -1485,7 +1509,7 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
                 "Handle": f"@{p_id}",
                 "Tên Kênh": ch_title,
                 "Subscribers": f"{sub_count:,}",
-                "Quốc gia": f"{get_country_flag(country_code)} {country_name}" if country_name else "🌐 N/A",
+                "Quốc gia": country_name,
                 "Link Kênh": f"https://www.youtube.com/@{p_id}",
                 "Trạng thái": "✅ Kênh Mới Đạt Chuẩn",
                 "Socials": social_contacts
@@ -1704,7 +1728,7 @@ with tab1:
                                 show_ai_email_dialog(item)
 
                         with c2:
-                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | **Quốc gia:** `{item.get('Quốc gia', '🌐 N/A')}`")
+                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | 🌍 **Q.Gia:** `{item.get('Quốc gia', 'N/A')}`")
                             st.markdown(f"**Trạng thái:** <span style='color:#10B981; font-weight:700;'>{item['Trạng thái']}</span>", unsafe_allow_html=True)
                             st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
                         with c3:
@@ -1969,11 +1993,11 @@ with tab1:
 # --- TAB 2: LIVE API SCRAPER (SINGLE & BATCH AUDIT GENERATOR WITH PERSISTENT DOWNLOAD) ---
 with tab2:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>⚡ Cào dữ liệu Live & Xuất Báo Cáo Audit chuẩn V4.14 (Đơn / Hàng Loạt)</h3>", unsafe_allow_html=True)
-    st.caption("💡 *Hỗ trợ dán danh sách nhiều Handle/Link YouTube, hoặc Upload file `.zip`, `.xlsx`, `.txt`, `.docx` (Word), `.csv`.*")
+    st.caption("💡 *Hỗ trợ dán danh sách nhiều Handle/Link YouTube/Link Tìm kiếm, hoặc Upload file `.zip`, `.xlsx`, `.txt`, `.docx` (Word), `.csv`.*")
 
     col_t2_1, col_t2_2 = st.columns([2, 1])
     with col_t2_1:
-        text_input_area_t2 = st.text_area("Dán danh sách Handle/Link kênh/Link Video (mỗi dòng 1 link):", height=180, value="@4wd247", key="text_input_tab2")
+        text_input_area_t2 = st.text_area("Dán danh sách Handle/Link kênh/Link Video/Link Tìm kiếm (mỗi dòng 1 link):", height=180, value="@4wd247", key="text_input_tab2")
     with col_t2_2:
         file_input_t2 = st.file_uploader("Upload file danh sách hoặc gói báo cáo (.zip, .xlsx, .txt, .docx, .csv):", type=["zip", "xlsx", "xls", "txt", "docx", "doc", "csv"], key="file_input_tab2")
 
@@ -2081,8 +2105,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     c_handle = to_pure_id(item['snippet'].get('customUrl', '')) or item['id'].lower()
     c_title = item['snippet']['title']
     c_desc = item['snippet'].get('description', '')
-    c_country_code = item['snippet'].get('country', 'N/A')
-    c_country = pycountry.countries.get(alpha_2=c_country_code).name if c_country_code != 'N/A' and pycountry.countries.get(alpha_2=c_country_code) else c_country_code
+    c_country = item['snippet'].get('country', 'N/A')
     c_subs = int(item['statistics'].get('subscriberCount', 0))
     c_video_count = int(item['statistics'].get('videoCount', 0))
     c_url = f"https://www.youtube.com/@{c_handle}"
@@ -2118,7 +2141,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
 
     base_data = {
         "Handle": f"@{c_handle}", "Link Kênh": c_url, "Tên Kênh": c_title, 
-        "Subscribers": f"{c_subs:,}", "Quốc gia": f"{get_country_flag(c_country_code)} {c_country}" if c_country else "🌐 N/A", 
+        "Subscribers": f"{c_subs:,}", "Quốc gia": c_country, 
         "Video Gần Nhất": latest_date, "Tổng Số Video": f"{c_video_count:,}", 
         "Trạng Thái DB": db_status, "recent_videos": recent_vids,
         "ER": f"{er_rate:.2f}%" if er_rate > 0 else "N/A",
@@ -2129,7 +2152,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     if c_subs < min_subs_choice: 
         base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"
         return False, base_data
-    passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country_code)
+    passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
     if not passes_l1: 
         base_data["Lý do loại"] = l1_reason
         return False, base_data
@@ -2382,7 +2405,7 @@ with tab3:
                                 show_ai_email_dialog(row)
 
                         with c2:
-                            st.write(f"👥 **Subs:** `{row['Subscribers']}` | **Quốc gia:** `{row['Quốc gia']}`")
+                            st.write(f"👥 **Subs:** `{row['Subscribers']}` | 🌍 **Q.Gia:** `{row['Quốc gia']}`")
                             st.write(f"🎬 **Tổng Video:** `{row['Tổng Số Video']}` | 📅 **Mới nhất:** `{row['Video Gần Nhất']}`")
                             if row.get('Score'):
                                 st.markdown(f"<span class='badge-score'>🔥 Điểm tiềm năng: {row['Score']}/100</span>", unsafe_allow_html=True)
@@ -2543,7 +2566,7 @@ with tab3:
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_rej_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                                 show_video_dialog(p_id, pre_fetched_videos=item.get('recent_videos'))
                         with c2:
-                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | **Quốc gia:** `{item.get('Quốc gia', '')}`")
+                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | 🌍 **Q.Gia:** `{item.get('Quốc gia', '')}`")
                             st.write(f"🎬 **Tổng Video:** `{item.get('Tổng Số Video', '')}` | 📅 **Mới nhất:** `{item.get('Video Gần Nhất', '')}`")
                             st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
                         with c3:
@@ -2937,7 +2960,7 @@ with tab5:
                 is_active = (p_id == st.session_state.get('active_inspected_handle'))
                 stt_num_db = start_idx + idx + 1
                 
-                crm_meta = crm_meta_map.get(p_id) or {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "country_code": "N/A", "avatar": "", "socials": {}}
+                crm_meta = crm_meta_map.get(p_id) or {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}
                 
                 created_str = ""
                 if row.get('created_at'):
@@ -2946,9 +2969,6 @@ with tab5:
                         created_str = created_dt.strftime("%d-%m-%Y %H:%M")
                     except Exception:
                         created_str = str(row['created_at'])[:16]
-
-                avatar_html = f"<img src='{crm_meta['avatar']}' style='width:38px; height:38px; border-radius:50%; vertical-align:middle; margin-right:8px; border: 2px solid #D95F26;'>" if crm_meta.get('avatar') else ""
-                flag_str = get_country_flag(crm_meta.get('country_code'))
 
                 with st.container(border=True):
                     if is_active:
@@ -2959,12 +2979,12 @@ with tab5:
                     with c0:
                         st.checkbox("", key=f"chk_db_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
                     with c1:
-                        st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_db}</span>{avatar_html}<a href='https://youtube.com/@{p_id}' style='text-decoration:none; color:#D95F26;'>@{p_id}</a></h3>", unsafe_allow_html=True)
+                        st.markdown(f"<h3 style='margin:0; font-weight:800; font-size:1.3rem;'><span class='badge-stt'>#{stt_num_db}</span><a href='https://youtube.com/@{p_id}' style='text-decoration:none;'>@{p_id}</a></h3>", unsafe_allow_html=True)
                         st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
                         if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)):
                             show_video_dialog(p_id)
                     with c2:
-                        st.write(f"👥 **Subs:** `{crm_meta['sub_str']}` | **Quốc gia:** `{flag_str} {crm_meta['country']}`")
+                        st.write(f"👥 **Subs:** `{crm_meta['sub_str']}` | 🌍 **Q.Gia:** `{crm_meta['country']}`")
                         st.write(f"📁 **Nguồn:** {row.get('source', 'N/A')}" + (f" | 📅 **Cập nhật:** `{created_str}`" if created_str else ""))
                         st.markdown(render_social_badges_html(crm_meta.get("socials", {})), unsafe_allow_html=True)
                     with c3:
