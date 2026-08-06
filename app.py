@@ -109,7 +109,7 @@ header[data-testid="stHeader"] {{ background-color: transparent !important; }}
 .stTabs [data-baseweb="tab-list"] {{ gap: 32px; background-color: transparent; padding: 0 0 4px 0; border-bottom: 2px solid #D1D5DB; }}
 .stTabs [data-baseweb="tab"] {{ background-color: transparent !important; border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #6B7280 !important; font-weight: 700; font-size: 0.9rem; padding: 10px 4px; text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s ease !important; cursor: pointer !important; }}
 .stTabs [data-baseweb="tab"]:hover {{ color: #D95F26 !important; transform: translateY(-1px); }}
-.stTabs [aria-selected="true"] {{ color: #D95F26 !important; border-bottom: 3px solid #D95F26 !important; transform: translateY(0); }}
+.stTabs [aria-selected="true"] {{ color: #D95F26 !important; border-bottom: 3px solid #D95F26 !important; }}
 
 /* Standard Card Container Styling */
 div[data-testid="stVerticalBlockBorderWrapper"] {{ background-color: {card_bg} !important; border: 1px solid {border_color} !important; border-radius: 12px !important; padding: 12px !important; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; margin-bottom: 15px !important; }}
@@ -1446,7 +1446,7 @@ def sort_and_filter_channels(channel_list, search_query, sort_by):
     elif sort_by == "Mới Đăng Video": filtered.sort(key=lambda x: x.get('Video Gần Nhất', ''), reverse=True)
     return filtered
 
-# --- THREAD-SAFE WORKER FOR TAB 1 ---
+# --- THREAD-SAFE WORKER FOR TAB 1 WITH ADVANCED FILTERING ---
 def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
     if p_id in db_matches:
         db_item = db_matches[p_id]
@@ -1483,7 +1483,8 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
             v_descs = " ".join([v.get('Description', '') for v in recent_vids])
             combined_text_corpus = f"{ch_title} {ch_desc} {v_descs}"
             social_contacts = extract_contacts_and_socials(combined_text_corpus)
-            
+
+            # 1. CHECK SUBSCRIBERS
             if sub_count < 1000000:
                 return "REJECTED", {
                     "Handle": f"@{p_id}",
@@ -1494,6 +1495,7 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
                     "Socials": social_contacts
                 }, logs
             
+            # 2. METADATA & COUNTRY FILTER
             passes_l1, l1_reason = passes_layer1_metadata_filter(ch_title, ch_desc, country_code)
             if not passes_l1:
                 return "REJECTED", {
@@ -1502,6 +1504,41 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
                     "Subscribers": f"{sub_count:,}",
                     "Trạng thái": f"❌ {l1_reason}",
                     "Lý do loại": l1_reason,
+                    "Socials": social_contacts
+                }, logs
+
+            # 3. CHECK SHORTS ONLY / NO RECENT VIDEOS
+            if not recent_vids:
+                return "REJECTED", {
+                    "Handle": f"@{p_id}",
+                    "Tên Kênh": ch_title,
+                    "Subscribers": f"{sub_count:,}",
+                    "Trạng thái": "❌ Kênh chỉ làm Shorts / Không có video dài",
+                    "Lý do loại": "Kênh chỉ làm Shorts",
+                    "Socials": social_contacts
+                }, logs
+
+            # 4. CHECK ACTIVITY WITHIN LAST 90 DAYS
+            latest_date = recent_vids[0].get('Published Date', 'N/A')
+            if not is_within_last_90_days(latest_date):
+                return "REJECTED", {
+                    "Handle": f"@{p_id}",
+                    "Tên Kênh": ch_title,
+                    "Subscribers": f"{sub_count:,}",
+                    "Trạng thái": f"❌ Ngưng hoạt động (>90 ngày, gần nhất: {latest_date})",
+                    "Lý do loại": f"Kênh ngưng hoạt động (>90 ngày)",
+                    "Socials": social_contacts
+                }, logs
+
+            # 5. CHECK MUST HAVE VIDEO > 10 MINUTES IN RECENT 6 VIDEOS
+            has_10m_video = any(v.get('Seconds', 0) >= 600 for v in recent_vids)
+            if not has_10m_video:
+                return "REJECTED", {
+                    "Handle": f"@{p_id}",
+                    "Tên Kênh": ch_title,
+                    "Subscribers": f"{sub_count:,}",
+                    "Trạng thái": "❌ Không có video > 10 phút trong 6 video gần nhất",
+                    "Lý do loại": "Không có video > 10 phút",
                     "Socials": social_contacts
                 }, logs
             
@@ -1527,7 +1564,7 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
 # --- TAB 1: BATCH SEARCH WITH DUAL PAGINATION CONTROLS ---
 with tab1:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle / Link Video Hàng Loạt</h3>", unsafe_allow_html=True)
-    st.caption("💡 *Tự động quét quy mô kênh (Yêu cầu >= 1,000,000 Subs), lọc bỏ các kênh Âm nhạc/News/LGBT và Đào sâu MXH/Email.*")
+    st.caption("💡 *Tự động lọc nâng cao: Bắt buộc >= 1M Subs, có Video > 10 phút trong 6 video mới nhất, ra video trong 90 ngày và LỌẠI HẲN kênh Shorts/Phim/Music/News.*")
     
     col_s1, col_s2 = st.columns([2, 1])
     with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh/Link Video vào đây (mỗi dòng 1 link):", height=180)
@@ -1592,9 +1629,9 @@ with tab1:
         st.divider()
         render_kpi_cards([
             ("TỔNG SỐ KIỂM TRA", f"{len(new_handles) + len(existing_handles) + len(rejected_handles)}", "#47A5D1"),
-            ("✅ ĐẠT CHUẨN (>=1M SUBS)", f"{len(new_handles)}", "#10B981"),
+            ("✅ ĐẠT CHUẨN (>=1M SUBS & >10MIN)", f"{len(new_handles)}", "#10B981"),
             ("❌ ĐÃ TỒN TẠI TRONG DB", f"{len(existing_handles)}", "#F59E0B"),
-            ("🚫 BỊ LOẠI (<1M / CẤM)", f"{len(rejected_handles)}", "#EF4444")
+            ("🚫 BỊ LOẠI (<1M / SHORTS / KHÔNG CÓ >10MIN)", f"{len(rejected_handles)}", "#EF4444")
         ])
         
         res_tab1, res_tab2, res_tab3 = st.tabs([
@@ -2112,7 +2149,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     db_status = "❌ Đã có trong DB" if c_handle in db_existing_set else "✅ KÊNH MỚI"
     
     c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
-    latest_date, has_qualifying_video = "N/A", False
+    latest_date = "N/A"
     recent_vids = []
     avg_views, er_rate, score = 0, 0, 0
     
@@ -2125,7 +2162,6 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
                 long_vids = [v for v in v_details if is_long_form_video(v, min_seconds=180)]
                 if long_vids:
                     latest_date = long_vids[0]['Published Date']
-                    has_qualifying_video = any(v['Seconds'] >= min_duration_choice for v in long_vids)
                     recent_vids = long_vids[:6]
                     
                     if recent_vids and c_subs > 0:
@@ -2134,7 +2170,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
                         score = min(100, int((er_rate / 10.0) * 100))
         except Exception: pass
 
-    # STEP 1 CONTACT EXTRACTION WITH VIDEO DESCRIPTIONS
+    # EXTRACTION OF SOCIALS
     v_descs = " ".join([v.get('Description', '') for v in recent_vids])
     combined_corpus = f"{c_title} {c_desc} {v_descs}"
     social_contacts = extract_contacts_and_socials(combined_corpus)
@@ -2149,21 +2185,31 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
         "Socials": social_contacts
     }
 
+    # 1. SUBS THRESHOLD
     if c_subs < min_subs_choice: 
         base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"
         return False, base_data
+
+    # 2. METADATA FILTER
     passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
     if not passes_l1: 
         base_data["Lý do loại"] = l1_reason
         return False, base_data
-    if c_video_count == 0 or not c_playlist: 
-        base_data["Lý do loại"] = "Kênh trống"
+
+    # 3. SHORTS ONLY / EMPTY CHANNEL
+    if c_video_count == 0 or not c_playlist or not recent_vids: 
+        base_data["Lý do loại"] = "Kênh chỉ làm Shorts / Rỗng"
         return False, base_data
+
+    # 4. ACTIVITY WITHIN LAST 90 DAYS
     if not is_within_last_90_days(latest_date): 
-        base_data["Lý do loại"] = f"Bỏ trống (Mới nhất: {latest_date})"
+        base_data["Lý do loại"] = f"Kênh ngưng hoạt động (>90 ngày, gần nhất: {latest_date})"
         return False, base_data
-    if not has_qualifying_video: 
-        base_data["Lý do loại"] = "Shorts-only"
+
+    # 5. MUST HAVE AT LEAST 1 VIDEO > 10 MINUTES (600s) IN RECENT 6 VIDEOS
+    has_10m_video = any(v.get('Seconds', 0) >= 600 for v in recent_vids)
+    if not has_10m_video: 
+        base_data["Lý do loại"] = "Không có video > 10 phút trong 6 video gần nhất"
         return False, base_data
         
     return True, base_data
@@ -2200,7 +2246,7 @@ with tab3:
         
     with col_f2:
         min_subs_choice = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
-        min_duration_choice = st.selectbox("Lọc Loại Bỏ Kênh Shorts:", options=[60, 180, 300, 600], index=0, format_func=lambda x: f"Loại Shorts < {x//60} phút" if x < 600 else "Có Video > 10 phút")
+        min_duration_choice = st.selectbox("Lọc Yêu Cầu Đồ Dài Video:", options=[600], index=0, format_func=lambda x: "Bắt buộc có Video > 10 phút (Loại Shorts)")
 
     start_btn = st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách", type="primary")
 
@@ -2286,7 +2332,7 @@ with tab3:
         st.divider()
         render_kpi_cards([
             ("TỔNG ỨNG VIÊN", f"{len(passed_list) + len(rejected_list)}", "#47A5D1"),
-            (f"✅ ĐẠT CHUẨN (>{min_subs_choice:,} SUBS)", f"{len(passed_list)}", "#10B981"),
+            (f"✅ ĐẠT CHUẨN (>{min_subs_choice:,} SUBS & >10MIN)", f"{len(passed_list)}", "#10B981"),
             ("❌ BỊ LOẠI", f"{len(rejected_list)}", "#EF4444")
         ])
 
