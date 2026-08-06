@@ -491,6 +491,26 @@ def extract_search_query(raw_url):
         return decoded
     return None
 
+# GENERATE SMART CANDIDATE HANDLES FROM SEARCH QUERIES
+def generate_candidate_handles_from_query(q):
+    if not q: return []
+    decoded = urllib.parse.unquote(str(q)).strip()
+    cleaned_name = re.sub(r'[^\w\s.-]', '', decoded).strip()
+    
+    candidates = []
+    c1 = re.sub(r'[\s._-]+', '', cleaned_name).lower()
+    if c1 and len(c1) >= 3: candidates.append(c1)
+        
+    c2 = re.sub(r'[\s]+', '', cleaned_name).lower()
+    c2_clean = re.sub(r'[^a-zA-Z0-9_.-]', '', c2)
+    if c2_clean and c2_clean not in candidates and len(c2_clean) >= 3: candidates.append(c2_clean)
+        
+    if 'official' in cleaned_name.lower():
+        c3 = c1.replace('official', '')
+        if c3 and c3 not in candidates and len(c3) >= 3: candidates.append(c3)
+            
+    return candidates
+
 # ULTRA-DEEP CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
 def extract_contacts_and_socials(text_corpus):
     if not text_corpus: return {}
@@ -768,6 +788,9 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
         sq = extract_search_query(s)
         if sq:
             search_queries.add(sq)
+            # Instantly generate candidate handle to prevent empty target_list!
+            for cand in generate_candidate_handles_from_query(sq):
+                handles.add(cand)
             continue
 
         # 2. Video Link
@@ -782,20 +805,26 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
             if p_h: handles.add(p_h)
             continue
 
-        # 4. Plain text YouTuber Name (e.g. "Alan", "Nahz", "El Chico Estrella") -> Query YouTube Search API!
+        # 4. Plain text YouTuber Name (e.g. "Alan", "Nahz", "El Chico Estrella")
         clean_text = re.sub(r'^@+', '', s).strip()
         if clean_text:
             search_queries.add(clean_text)
+            for cand in generate_candidate_handles_from_query(clean_text):
+                handles.add(cand)
 
     if search_queries:
-        with st.spinner(f"🔍 Đang truy vấn YouTube Search API cho {len(search_queries)} tên YouTuber / từ khóa..."):
-            resolved_sq_h = get_handles_from_search_queries(list(search_queries))
-            for h in resolved_sq_h: handles.add(h)
+        try:
+            with st.spinner(f"🔍 Đang truy vấn YouTube Search API cho {len(search_queries)} tên YouTuber / từ khóa..."):
+                resolved_sq_h = get_handles_from_search_queries(list(search_queries))
+                for h in resolved_sq_h: handles.add(h)
+        except Exception: pass
 
     if video_ids:
-        with st.spinner(f"🔍 Đang giải mã {len(video_ids)} Link Video sang Handle Kênh..."):
-            resolved_h = get_handles_from_video_ids(list(video_ids))
-            for h in resolved_h: handles.add(h)
+        try:
+            with st.spinner(f"🔍 Đang giải mã {len(video_ids)} Link Video sang Handle Kênh..."):
+                resolved_h = get_handles_from_video_ids(list(video_ids))
+                for h in resolved_h: handles.add(h)
+        except Exception: pass
             
     return list(handles)
 
