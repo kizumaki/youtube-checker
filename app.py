@@ -491,6 +491,15 @@ def extract_search_query(raw_url):
         return decoded
     return None
 
+def get_candidate_handles(q):
+    decoded = urllib.parse.unquote(q)
+    c1 = re.sub(r'[^a-zA-Z0-9_.-]', '', decoded).strip().lower()
+    c2 = re.sub(r'[^a-zA-Z0-9]', '', decoded).strip().lower()
+    candidates = []
+    if c1: candidates.append(c1)
+    if c2 and c2 != c1: candidates.append(c2)
+    return candidates, decoded
+
 # ULTRA-DEEP CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
 def extract_contacts_and_socials(text_corpus):
     if not text_corpus: return {}
@@ -646,7 +655,7 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
                 for entry in root.findall('atom:entry', ns):
                     v_id_el = entry.find('yt:videoId', ns)
                     if v_id_el is not None and v_id_el.text: rss_v_ids.append(v_id_el.text)
-                    if len(rss_v_ids) >= 12: break
+                    if len(rss_v_ids) >= 15: break
                 if rss_v_ids:
                     v_details, _ = get_video_details_direct(rss_v_ids, api_keys, exhausted_keys)
                     for v in v_details:
@@ -656,7 +665,7 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
             if len(long_vids) < 6:
                 playlist_id, sub_count, desc, joined, country_name, country_code, avatar, key_used, cost, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
                 if playlist_id:
-                    v_res, key_used2, cost2, l3 = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=30), api_keys, exhausted_keys, cost=1)
+                    v_res, key_used2, cost2, l3 = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50), api_keys, exhausted_keys, cost=1)
                     v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
                     if v_ids:
                         v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
@@ -737,24 +746,34 @@ def get_handles_from_search_queries(search_queries):
     active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
     exhausted_set = set(st.session_state.get('exhausted_keys_set', set()))
     handles = []
+    
     for q in search_queries:
-        clean_q = to_pure_id(q)
-        if clean_q and ' ' not in q:
-            cid, k, c, l = get_channel_id_by_handle_direct(clean_q, active_keys, exhausted_set)
-            if cid:
-                handles.append(clean_q)
-                continue
-        try:
-            res, k, c, l = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q, type="channel", maxResults=1), active_keys, exhausted_set, cost=100)
-            if res.get('items'):
-                c_id = res['items'][0]['snippet']['channelId']
-                c_res, k2, c2, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet", id=c_id), active_keys, exhausted_set, cost=1)
-                if c_res.get('items'):
-                    custom_url = c_res['items'][0]['snippet'].get('customUrl', '')
-                    pure = to_pure_id(custom_url) or to_pure_id(c_id)
-                    if pure and pure not in handles:
-                        handles.append(pure)
-        except Exception: pass
+        candidates, decoded_q = get_candidate_handles(q)
+        found = False
+        
+        # 1. Direct Candidate Handle Lookup (1 quota unit)
+        for cand in candidates:
+            if cand:
+                cid, k, c, l = get_channel_id_by_handle_direct(cand, active_keys, exhausted_set)
+                if cid:
+                    if cand not in handles: handles.append(cand)
+                    found = True
+                    break
+                    
+        # 2. Fallback to Search API (100 quota units)
+        if not found and decoded_q:
+            try:
+                res, k, c, l = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=decoded_q, type="channel", maxResults=1), active_keys, exhausted_set, cost=100)
+                if res.get('items'):
+                    c_id = res['items'][0]['snippet']['channelId']
+                    c_res, k2, c2, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet", id=c_id), active_keys, exhausted_set, cost=1)
+                    if c_res.get('items'):
+                        custom_url = c_res['items'][0]['snippet'].get('customUrl', '')
+                        pure = to_pure_id(custom_url) or to_pure_id(c_id)
+                        if pure and pure not in handles:
+                            handles.append(pure)
+            except Exception: pass
+            
     return handles
 
 def parse_raw_inputs_to_handles(raw_inputs_list):
@@ -784,7 +803,7 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
             for h in resolved_h: handles.add(h)
 
     if search_queries:
-        with st.spinner(f"🔍 Đang tìm kiếm Kênh từ {len(search_queries)} Link Kết Quả Tìm Kiếm..."):
+        with st.spinner(f"🔍 Đang giải mã {len(search_queries)} Link Tìm Kiếm sang Handle Kênh..."):
             resolved_sq_h = get_handles_from_search_queries(list(search_queries))
             for h in resolved_sq_h: handles.add(h)
             
@@ -870,17 +889,30 @@ def is_long_form_video(v, min_seconds=180):
     if v.get('Seconds', 0) <= min_seconds: return False
     return True
 
+# MULTI-FORMAT ACCURATE 90-DAY ACTIVITY CHECKER
 def is_within_last_90_days(date_str):
     if not date_str or date_str == "N/A": return False
-    s = str(date_str).strip().lower()
+    s = str(date_str).strip()
     today = datetime.date.today()
-    m_iso = re.match(r'^(\d{4})-(\d{2})-(\d{2})', s)
-    if m_iso:
+    
+    m_dmy = re.match(r'^(\d{1,2})[-/](\d{1,2})[-/](\d{4})', s)
+    if m_dmy:
         try:
-            dt = datetime.date(int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3)))
+            dt = datetime.date(int(m_dmy.group(3)), int(m_dmy.group(2)), int(m_dmy.group(1)))
             return 0 <= (today - dt).days <= 90
-        except Exception: return False
-    return False
+        except Exception: pass
+
+    m_ymd = re.match(r'^(\d{4})[-/](\d{1,2})[-/](\d{1,2})', s)
+    if m_ymd:
+        try:
+            dt = datetime.date(int(m_ymd.group(1)), int(m_ymd.group(2)), int(m_ymd.group(3)))
+            return 0 <= (today - dt).days <= 90
+        except Exception: pass
+
+    try:
+        dt = pd.to_datetime(s).date()
+        return 0 <= (today - dt).days <= 90
+    except Exception: return False
 
 EXCLUDED_COUNTRIES = {'CN', 'TW', 'HK', 'TH', 'IN', 'VN'}
 NON_LATIN_REGEX = re.compile(r'[\u0E00-\u0E7F]|[\u4E00-\u9FFF]|[\u0900-\u097F]|[\uAC00-\uD7AF]', re.IGNORECASE)
@@ -893,13 +925,15 @@ EXCLUDED_KEYWORDS = [
 ]
 STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'it', 'this', 'that', 'ep', 'episode', 'part', 'video', 'shorts', 'full', 'hd', '2024', '2025', '2026', 'official', 'channel', 'vs', 'dude', 'perfect', 'nick', 'digiovanni', 'mrbeast', 'pewdiepie'}
 
+# EXACT WORD-BOUNDARY FILTER (PREVENTS FALSE POSITIVES LIKE 'AWARDS' MATCHING 'WAR')
 def passes_layer1_metadata_filter(title, desc, country_code):
     if country_code in EXCLUDED_COUNTRIES: return False, f"Quốc gia bị loại ({country_code})"
     combined_text = f"{title} {desc}".lower()
     if NON_LATIN_REGEX.search(combined_text): return False, "Ngôn ngữ không phù hợp (Trung, Thái, Hindi, Hàn)"
     if VIETNAMESE_UNIQUE_REGEX.search(combined_text): return False, "Kênh Ngôn Ngữ Tiếng Việt"
     for kw in EXCLUDED_KEYWORDS:
-        if kw in combined_text: return False, f"Loại nội dung cấm ({kw.upper()})"
+        pattern = r'\b' + re.escape(kw) + r'\b'
+        if re.search(pattern, combined_text): return False, f"Loại nội dung cấm ({kw.upper()})"
     return True, "OK"
 
 def clean_and_extract_keywords(text, seed_handle=""):
@@ -1564,10 +1598,10 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
 # --- TAB 1: BATCH SEARCH WITH DUAL PAGINATION CONTROLS ---
 with tab1:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle / Link Video Hàng Loạt</h3>", unsafe_allow_html=True)
-    st.caption("💡 *Tự động lọc nâng cao: Bắt buộc >= 1M Subs, có Video > 10 phút trong 6 video mới nhất, ra video trong 90 ngày và LỌẠI HẲN kênh Shorts/Phim/Music/News.*")
+    st.caption("💡 *Tự động lọc nâng cao: Bắt buộc >= 1M Subs, có Video > 10 phút trong 6 video mới nhất, ra video trong 90 ngày và LOẠI HẲN kênh Shorts/Phim/Music/News.*")
     
     col_s1, col_s2 = st.columns([2, 1])
-    with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh/Link Video vào đây (mỗi dòng 1 link):", height=180)
+    with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh/Link Video/Link Tìm kiếm vào đây (mỗi dòng 1 link):", height=180)
     with col_s2: file_input_check = st.file_uploader("Hoặc Upload file danh sách (.txt, .csv, .xlsx):")
         
     if st.button("🔎 Bắt Đầu Kiểm Tra Hàng Loạt", type="primary"):
