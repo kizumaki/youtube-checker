@@ -416,7 +416,7 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
     if st.button("🧪 Kiểm Tra Sức Khỏe Keys", use_container_width=True, key="btn_test_keys"):
-        with st.spinner("Đang kiểm tra thực tế sức khỏe 6 API Keys..."):
+        with st.spinner("Đang kiểm tra thực tế sức khỏe API Keys..."):
             test_all_api_keys()
             st.rerun()
 
@@ -454,7 +454,7 @@ def delete_channel_from_system(pure_handle):
 
     # INVALIDATE TAB 5 CACHES ON DELETION
     for key in list(st.session_state.keys()):
-        if key.startswith('crm_cache_') or key == 'tab5_crm_cache':
+        if key.startswith('crm_cache_') or k == 'tab5_crm_cache':
             st.session_state.pop(key, None)
 
     for key_list in ['passed_channels', 'rejected_channels', 'batch_check_new', 'batch_check_existing', 'batch_check_rejected']:
@@ -490,26 +490,6 @@ def extract_search_query(raw_url):
         decoded = urllib.parse.unquote(raw_q).replace('+', ' ').strip()
         return decoded
     return None
-
-# GENERATE SMART CANDIDATE HANDLES FROM SEARCH QUERIES
-def get_candidate_handles(q):
-    if not q: return [], ""
-    decoded = urllib.parse.unquote(str(q)).strip()
-    cleaned_name = re.sub(r'[^\w\s.-]', '', decoded).strip()
-    
-    candidates = []
-    c1 = re.sub(r'[\s._-]+', '', cleaned_name).lower()
-    if c1 and len(c1) >= 3: candidates.append(c1)
-        
-    c2 = re.sub(r'[\s]+', '', cleaned_name).lower()
-    c2_clean = re.sub(r'[^a-zA-Z0-9_.-]', '', c2)
-    if c2_clean and c2_clean not in candidates and len(c2_clean) >= 3: candidates.append(c2_clean)
-        
-    if 'official' in cleaned_name.lower():
-        c3 = c1.replace('official', '')
-        if c3 and c3 not in candidates and len(c3) >= 3: candidates.append(c3)
-            
-    return candidates, decoded
 
 # ULTRA-DEEP CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
 def extract_contacts_and_socials(text_corpus):
@@ -737,6 +717,7 @@ def get_handles_from_video_ids(video_ids):
             except Exception: pass
     return handles
 
+# ACCURATE YOUTUBE SEARCH QUERY RESOLVER (FINDS TOP #1 CHANNEL ON YOUTUBE FOR NAMES/QUERIES)
 def get_handles_from_search_queries(search_queries):
     if not search_queries: return []
     active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
@@ -744,31 +725,20 @@ def get_handles_from_search_queries(search_queries):
     handles = []
     
     for q in search_queries:
-        candidates, decoded_q = get_candidate_handles(q)
-        found = False
+        if not q or not str(q).strip(): continue
+        decoded_q = urllib.parse.unquote(str(q)).strip()
         
-        # 1. Direct Candidate Handle Lookup (1 quota unit)
-        for cand in candidates:
-            if cand:
-                cid, k, c, l = get_channel_id_by_handle_direct(cand, active_keys, exhausted_set)
-                if cid:
-                    if cand not in handles: handles.append(cand)
-                    found = True
-                    break
-                    
-        # 2. Fallback to Search API (100 quota units)
-        if not found and decoded_q:
-            try:
-                res, k, c, l = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=decoded_q, type="channel", maxResults=1), active_keys, exhausted_set, cost=100)
-                if res.get('items'):
-                    c_id = res['items'][0]['snippet']['channelId']
-                    c_res, k2, c2, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet", id=c_id), active_keys, exhausted_set, cost=1)
-                    if c_res.get('items'):
-                        custom_url = c_res['items'][0]['snippet'].get('customUrl', '')
-                        pure = to_pure_id(custom_url) or to_pure_id(c_id)
-                        if pure and pure not in handles:
-                            handles.append(pure)
-            except Exception: pass
+        try:
+            res, k, c, l = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=decoded_q, type="channel", maxResults=1), active_keys, exhausted_set, cost=100)
+            if res.get('items'):
+                c_id = res['items'][0]['snippet']['channelId']
+                c_res, k2, c2, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet", id=c_id), active_keys, exhausted_set, cost=1)
+                if c_res.get('items'):
+                    custom_url = c_res['items'][0]['snippet'].get('customUrl', '')
+                    pure = to_pure_id(custom_url) or to_pure_id(c_id)
+                    if pure and pure not in handles:
+                        handles.append(pure)
+        except Exception: pass
             
     return handles
 
@@ -792,25 +762,33 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
     for raw in raw_inputs_list:
         if is_garbage_input(raw): continue
         s = str(raw).strip()
+        if not s: continue
         
+        # 1. Search Query Link
         sq = extract_search_query(s)
         if sq:
             search_queries.add(sq)
             continue
 
+        # 2. Video Link
         v_id = extract_video_id(s)
         if v_id:
             video_ids.add(v_id)
             continue
             
-        p_h = to_pure_id(s)
-        if p_h:
-            handles.add(p_h)
-        else:
-            search_queries.add(s)
+        # 3. Explicit Channel URL or Handle starting with '@'
+        if s.startswith('@') or 'youtube.com/@' in s.lower() or 'youtube.com/channel/' in s.lower() or 'youtube.com/c/' in s.lower() or 'youtube.com/user/' in s.lower():
+            p_h = to_pure_id(s)
+            if p_h: handles.add(p_h)
+            continue
+
+        # 4. Plain text YouTuber Name (e.g. "Alan", "Nahz", "El Chico Estrella") -> Query YouTube Search API!
+        clean_text = re.sub(r'^@+', '', s).strip()
+        if clean_text:
+            search_queries.add(clean_text)
 
     if search_queries:
-        with st.spinner(f"🔍 Đang giải mã {len(search_queries)} Link Tìm Kiếm / Tên YouTuber sang Handle..."):
+        with st.spinner(f"🔍 Đang truy vấn YouTube Search API cho {len(search_queries)} tên YouTuber / từ khóa..."):
             resolved_sq_h = get_handles_from_search_queries(list(search_queries))
             for h in resolved_sq_h: handles.add(h)
 
@@ -845,18 +823,18 @@ def extract_raw_inputs_from_file(uploaded_file):
             raw_list = re.split(r'[\n,\t\r]+', content)
         elif fname.endswith('.csv'):
             df = pd.read_csv(io.BytesIO(file_bytes))
-            for col in df.columns:
-                if 'youtube' in str(col).lower() or 'youtuber' in str(col).lower() or 'handle' in str(col).lower():
-                    for val in df[col].dropna(): raw_list.append(str(val))
+            target_cols = [col for col in df.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
+            cols_to_use = target_cols if target_cols else df.columns
+            for col in cols_to_use:
+                if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower(): continue
+                for val in df[col].dropna(): raw_list.append(str(val))
         elif fname.endswith('.xlsx') or fname.endswith('.xls'):
             df = pd.read_excel(io.BytesIO(file_bytes))
-            for col in df.columns:
-                col_s = str(col).lower()
-                if 'search' in col_s or 'youtuber' in col_s or 'handle' in col_s or 'link' in col_s:
-                    for val in df[col].dropna(): raw_list.append(str(val))
-            if not raw_list:
-                for col in df.columns:
-                    for val in df[col].dropna(): raw_list.append(str(val))
+            target_cols = [col for col in df.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
+            cols_to_use = target_cols if target_cols else df.columns
+            for col in cols_to_use:
+                if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower(): continue
+                for val in df[col].dropna(): raw_list.append(str(val))
         elif fname.endswith('.docx') or fname.endswith('.doc'):
             text = extract_text_from_docx_bytes(file_bytes)
             raw_list = re.split(r'[\n,\t\r]+', text)
@@ -873,18 +851,20 @@ def extract_raw_inputs_from_file(uploaded_file):
                     elif n_lower.endswith('.xlsx') or n_lower.endswith('.xls'):
                         try:
                             df = pd.read_excel(io.BytesIO(z_bytes))
-                            for col in df.columns:
-                                col_s = str(col).lower()
-                                if 'search' in col_s or 'youtuber' in col_s or 'handle' in col_s or 'link' in col_s:
-                                    for val in df[col].dropna(): raw_list.append(str(val))
+                            target_cols = [col for col in df.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
+                            cols_to_use = target_cols if target_cols else df.columns
+                            for col in cols_to_use:
+                                if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower(): continue
+                                for val in df[col].dropna(): raw_list.append(str(val))
                         except Exception: pass
                     elif n_lower.endswith('.csv'):
                         try:
                             df = pd.read_csv(io.BytesIO(z_bytes))
-                            for col in df.columns:
-                                col_s = str(col).lower()
-                                if 'search' in col_s or 'youtuber' in col_s or 'handle' in col_s or 'link' in col_s:
-                                    for val in df[col].dropna(): raw_list.append(str(val))
+                            target_cols = [col for col in df.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
+                            cols_to_use = target_cols if target_cols else df.columns
+                            for col in cols_to_use:
+                                if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower(): continue
+                                for val in df[col].dropna(): raw_list.append(str(val))
                         except Exception: pass
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return raw_list
@@ -905,7 +885,7 @@ def is_long_form_video(v, min_seconds=180):
     if v.get('Seconds', 0) <= min_seconds: return False
     return True
 
-# ACCURATE MULTI-FORMAT 90-DAY ACTIVITY CHECKER
+# ACCURATE MULTI-FORMAT 90-DAY ACTIVITY CHECKER (PREVENTS FALSE INACTIVITY REJECTIONS)
 def is_within_last_90_days(date_str):
     if not date_str or date_str == "N/A": return False
     s = str(date_str).strip()
@@ -926,7 +906,7 @@ def is_within_last_90_days(date_str):
         except Exception: pass
 
     try:
-        dt = pd.to_datetime(s).date()
+        dt = pd.to_datetime(s, dayfirst=True).date()
         return 0 <= (today - dt).days <= 90
     except Exception: return False
 
@@ -941,7 +921,7 @@ EXCLUDED_KEYWORDS = [
 ]
 STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'it', 'this', 'that', 'ep', 'episode', 'part', 'video', 'shorts', 'full', 'hd', '2024', '2025', '2026', 'official', 'channel', 'vs', 'dude', 'perfect', 'nick', 'digiovanni', 'mrbeast', 'pewdiepie'}
 
-# EXACT WORD-BOUNDARY FILTER (PREVENTS FALSE POSITIVES LIKE 'AWARDS' MATCHING 'WAR')
+# EXACT WORD-BOUNDARY FILTER
 def passes_layer1_metadata_filter(title, desc, country_code):
     if country_code in EXCLUDED_COUNTRIES: return False, f"Quốc gia bị loại ({country_code})"
     combined_text = f"{title} {desc}".lower()
@@ -1496,7 +1476,7 @@ def sort_and_filter_channels(channel_list, search_query, sort_by):
     elif sort_by == "Mới Đăng Video": filtered.sort(key=lambda x: x.get('Video Gần Nhất', ''), reverse=True)
     return filtered
 
-# --- THREAD-SAFE WORKER FOR TAB 1 WITH ADVANCED FILTERING ---
+# --- THREAD-SAFE WORKER FOR TAB 1 WITH ACCURATE FILTERING ---
 def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
     if p_id in db_matches:
         db_item = db_matches[p_id]
@@ -1580,14 +1560,14 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
                     "Socials": social_contacts
                 }, logs
 
-            # 5. CHECK MUST HAVE VIDEO > 10 MINUTES IN RECENT 6 VIDEOS
+            # 5. CHECK MUST HAVE VIDEO > 10 MINUTES IN RECENT VIDEOS
             has_10m_video = any(v.get('Seconds', 0) >= 600 for v in recent_vids)
             if not has_10m_video:
                 return "REJECTED", {
                     "Handle": f"@{p_id}",
                     "Tên Kênh": ch_title,
                     "Subscribers": f"{sub_count:,}",
-                    "Trạng thái": "❌ Không có video > 10 phút trong 6 video gần nhất",
+                    "Trạng thái": "❌ Không có video > 10 phút trong các video gần nhất",
                     "Lý do loại": "Không có video > 10 phút",
                     "Socials": social_contacts
                 }, logs
@@ -2256,10 +2236,10 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
         base_data["Lý do loại"] = f"Kênh ngưng hoạt động (>90 ngày, gần nhất: {latest_date})"
         return False, base_data
 
-    # 5. MUST HAVE AT LEAST 1 VIDEO > 10 MINUTES (600s) IN RECENT 6 VIDEOS
+    # 5. MUST HAVE AT LEAST 1 VIDEO > 10 MINUTES (600s) IN RECENT VIDEOS
     has_10m_video = any(v.get('Seconds', 0) >= 600 for v in recent_vids)
     if not has_10m_video: 
-        base_data["Lý do loại"] = "Không có video > 10 phút trong 6 video gần nhất"
+        base_data["Lý do loại"] = "Không có video > 10 phút trong các video gần nhất"
         return False, base_data
         
     return True, base_data
@@ -2787,11 +2767,14 @@ with tab4:
                     file.seek(0)
                     try:
                         df_excel = pd.read_excel(file)
-                        for col in df_excel.columns:
+                        target_cols = [col for col in df_excel.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
+                        cols_to_use = target_cols if target_cols else df_excel.columns
+                        for col in cols_to_use:
+                            if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower(): continue
                             for val in df_excel[col].dropna():
+                                if is_garbage_input(val): continue
                                 p = to_pure_id(val)
-                                if p:
-                                    new_handles_to_insert.append({"handle": p, "youtuber_name": p.upper(), "source": file.name, "filename": file.name})
+                                if p: new_handles_to_insert.append({"handle": p, "youtuber_name": p.upper(), "source": file.name, "filename": file.name})
                     except Exception: pass
 
         if new_handles_to_insert:
