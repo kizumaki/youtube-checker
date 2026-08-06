@@ -491,13 +491,24 @@ def extract_search_query(raw_url):
         return decoded
     return None
 
+# GENERATE SMART CANDIDATE HANDLES FROM SEARCH QUERIES
 def get_candidate_handles(q):
-    decoded = urllib.parse.unquote(q)
-    c1 = re.sub(r'[^a-zA-Z0-9_.-]', '', decoded).strip().lower()
-    c2 = re.sub(r'[^a-zA-Z0-9]', '', decoded).strip().lower()
+    if not q: return [], ""
+    decoded = urllib.parse.unquote(str(q)).strip()
+    cleaned_name = re.sub(r'[^\w\s.-]', '', decoded).strip()
+    
     candidates = []
-    if c1: candidates.append(c1)
-    if c2 and c2 != c1: candidates.append(c2)
+    c1 = re.sub(r'[\s._-]+', '', cleaned_name).lower()
+    if c1 and len(c1) >= 3: candidates.append(c1)
+        
+    c2 = re.sub(r'[\s]+', '', cleaned_name).lower()
+    c2_clean = re.sub(r'[^a-zA-Z0-9_.-]', '', c2)
+    if c2_clean and c2_clean not in candidates and len(c2_clean) >= 3: candidates.append(c2_clean)
+        
+    if 'official' in cleaned_name.lower():
+        c3 = c1.replace('official', '')
+        if c3 and c3 not in candidates and len(c3) >= 3: candidates.append(c3)
+            
     return candidates, decoded
 
 # ULTRA-DEEP CONTACT & SOCIAL MEDIA EXTRACTION ENGINE
@@ -642,36 +653,21 @@ def get_video_details_direct(video_ids, api_keys, exhausted_keys=None):
         except Exception: pass
     return video_data, logs
 
+# DEEP 50-VIDEO PLAYLIST FETCHING (NEVER MISSES LONG VIDEOS FOR CHANNELS POSTING DAILY SHORTS)
 def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
     long_vids = []
     try:
         if cid:
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
-            resp = requests.get(rss_url, timeout=4)
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.content)
-                ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
-                rss_v_ids = []
-                for entry in root.findall('atom:entry', ns):
-                    v_id_el = entry.find('yt:videoId', ns)
-                    if v_id_el is not None and v_id_el.text: rss_v_ids.append(v_id_el.text)
-                    if len(rss_v_ids) >= 15: break
-                if rss_v_ids:
-                    v_details, _ = get_video_details_direct(rss_v_ids, api_keys, exhausted_keys)
+            playlist_id, sub_count, desc, joined, country_name, country_code, avatar, key_used, cost, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
+            if playlist_id:
+                # Fetch up to 50 recent upload items to bypass daily Shorts spam
+                v_res, key_used2, cost2, l3 = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50), api_keys, exhausted_keys, cost=1)
+                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                if v_ids:
+                    v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
                     for v in v_details:
                         if is_long_form_video(v, min_seconds=180): long_vids.append(v)
                         if len(long_vids) >= 6: break
-
-            if len(long_vids) < 6:
-                playlist_id, sub_count, desc, joined, country_name, country_code, avatar, key_used, cost, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
-                if playlist_id:
-                    v_res, key_used2, cost2, l3 = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50), api_keys, exhausted_keys, cost=1)
-                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
-                    if v_ids:
-                        v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
-                        for v in v_details:
-                            if is_long_form_video(v, min_seconds=180) and v not in long_vids: long_vids.append(v)
-                            if len(long_vids) >= 6: break
     except Exception: pass
     return long_vids[:6]
 
@@ -776,14 +772,26 @@ def get_handles_from_search_queries(search_queries):
             
     return handles
 
+# FILTER OUT GARBAGE INPUTS FROM EXCEL (STT, SUBS COUNT, EXTERNAL LINKS)
+def is_garbage_input(s):
+    if not s or pd.isna(s): return True
+    val = str(s).strip()
+    if not val: return True
+    # Pure numbers or numbers with commas/dots like 138,000,000 or rank 12
+    if re.match(r'^\d[\d,.]*$', val): return True
+    # External non-youtube links
+    if val.startswith('http') and 'youtube.com' not in val.lower() and 'youtu.be' not in val.lower():
+        return True
+    return False
+
 def parse_raw_inputs_to_handles(raw_inputs_list):
     handles = set()
     video_ids = set()
     search_queries = set()
+    
     for raw in raw_inputs_list:
-        if not raw or pd.isna(raw): continue
+        if is_garbage_input(raw): continue
         s = str(raw).strip()
-        if not s: continue
         
         sq = extract_search_query(s)
         if sq:
@@ -793,19 +801,23 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
         v_id = extract_video_id(s)
         if v_id:
             video_ids.add(v_id)
-        else:
-            p_h = to_pure_id(s)
-            if p_h: handles.add(p_h)
+            continue
             
+        p_h = to_pure_id(s)
+        if p_h:
+            handles.add(p_h)
+        else:
+            search_queries.add(s)
+
+    if search_queries:
+        with st.spinner(f"🔍 Đang giải mã {len(search_queries)} Link Tìm Kiếm / Tên YouTuber sang Handle..."):
+            resolved_sq_h = get_handles_from_search_queries(list(search_queries))
+            for h in resolved_sq_h: handles.add(h)
+
     if video_ids:
         with st.spinner(f"🔍 Đang giải mã {len(video_ids)} Link Video sang Handle Kênh..."):
             resolved_h = get_handles_from_video_ids(list(video_ids))
             for h in resolved_h: handles.add(h)
-
-    if search_queries:
-        with st.spinner(f"🔍 Đang giải mã {len(search_queries)} Link Tìm Kiếm sang Handle Kênh..."):
-            resolved_sq_h = get_handles_from_search_queries(list(search_queries))
-            for h in resolved_sq_h: handles.add(h)
             
     return list(handles)
 
@@ -834,14 +846,17 @@ def extract_raw_inputs_from_file(uploaded_file):
         elif fname.endswith('.csv'):
             df = pd.read_csv(io.BytesIO(file_bytes))
             for col in df.columns:
-                raw_list.append(str(col))
-                for val in df[col].dropna(): raw_list.append(str(val))
+                if 'youtube' in str(col).lower() or 'youtuber' in str(col).lower() or 'handle' in str(col).lower():
+                    for val in df[col].dropna(): raw_list.append(str(val))
         elif fname.endswith('.xlsx') or fname.endswith('.xls'):
-            raw_list.append(uploaded_file.name)
             df = pd.read_excel(io.BytesIO(file_bytes))
             for col in df.columns:
-                raw_list.append(str(col))
-                for val in df[col].dropna(): raw_list.append(str(val))
+                col_s = str(col).lower()
+                if 'search' in col_s or 'youtuber' in col_s or 'handle' in col_s or 'link' in col_s:
+                    for val in df[col].dropna(): raw_list.append(str(val))
+            if not raw_list:
+                for col in df.columns:
+                    for val in df[col].dropna(): raw_list.append(str(val))
         elif fname.endswith('.docx') or fname.endswith('.doc'):
             text = extract_text_from_docx_bytes(file_bytes)
             raw_list = re.split(r'[\n,\t\r]+', text)
@@ -849,7 +864,6 @@ def extract_raw_inputs_from_file(uploaded_file):
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
                 for name in z.namelist():
                     if name.startswith('~$') or name.startswith('._') or name.endswith('/'): continue
-                    raw_list.append(name)
                     n_lower = name.lower()
                     z_bytes = z.read(name)
                     if n_lower.endswith('.txt'):
@@ -860,15 +874,17 @@ def extract_raw_inputs_from_file(uploaded_file):
                         try:
                             df = pd.read_excel(io.BytesIO(z_bytes))
                             for col in df.columns:
-                                raw_list.append(str(col))
-                                for val in df[col].dropna(): raw_list.append(str(val))
+                                col_s = str(col).lower()
+                                if 'search' in col_s or 'youtuber' in col_s or 'handle' in col_s or 'link' in col_s:
+                                    for val in df[col].dropna(): raw_list.append(str(val))
                         except Exception: pass
                     elif n_lower.endswith('.csv'):
                         try:
                             df = pd.read_csv(io.BytesIO(z_bytes))
                             for col in df.columns:
-                                raw_list.append(str(col))
-                                for val in df[col].dropna(): raw_list.append(str(val))
+                                col_s = str(col).lower()
+                                if 'search' in col_s or 'youtuber' in col_s or 'handle' in col_s or 'link' in col_s:
+                                    for val in df[col].dropna(): raw_list.append(str(val))
                         except Exception: pass
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return raw_list
@@ -889,7 +905,7 @@ def is_long_form_video(v, min_seconds=180):
     if v.get('Seconds', 0) <= min_seconds: return False
     return True
 
-# MULTI-FORMAT ACCURATE 90-DAY ACTIVITY CHECKER
+# ACCURATE MULTI-FORMAT 90-DAY ACTIVITY CHECKER
 def is_within_last_90_days(date_str):
     if not date_str or date_str == "N/A": return False
     s = str(date_str).strip()
@@ -1598,7 +1614,7 @@ def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
 # --- TAB 1: BATCH SEARCH WITH DUAL PAGINATION CONTROLS ---
 with tab1:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>🔍 Kiểm tra Trùng Lặp Danh Sách Handle / Link Video Hàng Loạt</h3>", unsafe_allow_html=True)
-    st.caption("💡 *Tự động lọc nâng cao: Bắt buộc >= 1M Subs, có Video > 10 phút trong 6 video mới nhất, ra video trong 90 ngày và LOẠI HẲN kênh Shorts/Phim/Music/News.*")
+    st.caption("💡 *Tự động lọc nâng cao: Bắt buộc >= 1M Subs, có Video > 10 phút trong các video mới nhất, ra video trong 90 ngày và LOẠI HẲN kênh Shorts/Phim/Music/News.*")
     
     col_s1, col_s2 = st.columns([2, 1])
     with col_s1: text_input_area = st.text_area("Dán danh sách Handle/Link kênh/Link Video/Link Tìm kiếm vào đây (mỗi dòng 1 link):", height=180)
