@@ -68,7 +68,10 @@ def add_batch_to_cart_db(channels_list):
 
 def remove_from_cart_db(pure_handle):
     try:
-        supabase.table("cart_items").delete().eq("handle", pure_handle).execute()
+        p_raw = str(pure_handle).strip()
+        supabase.table("cart_items").delete().ilike("handle", p_raw).execute()
+        supabase.table("cart_items").delete().eq("handle", p_raw).execute()
+        supabase.table("cart_items").delete().eq("handle", p_raw.lower()).execute()
     except Exception as e:
         print(f"[Supabase Log] Lỗi xóa kênh khỏi Giỏ hàng DB: {e}")
 
