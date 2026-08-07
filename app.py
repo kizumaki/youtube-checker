@@ -391,15 +391,12 @@ with tab1:
                 items_per_page = 20
                 if 'p_state_t1_new' not in st.session_state: st.session_state['p_state_t1_new'] = 1
                 total_pages = max(1, (len(new_handles) + items_per_page - 1) // items_per_page)
-                page_new = st.session_state['p_state_t1_new']
-                start_idx = (page_new - 1) * items_per_page
+                
+                page_new = st.number_input("Trang hiện tại:", min_value=1, max_value=total_pages, step=1, key="page_t1_new_input", value=st.session_state['p_state_t1_new'])
+                st.session_state['p_state_t1_new'] = page_new
+                
+                start_idx = (int(page_new) - 1) * items_per_page
                 paged_new = new_handles[start_idx:start_idx + items_per_page]
-
-                col_p1, col_p2 = st.columns([2, 8])
-                with col_p1:
-                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_t1_new_top", on_change=sync_pagination_top, args=("page_t1_new_top", "page_t1_new_bottom", "p_state_t1_new"))
-                with col_p2:
-                    st.write(""); st.markdown(f"📄 **Trang {int(page_new)} / {total_pages}** *(Hiển thị {format_page_range(int(page_new), items_per_page, len(new_handles))} kênh)*")
 
                 for idx, item in enumerate(paged_new):
                     p_id = to_pure_id(item["Handle"]); is_active = (p_id == st.session_state.get('active_inspected_handle')); is_in_cart = p_id in st.session_state['cart']
@@ -891,16 +888,3 @@ with tab6:
         
         st.markdown("#### 🚀 Dãy Từ Khóa Chủ Đạo (Master Keywords String - Dùng để Copy hoặc Nạp tự động):")
         st.code(", ".join(ext_data['master_keywords']), language="text")
-"""
-
-print("Checking full app_full_text:")
-import py_compile
-import tempfile
-
-with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
-    f.write(app_full_text)
-    tmp_path = f.name
-
-py_compile.compile(tmp_path)
-print("Complete app.py AST compilation: 100% CLEAN AND VALID!")
-}
