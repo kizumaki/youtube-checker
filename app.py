@@ -11,7 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from db_utils import (
     supabase, load_api_keys_from_db, save_api_keys_to_db, 
     load_cart_from_db, add_to_cart_db, remove_from_cart_db, 
-    clear_entire_database, add_batch_to_cart_db, clear_cart_db
+    clear_entire_database, add_batch_to_cart_db, clear_cart_db,
+    confirm_clear_db_dialog
 )
 from yt_utils import (
     DEFAULT_API_KEY, to_pure_id, get_channel_link, extract_raw_inputs_from_file, 
@@ -20,11 +21,12 @@ from yt_utils import (
     render_social_badges_html, extract_channel_master_keywords, 
     process_single_candidate, clean_and_extract_keywords, get_channel_id_by_handle_direct,
     get_channel_details_direct, get_6_recent_videos_direct, extract_handle_from_filename,
-    extract_text_from_docx_bytes, is_garbage_input
+    extract_text_from_docx_bytes, is_garbage_input, get_handles_from_video_ids,
+    get_handles_from_search_queries
 )
 from ui_components import (
     inject_theme_css, render_kpi_cards, show_ai_email_dialog, 
-    render_shared_cart_ui
+    render_shared_cart_ui, show_video_dialog, compare_channels_dialog
 )
 
 # Page Config
@@ -219,7 +221,7 @@ with tab1:
             ("🚫 BỊ LOẠI", f"{len(rejected_handles)}", "#EF4444")
         ], card_bg, border_color)
 
-    render_shared_cart_ui(key_suffix="tab1")
+    render_shared_cart_ui("tab1")
 
 # --- TAB 2 ---
 with tab2:
@@ -249,6 +251,22 @@ with tab2:
             if db_upsert: supabase.table("channels").upsert(db_upsert, on_conflict="handle").execute()
             st.session_state['tab2_audit_output'] = {"results": audit_res, "count": len(audit_res), "total_requested": tot_t2}; st.rerun()
 
+# --- TAB 3 ---
+with tab3:
+    st.markdown("<h3 style='font-weight: 700;'>🎯 Săn Kênh Tương Tự & Giỏ Hàng (Multi-threaded Speed)</h3>", unsafe_allow_html=True)
+    col_f1, col_f2 = st.columns([2, 1])
+    with col_f1:
+        seed_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @NickDiGiovanni):", key="seed_input_tab3")
+        custom_kw = st.text_input("Từ khóa chủ đề:", key="custom_kw_tab3")
+    with col_f2:
+        min_subs = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
+        min_dur = st.selectbox("Lọc Yêu Cầu Đồ Dài Video:", options=[600], index=0, format_func=lambda x: "Bắt buộc có Video > 10 phút")
+
+# --- TAB 4 ---
+with tab4:
+    st.markdown("<h3 style='font-weight: 700;'>📤 Upload file .ZIP, .TXT, .XLSX hoặc .DOCX</h3>", unsafe_allow_html=True)
+    files_up = st.file_uploader("Kéo thả file vào đây:", type=["zip", "txt", "xlsx", "xls", "docx", "csv"], accept_multiple_files=True)
+
 # --- TAB 5 ---
 with tab5:
     st.markdown("<h3 style='font-weight: 700;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
@@ -258,7 +276,7 @@ with tab5:
         df_all = pd.DataFrame(res.data)
         st.write(f"Tổng số kênh hiện có trong DB: **{len(df_all)}**")
         st.dataframe(df_all, use_container_width=True)
-    else: st.info("Database hiện đang trống!")
+    else: st.info("Database trống.")
 
 # --- TAB 6 ---
 with tab6:
