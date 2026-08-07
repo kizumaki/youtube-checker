@@ -225,7 +225,17 @@ with st.sidebar:
 
     st.divider()
     if st.button("🔄 Làm Mới Màn Hình", use_container_width=True):
-        cb_clear_all(); st.rerun()
+        st.session_state['selected_channels'].clear()
+        keys_to_clear = [
+            'batch_check_new', 'batch_check_existing', 'batch_check_rejected',
+            'passed_channels', 'rejected_channels', 'tab2_audit_output',
+            'active_inspected_handle', 'last_inspected_data',
+            'last_inspected_handle', 'pending_keywords'
+        ]
+        for k in keys_to_clear:
+            st.session_state.pop(k, None)
+        st.session_state['chk_counter'] += 1
+        st.rerun()
 
 # --- APP HEADER ---
 st.markdown("""
