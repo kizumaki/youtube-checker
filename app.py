@@ -71,6 +71,12 @@ if 'global_api_keys' not in st.session_state: st.session_state['global_api_keys'
 if 'cart' not in st.session_state: st.session_state['cart'] = load_cart_from_db()
 if 'active_inspected_handle' not in st.session_state: st.session_state['active_inspected_handle'] = None
 
+# --- PROCESS PENDING DATA FROM TAB 6 TO TAB 3 (BEFORE WIDGET INSTANTIATION) ---
+if 'pending_seed_handle' in st.session_state:
+    st.session_state['seed_input_tab3'] = st.session_state.pop('pending_seed_handle')
+if 'pending_keywords' in st.session_state:
+    st.session_state['custom_kw_tab3'] = st.session_state.pop('pending_keywords')
+
 TAG_OPTIONS = ["📌 Chưa phân loại", "🔥 Ưu tiên làm", "📩 Đã liên hệ", "⏳ Đang chờ duyệt", "✅ Đã chốt", "❌ Bỏ qua"]
 
 def get_tag_index(tag):
@@ -230,7 +236,8 @@ with st.sidebar:
             'batch_check_new', 'batch_check_existing', 'batch_check_rejected',
             'passed_channels', 'rejected_channels', 'tab2_audit_output',
             'active_inspected_handle', 'last_inspected_data',
-            'last_inspected_handle', 'seed_input_tab3', 'custom_kw_tab3'
+            'last_inspected_handle', 'seed_input_tab3', 'custom_kw_tab3',
+            'pending_seed_handle', 'pending_keywords'
         ]
         for k in keys_to_clear:
             st.session_state.pop(k, None)
@@ -780,9 +787,9 @@ with tab6:
                     ext_data = extract_channel_master_keywords(cid_insp)
                     kw_str = ", ".join(ext_data['master_keywords'])
                     
-                    # Direct session state assignment to update Tab 3 widgets
-                    st.session_state['seed_input_tab3'] = f"@{pure_inspect}"
-                    st.session_state['custom_kw_tab3'] = kw_str
+                    # Pass via pending keys to be populated safely before Tab 3 widget instantiation
+                    st.session_state['pending_seed_handle'] = f"@{pure_inspect}"
+                    st.session_state['pending_keywords'] = kw_str
                     st.session_state['last_inspected_data'] = ext_data
                     st.session_state['last_inspected_handle'] = pure_inspect
                     st.rerun()
