@@ -68,11 +68,15 @@ if 'exhausted_keys_set' not in st.session_state: st.session_state['exhausted_key
 if 'chk_counter' not in st.session_state: st.session_state['chk_counter'] = 0
 if 'global_api_keys' not in st.session_state: st.session_state['global_api_keys'] = load_api_keys_from_db() or DEFAULT_API_KEY
 if 'cart' not in st.session_state: st.session_state['cart'] = load_cart_from_db()
+if 'active_inspected_handle' not in st.session_state: st.session_state['active_inspected_handle'] = None
 
 TAG_OPTIONS = ["📌 Chưa phân loại", "🔥 Ưu tiên làm", "📩 Đã liên hệ", "⏳ Đang chờ duyệt", "✅ Đã chốt", "❌ Bỏ qua"]
 
 def get_tag_index(tag):
     return TAG_OPTIONS.index(tag) if tag in TAG_OPTIONS else 0
+
+def set_active_inspected_channel(pure_handle):
+    st.session_state['active_inspected_handle'] = pure_handle
 
 def toggle_select_channel(pure_handle):
     if pure_handle in st.session_state['selected_channels']:
@@ -364,13 +368,6 @@ with tab1:
                 start_idx = (page_new - 1) * items_per_page
                 paged_new = new_handles[start_idx:start_idx + items_per_page]
 
-                col_p1, col_p2 = st.columns([2, 8])
-                with col_p1:
-                    st.number_input("Trang (Kênh Mới):", min_value=1, max_value=total_pages, step=1, key="page_new_t1_top", on_change=sync_pagination_top, args=("page_new_t1_top", "page_new_t1_bottom", "p_state_t1_new"))
-                with col_p2:
-                    st.write("")
-                    st.markdown(f"📄 **Trang {page_new} / {total_pages}** *(Hiển thị {format_page_range(page_new, items_per_page, len(new_handles))} kênh)*")
-
                 for idx, item in enumerate(paged_new):
                     p_id = to_pure_id(item["Handle"]); is_active = (p_id == st.session_state.get('active_inspected_handle')); is_in_cart = p_id in st.session_state['cart']
                     stt_num = start_idx + idx + 1
@@ -610,7 +607,7 @@ with tab5:
         with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
         with c_top2:
             if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
-                confirm_clear_db_dialog()
+                confirm_clear_db_dialog(cb_clear_all)
 
         st.divider()
         st.markdown("#### 🔍 Bộ Lọc Database Chuyên Sâu:")
