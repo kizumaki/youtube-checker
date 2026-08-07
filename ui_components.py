@@ -1,21 +1,37 @@
+import datetime
 import io
 import zipfile
-import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 import requests
 import streamlit as st
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from db_utils import (
-    add_to_cart_db, remove_from_cart_db, clear_cart_db, 
-    load_campaigns, save_campaigns, add_batch_to_cart_db, supabase
+    add_batch_to_cart_db,
+    add_to_cart_db,
+    clear_cart_db,
+    load_campaigns,
+    remove_from_cart_db,
+    save_campaigns,
+    supabase,
 )
 from yt_utils import (
-    render_social_badges_html, to_pure_id, get_channel_link, 
-    run_single_channel_audit, DEFAULT_API_KEY, get_channel_id_by_handle_direct,
-    get_channel_details_direct, get_6_recent_videos_direct, is_long_form_video,
-    yt_execute_safe
+    DEFAULT_API_KEY,
+    get_6_recent_videos_direct,
+    get_channel_details_direct,
+    get_channel_id_by_handle_direct,
+    get_channel_link,
+    is_long_form_video,
+    render_social_badges_html,
+    run_single_channel_audit,
+    to_pure_id,
+    yt_execute_safe,
 )
+
+def set_active_inspected_channel(pure_handle):
+    """Lưu handle kênh đang được xem preview vào session state."""
+    st.session_state['active_inspected_handle'] = pure_handle
 
 def inject_theme_css(is_dark, bg_color, card_bg, text_color, border_color, sidebar_bg):
     st.markdown(f"""
