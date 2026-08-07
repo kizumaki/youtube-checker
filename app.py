@@ -391,12 +391,15 @@ with tab1:
                 items_per_page = 20
                 if 'p_state_t1_new' not in st.session_state: st.session_state['p_state_t1_new'] = 1
                 total_pages = max(1, (len(new_handles) + items_per_page - 1) // items_per_page)
-                
-                page_new = st.number_input("Trang hiện tại:", min_value=1, max_value=total_pages, step=1, key="page_t1_new_input", value=st.session_state['p_state_t1_new'])
-                st.session_state['p_state_t1_new'] = page_new
-                
-                start_idx = (int(page_new) - 1) * items_per_page
+                page_new = st.session_state['p_state_t1_new']
+                start_idx = (page_new - 1) * items_per_page
                 paged_new = new_handles[start_idx:start_idx + items_per_page]
+
+                col_p1, col_p2 = st.columns([2, 8])
+                with col_p1:
+                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_t1_new_top", on_change=sync_pagination_top, args=("page_t1_new_top", "page_t1_new_bottom", "p_state_t1_new"))
+                with col_p2:
+                    st.write(""); st.markdown(f"📄 **Trang {int(page_new)} / {total_pages}** *(Hiển thị {format_page_range(int(page_new), items_per_page, len(new_handles))} kênh)*")
 
                 for idx, item in enumerate(paged_new):
                     p_id = to_pure_id(item["Handle"]); is_active = (p_id == st.session_state.get('active_inspected_handle')); is_in_cart = p_id in st.session_state['cart']
@@ -522,12 +525,40 @@ with tab2:
                     except Exception: pass
 
             prog_t2.empty(); stat_t2.empty()
-            if db_upsert_list_t2: supabase.table("channels").upsert(db_upsert_list_t2, on_conflict="handle").execute()
-            st.session_state['tab2_audit_output'] = {"results": audit_results_t2, "count": len(audit_results_t2), "total_requested": tot_t2}; st.rerun()
+            # Bỏ tự động lưu DB theo yêu cầu - Chỉ lưu danh sách vào session state để người dùng chủ động bấm Nạp vào DB!
+            st.session_state['tab2_audit_output'] = {
+                "results": audit_results_t2, 
+                "count": len(audit_results_t2), 
+                "total_requested": tot_t2,
+                "db_list": db_upsert_list_t2
+            }
+            st.rerun()
 
     if 'tab2_audit_output' in st.session_state:
-        out_data = st.session_state['tab2_audit_output']; audit_results_t2 = out_data["results"]; tot_t2 = out_data["total_requested"]
+        out_data = st.session_state['tab2_audit_output']
+        audit_results_t2 = out_data["results"]
+        tot_t2 = out_data["total_requested"]
+        db_list_t2 = out_data.get("db_list", [])
         st.divider()
+
+        # Thêm Nút chủ động Nạp kênh vào Database
+        if db_list_t2:
+            st.markdown("#### 💾 Quản lý Đồng Bộ Database:")
+            col_save1, col_save2 = st.columns([3, 7])
+            with col_save1:
+                if st.button(f"💾 Nạp ({len(db_list_t2)}) Kênh Đã Cào Vào Database", type="primary", use_container_width=True, key="btn_save_tab2_to_db"):
+                    try:
+                        supabase.table("channels").upsert(db_list_t2, on_conflict="handle").execute()
+                        for k in list(st.session_state.keys()):
+                            if k.startswith('crm_cache_') or k == 'tab5_crm_cache':
+                                st.session_state.pop(k, None)
+                        st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công {len(db_list_t2)} kênh mới từ Live Audit Scraper vào Database!"
+                        st.toast(f"🎉 Đã nạp thành công {len(db_list_t2)} kênh vào Database!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Lỗi khi lưu vào Database: {e}")
+            st.divider()
+
         if len(audit_results_t2) == 1:
             f_name, b_bytes = audit_results_t2[0]
             st.success(f"🎉 Đã dựng xong báo cáo Audit V4.14 cho kênh @{f_name.split('_')[0]}!")
