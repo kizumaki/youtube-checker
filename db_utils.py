@@ -63,9 +63,10 @@ def clear_cart_db():
     try: supabase.table("cart_items").delete().neq("handle", "___NONE___").execute()
     except Exception: pass
 
-def clear_entire_database():
+def clear_entire_database(cb_clear_all=None):
     try:
         supabase.table("channels").delete().neq("handle", "___NONE___").execute()
+        if cb_clear_all: cb_clear_all()
         return True
     except Exception:
         return False
@@ -80,3 +81,17 @@ def load_campaigns():
 def save_campaigns(camps_dict):
     try: supabase.table("app_config").upsert({"key": "campaigns", "value": json.dumps(camps_dict)}, on_conflict="key").execute()
     except Exception: pass
+
+@st.dialog("⚠️ CẢNH BÁO: XÓA SẠCH DATABASE", width="small")
+def confirm_clear_db_dialog(cb_clear_all=None):
+    st.error("🚨 Hành động này sẽ XÓA VĨNH VIỄN toàn bộ danh sách kênh trong Supabase và KHÔNG THỂ HỒI PHỤC!")
+    st.write("Vui lòng gõ **`XOA DATABASE`** vào ô bên dưới để xác nhận:")
+    confirm_txt = st.text_input("Xác nhận:", key="input_confirm_db_wipe")
+    if st.button("💣 XÁC NHẬN XÓA SẠCH DATABASE", type="primary", use_container_width=True):
+        if confirm_txt.strip().upper() == "XOA DATABASE":
+            if clear_entire_database(cb_clear_all):
+                st.success("🎉 Đã xóa sạch vĩnh viễn toàn bộ Database!")
+                st.rerun()
+            else: st.error("❌ Đã xảy ra lỗi khi kết nối Supabase!")
+        else:
+            st.warning("⚠️ Mã xác nhận không đúng! Vui lòng gõ 'XOA DATABASE'.")
