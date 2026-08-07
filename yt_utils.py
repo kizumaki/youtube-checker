@@ -418,17 +418,42 @@ def clean_and_extract_keywords(text, seed_handle=""):
 
 def extract_channel_master_keywords(channel_id):
     active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
-    pool, channel_kw, top_tags = [], [], []
+    pool, channel_kw, video_tags = [], [], []
     try:
         ch_res, _, _, _ = yt_execute_safe(lambda yt: yt.channels().list(part="brandingSettings,contentDetails", id=channel_id), active_keys, cost=1)
         if 'items' in ch_res and len(ch_res['items']) > 0:
-            raw_kw = ch_res['items'][0].get('brandingSettings', {}).get('channel', {}).get('keywords', '')
+            item = ch_res['items'][0]
+            raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
             found = re.findall(r'"([^"]+)"|\b([a-zA-Z0-9]{3,})\b', raw_kw)
             for k1, k2 in found:
                 kw = k1 or k2
-                if kw and len(kw) > 2: pool.append(kw.lower()); channel_kw.append(kw.lower())
+                if kw and len(kw) > 2:
+                    pool.append(kw.lower())
+                    channel_kw.append(kw.lower())
+            
+            playlist_id = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+            if playlist_id:
+                v_res, _, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=15), active_keys, cost=1)
+                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', []) if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
+                if v_ids:
+                    v_details, _, _, _ = yt_execute_safe(lambda yt: yt.videos().list(part="snippet", id=','.join(v_ids[:15])), active_keys, cost=1)
+                    tag_counter = Counter()
+                    for v_item in v_details.get('items', []):
+                        tags = v_item.get('snippet', {}).get('tags', [])
+                        for t in tags:
+                            t_clean = t.strip().lower()
+                            if len(t_clean) > 2:
+                                tag_counter[t_clean] += 1
+                                pool.append(t_clean)
+                    video_tags = [t for t, _ in tag_counter.most_common(10)]
     except Exception: pass
-    return {"master_keywords": [w for w, _ in Counter(pool).most_common(15)], "channel_keywords": list(set(channel_kw))[:10], "top_tags": top_tags}
+    
+    master = [w for w, _ in Counter(pool).most_common(15)]
+    return {
+        "master_keywords": master,
+        "channel_keywords": list(dict.fromkeys(channel_kw))[:10],
+        "top_tags": video_tags
+    }
 
 def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
@@ -512,6 +537,11 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
         r = idx + 13
         c_title = ws1.cell(row=r, column=1, value=v.get('Title', ''))
         c_link = ws1.cell(row=r, column=2, value=v.get('Link', ''))
+        
+        # Make Column B Clickable Hyperlink
+        if v.get('Link'):
+            c_link.hyperlink = v.get('Link')
+            c_link.font = Font(color="0000FF", underline="single")
         
         dur_sec = v.get('Seconds', 0)
         h, rem = divmod(dur_sec, 3600)
