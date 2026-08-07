@@ -52,8 +52,8 @@ def to_pure_id(raw_val):
 def get_channel_link(pure_id):
     if not pure_id: return ""
     if pure_id.startswith('UC') and len(pure_id) == 24:
-        return f"https://www.youtube.com/channel/{pure_id}"
-    return f"https://www.youtube.com/@{pure_id}"
+        return f"[https://www.youtube.com/channel/](https://www.youtube.com/channel/){pure_id}"
+    return f"[https://www.youtube.com/](https://www.youtube.com/)@{pure_id}"
 
 def extract_search_query(raw_url):
     if not raw_url or pd.isna(raw_url): return None
@@ -186,7 +186,7 @@ def get_video_details_direct(video_ids, api_keys, exhausted_keys=None):
                 formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
                 video_data.append({
                     'Title': item['snippet']['title'], 'Description': item['snippet'].get('description', ''),
-                    'Link': f"https://youtube.com/watch?v={item['id']}", 'Length (Exact)': dur_str, 
+                    'Link': f"[https://youtube.com/watch?v=](https://youtube.com/watch?v=){item['id']}", 'Length (Exact)': dur_str, 
                     'Seconds': duration_seconds, 'Views': int(item['statistics'].get('viewCount', 0)), 
                     'Published Date': formatted_date, 'Video ID': item['id']
                 })
@@ -223,15 +223,15 @@ def extract_contacts_and_socials(text_corpus):
     if valid_emails: contacts['Email'] = valid_emails[0]
     
     ig = re.findall(r'(?:https?://)?(?:www\.)?instagram\.com/([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if ig: contacts['Instagram'] = f"https://instagram.com/{ig[0].rstrip('./-_,')}"
+    if ig: contacts['Instagram'] = f"[https://instagram.com/](https://instagram.com/){ig[0].rstrip('./-_,')}"
     tt = re.findall(r'(?:https?://)?(?:www\.)?tiktok\.com/@?([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if tt: contacts['TikTok'] = f"https://tiktok.com/@{tt[0].rstrip('./-_,')}"
+    if tt: contacts['TikTok'] = f"[https://tiktok.com/](https://tiktok.com/)@{tt[0].rstrip('./-_,')}"
     x = re.findall(r'(?:https?://)?(?:www\.)?(?:twitter\.com|x\.com)/([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if x: contacts['Twitter'] = f"https://x.com/{x[0].rstrip('./-_,')}"
+    if x: contacts['Twitter'] = f"[https://x.com/](https://x.com/){x[0].rstrip('./-_,')}"
     dc = re.findall(r'(?:https?://)?(?:www\.)?discord\.(?:gg|com/invite)/([a-zA-Z0-9_-]+)', corpus, re.IGNORECASE)
-    if dc: contacts['Discord'] = f"https://discord.gg/{dc[0]}"
+    if dc: contacts['Discord'] = f"[https://discord.gg/](https://discord.gg/){dc[0]}"
     fb = re.findall(r'(?:https?://)?(?:www\.)?facebook\.com/([a-zA-Z0-9_.-]+)', corpus, re.IGNORECASE)
-    if fb: contacts['Facebook'] = f"https://facebook.com/{fb[0].rstrip('./-_,')}"
+    if fb: contacts['Facebook'] = f"[https://facebook.com/](https://facebook.com/){fb[0].rstrip('./-_,')}"
     return contacts
 
 def render_social_badges_html(contacts_dict):
@@ -326,7 +326,7 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
             continue
         v_id = extract_video_id(s)
         if v_id: video_ids.add(v_id); continue
-        if s.startswith('@') or 'youtube.com/' in s.lower() or re.match(r'^UC[a-zA-Z0-9_-]{22}$', s):
+        if s.startswith('@') or '[youtube.com/](https://youtube.com/)' in s.lower() or re.match(r'^UC[a-zA-Z0-9_-]{22}$', s):
             p_h = to_pure_id(s)
             if p_h: handles.add(p_h)
             continue
@@ -479,7 +479,7 @@ def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_jo
     total_seconds = sum(v.get('Seconds', 0) for v in video_data)
     total_minutes = round(total_seconds / 60)
     
-    # Rows 2 to 7: Summary Metrics
+    # Summary Metrics (Rows 2 to 7)
     ws1['A2'] = f"Total Videos: {total_videos:,}"
     ws1['A2'].font = Font(bold=True)
     
@@ -656,20 +656,37 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
         return excel_bytes, f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx", logs
     except Exception: return None, None, logs
 
-def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
-    if p_id in db_matches:
-        db_item = db_matches[p_id]
+def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=None):
+    p_clean = p_id.lower()
+    
+    # 1. Check direct input against DB map
+    if p_clean in db_existing_map:
+        db_item = db_existing_map[p_clean]
         return "EXISTING", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": db_item.get("youtuber_name", p_id.upper()), "Trạng thái": "❌ Đã có trong DB"}, []
     
-    cid, _, _, l1 = get_channel_id_by_handle_direct(p_id, api_keys, exhausted_keys)
+    cid, _, _, l1 = get_channel_id_by_handle_direct(p_clean, api_keys, exhausted_keys)
     logs = list(l1)
     if not cid: return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": p_id.upper(), "Trạng thái": "❌ Không tìm thấy kênh", "Lý do loại": "Không tồn tại trên YT"}, logs
     
+    # 2. Check Channel ID against DB map
+    cid_clean = cid.lower()
+    if cid_clean in db_existing_map:
+        db_item = db_existing_map[cid_clean]
+        return "EXISTING", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": db_item.get("youtuber_name", p_id.upper()), "Trạng thái": "❌ Đã có trong DB"}, []
+
     try:
         res, _, _, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,statistics", id=cid), api_keys, exhausted_keys, cost=1)
         logs.extend(l2)
         if res.get('items'):
             item = res['items'][0]
+            custom_url = item['snippet'].get('customUrl', '')
+            pure_custom = to_pure_id(custom_url)
+            
+            # 3. Check Custom URL Handle against DB map
+            if pure_custom and pure_custom.lower() in db_existing_map:
+                db_item = db_existing_map[pure_custom.lower()]
+                return "EXISTING", {"Handle": f"@{pure_custom}", "Tên Kênh": db_item.get("youtuber_name", item['snippet'].get('title', p_id.upper())), "Trạng thái": "❌ Đã có trong DB"}, logs
+
             ch_title = item['snippet'].get('title', p_id.upper())
             ch_desc = item['snippet'].get('description', '')
             country_code = item['snippet'].get('country', 'N/A')
@@ -740,3 +757,8 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
     if not is_within_last_90_days(latest_date): base_data["Lý do loại"] = f"Kênh ngưng hoạt động (>90 ngày, gần nhất: {latest_date})"; return False, base_data
     if not any(v.get('Seconds', 0) >= 600 for v in recent_vids): base_data["Lý do loại"] = "Không có video > 10 phút trong các video gần nhất"; return False, base_data
     return True, base_data
+'''
+
+compile(clean_app, "app.py", "exec")
+compile(yt_utils_code, "yt_utils.py", "exec")
+print("Verified syntax of both files: 100% SUCCESS!")
