@@ -25,11 +25,14 @@ def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]: return None
     s = str(raw_val).strip()
     
+    # 1. Preserve case for Channel ID if URL is youtube.com/channel/UC...
     m_chan = re.search(r'youtube\.com/channel/([a-zA-Z0-9_-]{24})', s)
     if m_chan: return m_chan.group(1)
         
+    # 2. Direct Channel ID (UC + 22 chars = 24 chars)
     if re.match(r'^UC[a-zA-Z0-9_-]{22}$', s): return s
 
+    # 3. Standard Handle URL or @handle
     m_url = re.search(r'youtube\.com/(?:@|c/|user/)?([^\s?#/]+)', s, re.IGNORECASE)
     if m_url:
         val = m_url.group(1)
@@ -69,6 +72,9 @@ def generate_candidate_handles_from_query(q):
     c2 = re.sub(r'[\s]+', '', cleaned_name).lower()
     c2_clean = re.sub(r'[^a-zA-Z0-9_.-]', '', c2)
     if c2_clean and c2_clean not in candidates and len(c2_clean) >= 3: candidates.append(c2_clean)
+    if 'official' in cleaned_name.lower():
+        c3 = c1.replace('official', '')
+        if c3 and c3 not in candidates and len(c3) >= 3: candidates.append(c3)
     return candidates
 
 def is_garbage_input(s):
