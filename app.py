@@ -117,12 +117,22 @@ def format_page_range(page_num, items_per_page, total_items):
 
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
-    try: supabase.table("channels").delete().eq("handle", pure_handle).execute()
+    p_clean = pure_handle.lower()
+    try: supabase.table("channels").delete().eq("handle", p_clean).execute()
     except Exception: pass
-    remove_from_cart_db(pure_handle)
-    if pure_handle in st.session_state.get('cart', {}): del st.session_state['cart'][pure_handle]
-    if st.session_state.get('active_inspected_handle') == pure_handle: st.session_state['active_inspected_handle'] = None
-    if pure_handle in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(pure_handle)
+    remove_from_cart_db(p_clean)
+    if p_clean in st.session_state.get('cart', {}): del st.session_state['cart'][p_clean]
+    if st.session_state.get('active_inspected_handle') == p_clean: st.session_state['active_inspected_handle'] = None
+    if p_clean in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(p_clean)
+    
+    # Remove from session state result lists so UI updates instantly!
+    for list_key in ['batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'passed_channels', 'rejected_channels']:
+        if list_key in st.session_state:
+            st.session_state[list_key] = [
+                item for item in st.session_state[list_key]
+                if to_pure_id(item.get('Handle') or item.get('handle')) != p_clean
+            ]
+
     for key in list(st.session_state.keys()):
         if key.startswith('crm_cache_') or key == 'tab5_crm_cache': st.session_state.pop(key, None)
 
@@ -237,7 +247,7 @@ with st.sidebar:
             'passed_channels', 'rejected_channels', 'tab2_audit_output',
             'active_inspected_handle', 'last_inspected_data',
             'last_inspected_handle', 'seed_input_tab3', 'custom_kw_tab3',
-            'pending_seed_handle', 'pending_keywords'
+            'pending_seed_handle', 'pending_keywords', 'p_state_t1_new'
         ]
         for k in keys_to_clear:
             st.session_state.pop(k, None)
@@ -279,8 +289,18 @@ with tab1:
         if not target_list: st.warning("⚠️ Vui lòng dán danh sách Handle, Link Video hoặc chọn file để kiểm tra!")
         else:
             progress_bar = st.progress(0); status_text = st.empty()
-            response = supabase.table("channels").select("handle, youtuber_name").in_("handle", target_list).execute()
-            db_matches = {item["handle"].lower(): item for item in response.data} if response.data else {}
+            
+            # Fetch ALL channels from Supabase DB to build complete duplicate map
+            db_existing_map = {}
+            try:
+                response = supabase.table("channels").select("handle, youtuber_name").execute()
+                if response.data:
+                    for item in response.data:
+                        h = item.get("handle")
+                        if h:
+                            p = to_pure_id(h)
+                            if p: db_existing_map[p.lower()] = item
+            except Exception: pass
             
             new_handles, existing_handles, rejected_handles = [], [], []
             total_items, completed_count = len(target_list), 0
@@ -289,7 +309,7 @@ with tab1:
             exhausted_set_t1 = set(st.session_state.get('exhausted_keys_set', set()))
 
             with ThreadPoolExecutor(max_workers=8) as executor:
-                futures = [executor.submit(process_tab1_single_handle, p_id, db_matches, active_keys_t1, exhausted_set_t1) for p_id in target_list]
+                futures = [executor.submit(process_tab1_single_handle, p_id, db_existing_map, active_keys_t1, exhausted_set_t1) for p_id in target_list]
                 for future in as_completed(futures):
                     try:
                         status, res_data, _ = future.result()
@@ -383,6 +403,12 @@ with tab1:
                 start_idx = (page_new - 1) * items_per_page
                 paged_new = new_handles[start_idx:start_idx + items_per_page]
 
+                col_p1, col_p2 = st.columns([2, 8])
+                with col_p1:
+                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_t1_new_top", on_change=sync_pagination_top, args=("page_t1_new_top", "page_t1_new_bottom", "p_state_t1_new"))
+                with col_p2:
+                    st.write(""); st.markdown(f"📄 **Trang {int(page_new)} / {total_pages}** *(Hiển thị {format_page_range(int(page_new), items_per_page, len(new_handles))} kênh)*")
+
                 for idx, item in enumerate(paged_new):
                     p_id = to_pure_id(item["Handle"]); is_active = (p_id == st.session_state.get('active_inspected_handle')); is_in_cart = p_id in st.session_state['cart']
                     stt_num = start_idx + idx + 1
@@ -410,7 +436,7 @@ with tab1:
                                 if bc1.button("🛒 Giỏ", key=f"add_t1_{p_id}", use_container_width=True):
                                     item_data = {"Handle": item["Handle"], "Tên Kênh": item.get("Tên Kênh", p_id.upper()), "Link Kênh": get_channel_link(p_id), "Trạng Thái DB": "✅ KÊNH MỚI", "Tag": "📌 Chưa phân loại", "Socials": item.get("Socials", {})}
                                     st.session_state['cart'][p_id] = item_data; add_to_cart_db(p_id, item_data); st.rerun()
-                            if bc2.button("🗑️ Xóa", key=f"del_t1_{p_id}", use_container_width=True): delete_channel_from_system(p_id); st.rerun()
+                            if bc2.button("🗑️ Xóa", key=f"del_t1_{p_id}", use_container_width=True): delete_channel_from_system(p_id); st.toast(f"🗑️ Đã xóa kênh @{p_id}!"); st.rerun()
 
         with res_tab2:
             if existing_handles:
@@ -873,3 +899,8 @@ with tab6:
         
         st.markdown("#### 🚀 Dãy Từ Khóa Chủ Đạo (Master Keywords String - Dùng để Copy hoặc Nạp tự động):")
         st.code(", ".join(ext_data['master_keywords']), language="text")
+'''
+
+compile(app_code_updated, "app.py", "exec")
+print("app.py clean compilation: PASS!")
+}
