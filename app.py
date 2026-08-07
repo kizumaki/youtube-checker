@@ -230,7 +230,7 @@ with st.sidebar:
             'batch_check_new', 'batch_check_existing', 'batch_check_rejected',
             'passed_channels', 'rejected_channels', 'tab2_audit_output',
             'active_inspected_handle', 'last_inspected_data',
-            'last_inspected_handle', 'pending_keywords'
+            'last_inspected_handle', 'seed_input_tab3', 'custom_kw_tab3'
         ]
         for k in keys_to_clear:
             st.session_state.pop(k, None)
@@ -476,11 +476,10 @@ with tab3:
                     cid_auto, _, _, _ = get_channel_id_by_handle_direct(pure_s_auto, active_keys)
                     if cid_auto:
                         ext = extract_channel_master_keywords(cid_auto)
-                        st.session_state['pending_keywords'] = ", ".join(ext['master_keywords'][:6]); st.rerun()
+                        st.session_state['custom_kw_tab3'] = ", ".join(ext['master_keywords'][:6]); st.rerun()
                 except Exception as e: st.error(f"Lỗi: {e}")
         
-        default_kw = st.session_state.get('pending_keywords', '')
-        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", value=default_kw, key="custom_kw_tab3")
+        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", key="custom_kw_tab3")
     with col_f2:
         min_subs_choice = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
         min_duration_choice = st.selectbox("Lọc Yêu Cầu Đồ Dài Video:", options=[600], index=0, format_func=lambda x: "Bắt buộc có Video > 10 phút")
@@ -779,7 +778,11 @@ with tab6:
                 if not cid_insp: st.error(f"Không tìm thấy Channel ID cho kênh @{pure_inspect}!")
                 else:
                     ext_data = extract_channel_master_keywords(cid_insp)
-                    st.session_state['pending_keywords'] = ", ".join(ext_data['master_keywords'])
+                    kw_str = ", ".join(ext_data['master_keywords'])
+                    
+                    # Direct session state assignment to update Tab 3 widgets
+                    st.session_state['seed_input_tab3'] = f"@{pure_inspect}"
+                    st.session_state['custom_kw_tab3'] = kw_str
                     st.session_state['last_inspected_data'] = ext_data
                     st.session_state['last_inspected_handle'] = pure_inspect
                     st.rerun()
