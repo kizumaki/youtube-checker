@@ -25,14 +25,11 @@ def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]: return None
     s = str(raw_val).strip()
     
-    # 1. Preserve case for Channel ID if URL is youtube.com/channel/UC...
     m_chan = re.search(r'youtube\.com/channel/([a-zA-Z0-9_-]{24})', s)
     if m_chan: return m_chan.group(1)
         
-    # 2. Direct Channel ID
     if re.match(r'^UC[a-zA-Z0-9_-]{22}$', s): return s
 
-    # 3. Standard Handle URL or @handle
     m_url = re.search(r'youtube\.com/(?:@|c/|user/)?([^\s?#/]+)', s, re.IGNORECASE)
     if m_url:
         val = m_url.group(1)
