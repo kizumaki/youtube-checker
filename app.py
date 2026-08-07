@@ -26,6 +26,7 @@ from ui_components import (
     inject_theme_css,
     render_kpi_cards,
     render_shared_cart_ui,
+    set_active_inspected_channel,
     show_ai_email_dialog,
     show_video_dialog,
 )
@@ -74,9 +75,6 @@ TAG_OPTIONS = ["📌 Chưa phân loại", "🔥 Ưu tiên làm", "📩 Đã liê
 
 def get_tag_index(tag):
     return TAG_OPTIONS.index(tag) if tag in TAG_OPTIONS else 0
-
-def set_active_inspected_channel(pure_handle):
-    st.session_state['active_inspected_handle'] = pure_handle
 
 def toggle_select_channel(pure_handle):
     if pure_handle in st.session_state['selected_channels']:
