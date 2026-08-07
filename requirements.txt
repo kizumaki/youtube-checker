@@ -10,3 +10,8 @@ openpyxl
 pillow
 pandas
 requests
+streamlit-option-menu
+plotly
+matplotlib
+wordcloud
+httpx
