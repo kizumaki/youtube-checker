@@ -412,6 +412,33 @@ with tab1:
                                     st.session_state['cart'][p_id] = item_data; add_to_cart_db(p_id, item_data); st.rerun()
                             if bc2.button("🗑️ Xóa", key=f"del_t1_{p_id}", use_container_width=True): delete_channel_from_system(p_id); st.rerun()
 
+        with res_tab2:
+            if existing_handles:
+                st.caption("📋 Danh sách kênh trùng lặp đã tồn tại sẵn trong Database:")
+                df_exist = pd.DataFrame(existing_handles)
+                cols_exist = [c for c in ['Handle', 'Tên Kênh', 'Trạng thái'] if c in df_exist.columns]
+                st.dataframe(df_exist[cols_exist], use_container_width=True)
+            else:
+                st.info("Không có kênh nào bị trùng lặp trong đợt kiểm tra này.")
+
+        with res_tab3:
+            if rejected_handles:
+                st.caption("📋 Bảng chi tiết lý do từng kênh bị gạt bỏ khỏi danh sách đạt chuẩn:")
+                for idx, item in enumerate(rejected_handles):
+                    p_id = to_pure_id(item.get("Handle", ""))
+                    with st.container(border=True):
+                        rc1, rc2 = st.columns([6, 4])
+                        with rc1:
+                            st.markdown(f"### #{idx+1} <a href='{get_channel_link(p_id)}' style='color:#EF4444;'>{item.get('Handle')}</a>", unsafe_allow_html=True)
+                            st.write(f"**Tên Kênh:** {item.get('Tên Kênh', p_id.upper() if p_id else 'N/A')}")
+                            if item.get('Subscribers'):
+                                st.write(f"👥 **Subs:** `{item.get('Subscribers')}`")
+                        with rc2:
+                            reason = item.get('Lý do loại') or item.get('Trạng thái') or 'Không đạt tiêu chí lọc'
+                            st.markdown(f"<div style='background-color:#FEE2E2; border:1px solid #EF4444; padding:12px; border-radius:8px;'><span style='color:#B91C1C; font-weight:800; font-size:0.9rem;'>🔴 LÝ DO LOẠI:</span><br><span style='color:#991B1B; font-weight:700;'>{reason}</span></div>", unsafe_allow_html=True)
+            else:
+                st.info("Không có kênh nào bị loại.")
+
     render_shared_cart_ui(key_suffix="tab1")
 
 # --- TAB 2: LIVE API SCRAPER ---
@@ -787,7 +814,6 @@ with tab6:
                     ext_data = extract_channel_master_keywords(cid_insp)
                     kw_str = ", ".join(ext_data['master_keywords'])
                     
-                    # Pass via pending keys to be populated safely before Tab 3 widget instantiation
                     st.session_state['pending_seed_handle'] = f"@{pure_inspect}"
                     st.session_state['pending_keywords'] = kw_str
                     st.session_state['last_inspected_data'] = ext_data
