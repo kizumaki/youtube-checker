@@ -117,23 +117,45 @@ def format_page_range(page_num, items_per_page, total_items):
 
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
-    p_clean = pure_handle.lower()
-    try: supabase.table("channels").delete().eq("handle", p_clean).execute()
-    except Exception: pass
-    remove_from_cart_db(p_clean)
-    if p_clean in st.session_state.get('cart', {}): del st.session_state['cart'][p_clean]
-    if st.session_state.get('active_inspected_handle') == p_clean: st.session_state['active_inspected_handle'] = None
-    if p_clean in st.session_state['selected_channels']: st.session_state['selected_channels'].remove(p_clean)
+    p_raw = str(pure_handle).strip()
+    p_clean = p_raw.lower()
     
+    # Execute case-insensitive and exact case deletes in Supabase DB
+    try:
+        supabase.table("channels").delete().ilike("handle", p_raw).execute()
+        supabase.table("channels").delete().eq("handle", p_raw).execute()
+        supabase.table("channels").delete().eq("handle", p_clean).execute()
+    except Exception: pass
+    
+    try:
+        remove_from_cart_db(p_raw)
+        remove_from_cart_db(p_clean)
+    except Exception: pass
+
+    # Remove from session state cart
+    cart_keys_to_del = [k for k in st.session_state.get('cart', {}) if k.lower() == p_clean]
+    for k in cart_keys_to_del:
+        st.session_state['cart'].pop(k, None)
+
+    if st.session_state.get('active_inspected_handle') in [p_clean, p_raw.lower()]:
+        st.session_state['active_inspected_handle'] = None
+
+    # Remove from selected_channels set
+    sel_to_remove = [s for s in st.session_state.get('selected_channels', set()) if s.lower() == p_clean]
+    for s in sel_to_remove:
+        st.session_state['selected_channels'].remove(s)
+
+    # Remove from temporary batch check lists
     for list_key in ['batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'passed_channels', 'rejected_channels']:
         if list_key in st.session_state:
             st.session_state[list_key] = [
                 item for item in st.session_state[list_key]
-                if to_pure_id(item.get('Handle') or item.get('handle')) != p_clean
+                if (to_pure_id(item.get('Handle') or item.get('handle')) or '').lower() != p_clean
             ]
 
     for key in list(st.session_state.keys()):
-        if key.startswith('crm_cache_') or key == 'tab5_crm_cache': st.session_state.pop(key, None)
+        if key.startswith('crm_cache_') or key == 'tab5_crm_cache':
+            st.session_state.pop(key, None)
 
 def set_api_keys(key_string):
     keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
