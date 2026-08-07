@@ -329,10 +329,24 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
             continue
         v_id = extract_video_id(s)
         if v_id: video_ids.add(v_id); continue
+        
+        # Bóc tách trực tiếp Channel ID dạng UC... nếu có trong chuỗi
+        uc_cids = re.findall(r'\b(UC[a-zA-Z0-9_-]{22})\b', s)
+        if uc_cids:
+            for cid in uc_cids: handles.add(cid)
+            continue
+            
+        # Bóc tách trực tiếp Handle @... nếu có trong chuỗi
+        at_handles = re.findall(r'@([a-zA-Z0-9_.-]{3,})', s)
+        if at_handles:
+            for h in at_handles: handles.add(h.lower())
+            continue
+
         if s.startswith('@') or 'youtube.com/' in s.lower() or re.match(r'^UC[a-zA-Z0-9_-]{22}$', s):
             p_h = to_pure_id(s)
             if p_h: handles.add(p_h)
             continue
+            
         clean_text = re.sub(r'^@+', '', s).strip()
         if clean_text:
             search_queries.add(clean_text)
@@ -363,24 +377,18 @@ def extract_text_from_docx_bytes(file_bytes):
 def extract_raw_inputs_from_file(uploaded_file):
     raw_list, fname = [], uploaded_file.name.lower()
     try:
-        uploaded_file.seek(0)
-        file_bytes = uploaded_file.read()
-        uploaded_file.seek(0)
-        if fname.endswith('.txt'):
-            raw_list = re.split(r'[\n,\t\r]+', file_bytes.decode("utf-8", errors="ignore"))
+        uploaded_file.seek(0); file_bytes = uploaded_file.read(); uploaded_file.seek(0)
+        if fname.endswith('.txt'): raw_list = re.split(r'[\n,\t\r]+', file_bytes.decode("utf-8", errors="ignore"))
         elif fname.endswith('.csv') or fname.endswith('.xlsx') or fname.endswith('.xls'):
             df = pd.read_csv(io.BytesIO(file_bytes)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(file_bytes))
             target_cols = [col for col in df.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
             cols_to_use = target_cols if target_cols else df.columns
             for col in cols_to_use:
-                if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower():
-                    continue
-                for val in df[col].dropna():
-                    raw_list.append(str(val))
+                if 'stats' in str(col).lower() or 'kz.youtubers' in str(col).lower(): continue
+                for val in df[col].dropna(): raw_list.append(str(val))
         elif fname.endswith('.docx') or fname.endswith('.doc'):
             raw_list = re.split(r'[\n,\t\r]+', extract_text_from_docx_bytes(file_bytes))
-    except Exception as e:
-        st.error(f"Lỗi đọc file: {e}")
+    except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return raw_list
 
 def extract_handle_from_filename(filename):
@@ -714,14 +722,14 @@ def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=N
         if not recent_vids:
             return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Kênh chỉ làm Shorts / Không có video dài", "Lý do loại": "Kênh chỉ làm Shorts", "Socials": socials}, logs
 
-            latest_date = recent_vids[0].get('Published Date', 'N/A')
-            if not is_within_last_90_days(latest_date):
-                return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ Ngưng hoạt động (>90 ngày, gần nhất: {latest_date})", "Lý do loại": "Kênh ngưng hoạt động (>90 ngày)", "Socials": socials}, logs
+        latest_date = recent_vids[0].get('Published Date', 'N/A')
+        if not is_within_last_90_days(latest_date):
+            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ Ngưng hoạt động (>90 ngày, gần nhất: {latest_date})", "Lý do loại": "Kênh ngưng hoạt động (>90 ngày)", "Socials": socials}, logs
 
-            if not any(v.get('Seconds', 0) >= 600 for v in recent_vids):
-                return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Không có video > 10 phút trong các video gần nhất", "Lý do loại": "Không có video > 10 phút", "Socials": socials}, logs
-            
-            return "NEW", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Quốc gia": country_name, "Link Kênh": get_channel_link(p_id), "Trạng thái": "✅ Kênh Mới Đạt Chuẩn", "Socials": socials}, logs
+        if not any(v.get('Seconds', 0) >= 600 for v in recent_vids):
+            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Không có video > 10 phút trong các video gần nhất", "Lý do loại": "Không có video > 10 phút", "Socials": socials}, logs
+        
+        return "NEW", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Quốc gia": country_name, "Link Kênh": get_channel_link(p_id), "Trạng thái": "✅ Kênh Mới Đạt Chuẩn", "Socials": socials}, logs
     except Exception: pass
     return "REJECTED", {"Handle": display_handle, "Tên Kênh": display_name, "Trạng thái": "❌ Lỗi đọc dữ liệu API", "Lý do loại": "Lỗi API", "Socials": {}}, logs
 
