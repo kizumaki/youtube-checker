@@ -478,7 +478,9 @@ with tab3:
                         ext = extract_channel_master_keywords(cid_auto)
                         st.session_state['pending_keywords'] = ", ".join(ext['master_keywords'][:6]); st.rerun()
                 except Exception as e: st.error(f"Lỗi: {e}")
-        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", key="custom_kw_tab3")
+        
+        default_kw = st.session_state.get('pending_keywords', '')
+        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", value=default_kw, key="custom_kw_tab3")
     with col_f2:
         min_subs_choice = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
         min_duration_choice = st.selectbox("Lọc Yêu Cầu Đồ Dài Video:", options=[600], index=0, format_func=lambda x: "Bắt buộc có Video > 10 phút")
@@ -794,5 +796,10 @@ with tab6:
             for kw in ext_data['channel_keywords']: st.write(f"• `{kw}`")
         with col_t2:
             st.markdown("#### 📌 Top Video Tags Xuất Hiện Nhiều Nhất:")
-            for tag in ext_data['top_tags']: st.write(f"• `{tag}`")
+            if ext_data['top_tags']:
+                for tag in ext_data['top_tags']: st.write(f"• `{tag}`")
+            else:
+                st.caption("Chưa có hoặc Kênh không khai báo Video Tags.")
+        
+        st.markdown("#### 🚀 Dãy Từ Khóa Chủ Đạo (Master Keywords String - Dùng để Copy hoặc Nạp tự động):")
         st.code(", ".join(ext_data['master_keywords']), language="text")
