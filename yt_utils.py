@@ -16,10 +16,16 @@ import streamlit as st
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Alignment, Font, PatternFill
 from PIL import Image as PILImage
 
 DEFAULT_API_KEY = st.secrets.get("YOUTUBE_API_KEY", "AIzaSyDDBEJscqkGGpG1xtuL4wYPuFkS4BIL854")
+
+ROW_COLORS = [
+    "2F5597", "C00000", "70AD47", "7030A0", "00C0C0",
+    "E37222", "41536B", "A04000", "385723", "626262"
+]
 
 def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]: return None
@@ -175,7 +181,7 @@ def get_video_details_direct(video_ids, api_keys, exhausted_keys=None):
                 duration_seconds = int(isodate.parse_duration(item['contentDetails']['duration']).total_seconds())
                 h, rem = divmod(duration_seconds, 3600)
                 m, s = divmod(rem, 60)
-                dur_str = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"00:{m:02d}:{s:02d}"
+                dur_str = f"{h:02d}:{m:02d}:{s:02d}"
                 pub_date = item['snippet']['publishedAt']
                 formatted_date = pd.to_datetime(pub_date).strftime("%Y-%m-%d")
                 video_data.append({
@@ -424,6 +430,172 @@ def extract_channel_master_keywords(channel_id):
     except Exception: pass
     return {"master_keywords": [w for w, _ in Counter(pool).most_common(15)], "channel_keywords": list(set(channel_kw))[:10], "top_tags": top_tags}
 
+def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
+    wb = openpyxl.Workbook()
+    
+    # -------------------------------------------------------------
+    # SHEET 1: Channel Summary Report
+    # -------------------------------------------------------------
+    ws1 = wb.active
+    ws1.title = clean_handle.upper()[:31]
+    
+    # Header Banner
+    ws1.merge_cells('A1:E1')
+    report_title = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {datetime.datetime.now().strftime('%d-%m-%Y')}"
+    ws1['A1'] = report_title
+    ws1['A1'].font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
+    ws1['A1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    ws1['A1'].alignment = Alignment(horizontal="center", vertical="center")
+    ws1.row_dimensions[1].height = 30
+
+    # Calculate metrics
+    total_videos = len(video_data)
+    total_views = sum(v.get('Views', 0) for v in video_data)
+    total_seconds = sum(v.get('Seconds', 0) for v in video_data)
+    total_minutes = round(total_seconds / 60)
+    
+    # Rows 2 to 7: Summary Metrics
+    ws1['A2'] = f"Total Videos: {total_videos:,}"
+    ws1['A2'].font = Font(bold=True)
+    
+    ws1['A3'] = f"Total Duration: {total_minutes:,} minutes"
+    ws1['A3'].font = Font(bold=True)
+    
+    ws1['A4'] = f"Total Views: {total_views:,}"
+    ws1['A4'].font = Font(bold=True)
+    
+    ws1['A5'] = f"Total Subscribers: {sub_count:,}"
+    ws1['A5'].font = Font(bold=True)
+    
+    ws1['A6'] = f"Country Location: {channel_country if channel_country else 'N/A'}"
+    ws1['A6'].font = Font(bold=True)
+    
+    ws1['A7'] = f"Channel Joined Date: {channel_joined if channel_joined else 'N/A'}"
+    ws1['A7'].font = Font(bold=True)
+    
+    # Description Block
+    ws1['A9'] = "Channel Description Text:"
+    ws1['A9'].font = Font(bold=True)
+    
+    ws1['A10'] = channel_desc if channel_desc else "N/A"
+    ws1['A10'].alignment = Alignment(wrap_text=True, vertical="top")
+    
+    # Embed Avatar Image at C2
+    if avatar_url:
+        try:
+            img_res = requests.get(avatar_url, timeout=5)
+            if img_res.status_code == 200:
+                img_data = io.BytesIO(img_res.content)
+                pil_img = PILImage.open(img_data)
+                pil_img = pil_img.resize((140, 140))
+                
+                img_buf = io.BytesIO()
+                pil_img.save(img_buf, format="PNG")
+                img_buf.seek(0)
+                
+                from openpyxl.drawing.image import Image as ExcelImage
+                excel_img = ExcelImage(img_buf)
+                ws1.add_image(excel_img, 'C2')
+        except Exception: pass
+
+    # Row 12: Video Table Headers
+    headers = ["Video Title", "Link", "Length", "Views", "Published Date"]
+    for c_idx, h_text in enumerate(headers, 1):
+        cell = ws1.cell(row=12, column=c_idx, value=h_text)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws1.row_dimensions[12].height = 20
+
+    # Row 13+: Video Table Data
+    for idx, v in enumerate(video_data):
+        r = idx + 13
+        c_title = ws1.cell(row=r, column=1, value=v.get('Title', ''))
+        c_link = ws1.cell(row=r, column=2, value=v.get('Link', ''))
+        
+        dur_sec = v.get('Seconds', 0)
+        h, rem = divmod(dur_sec, 3600)
+        m, s = divmod(rem, 60)
+        dur_str = f"{h:02d}:{m:02d}:{s:02d}"
+        
+        c_len = ws1.cell(row=r, column=3, value=dur_str)
+        c_views = ws1.cell(row=r, column=4, value=int(v.get('Views', 0)))
+        c_views.number_format = '#,##0'
+        c_date = ws1.cell(row=r, column=5, value=str(v.get('Published Date', '')))
+        
+        c_len.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws1.column_dimensions['A'].width = 55
+    ws1.column_dimensions['B'].width = 45
+    ws1.column_dimensions['C'].width = 22
+    ws1.column_dimensions['D'].width = 15
+    ws1.column_dimensions['E'].width = 15
+
+    # -------------------------------------------------------------
+    # SHEET 2: Top 10 Video Title
+    # -------------------------------------------------------------
+    ws2 = wb.create_sheet(title="Top 10 Video Title")
+    
+    c1 = ws2.cell(row=1, column=1, value="Top 10 Most Viewed Videos (Click to Watch)")
+    c1.font = Font(bold=True, color="FFFFFF")
+    c1.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    
+    c2 = ws2.cell(row=1, column=2, value="Views")
+    c2.font = Font(bold=True, color="FFFFFF")
+    c2.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    
+    ws2.cell(row=1, column=4, value=f"📊 Top 10 Most Viewed Videos - {clean_handle.upper()}").font = Font(size=14, bold=True, color="1F4E78")
+    
+    top_10 = sorted(video_data, key=lambda x: x.get('Views', 0), reverse=True)[:10]
+    
+    for idx, v in enumerate(top_10):
+        r = idx + 2
+        color = ROW_COLORS[idx % len(ROW_COLORS)]
+        
+        cell_title = ws2.cell(row=r, column=1, value=v.get('Title', ''))
+        cell_title.font = Font(bold=True, color="FFFFFF")
+        cell_title.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        if v.get('Link'):
+            cell_title.hyperlink = v.get('Link')
+            
+        cell_views = ws2.cell(row=r, column=2, value=int(v.get('Views', 0)))
+        cell_views.font = Font(bold=True, color="FFFFFF")
+        cell_views.fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        cell_views.number_format = '#,##0'
+        cell_views.alignment = Alignment(horizontal="right")
+
+    ws2.column_dimensions['A'].width = 50
+    ws2.column_dimensions['B'].width = 15
+
+    # Bar Chart on Sheet 2
+    if len(top_10) > 0:
+        chart = BarChart()
+        chart.type = "col"
+        chart.style = 10
+        chart.y_axis.title = "Total Views"
+        chart.x_axis.title = "Videos"
+        chart.legend = None
+        chart.width = 20
+        chart.height = 12
+        
+        data_ref = Reference(ws2, min_col=2, min_row=1, max_row=len(top_10) + 1)
+        cats_ref = Reference(ws2, min_col=1, min_row=2, max_row=len(top_10) + 1)
+        
+        chart.add_data(data_ref, titles_from_data=True)
+        chart.set_categories(cats_ref)
+        
+        series = chart.series[0]
+        for idx in range(len(top_10)):
+            dp = DataPoint(idx=idx)
+            dp.graphicalProperties.solidFill = ROW_COLORS[idx % len(ROW_COLORS)]
+            series.dPt.append(dp)
+        
+        ws2.add_chart(chart, "D3")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
 def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
     logs = []
     try:
@@ -453,153 +625,6 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
         excel_bytes = generate_v414_excel_report(pure_handle, sub_count, desc, joined, country, avatar, v_data)
         return excel_bytes, f"{pure_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx", logs
     except Exception: return None, None, logs
-
-def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
-    wb = openpyxl.Workbook()
-    
-    # -------------------------------------------------------------
-    # SHEET 1: Summary Report
-    # -------------------------------------------------------------
-    ws1 = wb.active
-    ws1.title = clean_handle.upper()[:31]
-    
-    # Header Banner
-    ws1.merge_cells('A1:E1')
-    report_title = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {datetime.datetime.now().strftime('%d-%m-%Y')}"
-    ws1['A1'] = report_title
-    ws1['A1'].font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
-    ws1['A1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    ws1['A1'].alignment = Alignment(horizontal="left", vertical="center")
-    ws1.row_dimensions[1].height = 30
-
-    # Calculate metrics
-    total_videos = len(video_data)
-    total_views = sum(v.get('Views', 0) for v in video_data)
-    total_seconds = sum(v.get('Seconds', 0) for v in video_data)
-    total_minutes = round(total_seconds / 60)
-    
-    # Summary Metrics (Rows 2 to 7)
-    ws1['A2'] = f"Total Videos: {total_videos:,}"
-    ws1['A2'].font = Font(bold=True)
-    
-    ws1['A3'] = f"Total Duration: {total_minutes:,} minutes"
-    ws1['A3'].font = Font(bold=True)
-    
-    ws1['A4'] = f"Total Views: {total_views:,}"
-    ws1['A4'].font = Font(bold=True)
-    
-    ws1['A5'] = f"Total Subscribers: {sub_count:,}"
-    ws1['A5'].font = Font(bold=True)
-    
-    ws1['A6'] = f"Country Location: {channel_country if channel_country else 'N/A'}"
-    ws1['A6'].font = Font(bold=True)
-    
-    ws1['A7'] = f"Channel Joined Date: {channel_joined if channel_joined else 'N/A'}"
-    ws1['A7'].font = Font(bold=True)
-    
-    # Description Block
-    ws1['A9'] = "Channel Description Text:"
-    ws1['A9'].font = Font(bold=True)
-    
-    ws1['A10'] = channel_desc if channel_desc else "N/A"
-    ws1['A10'].alignment = Alignment(wrap_text=True, vertical="top")
-    
-    # Embed Avatar Image
-    if avatar_url:
-        try:
-            img_res = requests.get(avatar_url, timeout=5)
-            if img_res.status_code == 200:
-                img_data = io.BytesIO(img_res.content)
-                pil_img = PILImage.open(img_data)
-                pil_img = pil_img.resize((140, 140))
-                
-                img_buf = io.BytesIO()
-                pil_img.save(img_buf, format="PNG")
-                img_buf.seek(0)
-                
-                from openpyxl.drawing.image import Image as ExcelImage
-                excel_img = ExcelImage(img_buf)
-                ws1.add_image(excel_img, 'C2')
-        except Exception: pass
-
-    # Video Table Headers (Row 12)
-    headers = ["Video Title", "Link", "Length", "Views", "Published Date"]
-    for c_idx, h_text in enumerate(headers, 1):
-        cell = ws1.cell(row=12, column=c_idx, value=h_text)
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-        cell.alignment = Alignment(horizontal="left" if c_idx != 4 else "right", vertical="center")
-    ws1.row_dimensions[12].height = 20
-
-    # Video Table Rows (Row 13+)
-    for idx, v in enumerate(video_data):
-        r = idx + 13
-        c_title = ws1.cell(row=r, column=1, value=v.get('Title', ''))
-        c_link = ws1.cell(row=r, column=2, value=v.get('Link', ''))
-        c_len = ws1.cell(row=r, column=3, value=v.get('Length (Exact)', '00:00:00'))
-        c_views = ws1.cell(row=r, column=4, value=int(v.get('Views', 0)))
-        c_views.number_format = '#,##0'
-        c_date = ws1.cell(row=r, column=5, value=str(v.get('Published Date', '')))
-        
-        c_title.alignment = Alignment(vertical="center")
-        c_link.alignment = Alignment(vertical="center")
-        c_len.alignment = Alignment(horizontal="center", vertical="center")
-        c_views.alignment = Alignment(horizontal="right", vertical="center")
-        c_date.alignment = Alignment(horizontal="center", vertical="center")
-
-    ws1.column_dimensions['A'].width = 55
-    ws1.column_dimensions['B'].width = 45
-    ws1.column_dimensions['C'].width = 22
-    ws1.column_dimensions['D'].width = 15
-    ws1.column_dimensions['E'].width = 15
-
-    # -------------------------------------------------------------
-    # SHEET 2: Top 10 Video Title
-    # -------------------------------------------------------------
-    ws2 = wb.create_sheet(title="Top 10 Video Title")
-    
-    ws2.cell(row=1, column=1, value="Top 10 Most Viewed Videos (Click to Watch)").font = Font(bold=True)
-    ws2.cell(row=1, column=2, value="Views").font = Font(bold=True)
-    ws2.cell(row=1, column=4, value=f"📊 Top 10 Most Viewed Videos - {clean_handle.upper()}")
-    
-    top_10 = sorted(video_data, key=lambda x: x.get('Views', 0), reverse=True)[:10]
-    
-    for idx, v in enumerate(top_10):
-        r = idx + 2
-        cell_title = ws2.cell(row=r, column=1, value=v.get('Title', ''))
-        if v.get('Link'):
-            cell_title.hyperlink = v.get('Link')
-            cell_title.font = Font(color="0000FF", underline="single")
-            
-        cell_views = ws2.cell(row=r, column=2, value=int(v.get('Views', 0)))
-        cell_views.number_format = '#,##0'
-
-    ws2.column_dimensions['A'].width = 50
-    ws2.column_dimensions['B'].width = 15
-
-    # Add Bar Chart
-    if len(top_10) > 0:
-        chart = BarChart()
-        chart.type = "col"
-        chart.style = 10
-        chart.title = f"📊 Top 10 Most Viewed Videos - {clean_handle.upper()}"
-        chart.y_axis.title = "Total Views"
-        chart.x_axis.title = "Videos"
-        
-        data_ref = Reference(ws2, min_col=2, min_row=1, max_row=len(top_10) + 1)
-        cats_ref = Reference(ws2, min_col=1, min_row=2, max_row=len(top_10) + 1)
-        
-        chart.add_data(data_ref, titles_from_data=True)
-        chart.set_categories(cats_ref)
-        chart.legend = None
-        chart.width = 18
-        chart.height = 10
-        
-        ws2.add_chart(chart, "D1")
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
 
 def process_tab1_single_handle(p_id, db_matches, api_keys, exhausted_keys=None):
     if p_id in db_matches:
