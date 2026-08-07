@@ -899,8 +899,3 @@ with tab6:
         
         st.markdown("#### 🚀 Dãy Từ Khóa Chủ Đạo (Master Keywords String - Dùng để Copy hoặc Nạp tự động):")
         st.code(", ".join(ext_data['master_keywords']), language="text")
-'''
-
-compile(app_code_updated, "app.py", "exec")
-print("app.py clean compilation: PASS!")
-}
