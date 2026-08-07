@@ -41,7 +41,7 @@ def inject_theme_css(is_dark, bg_color, card_bg, text_color, border_color, sideb
 
     .active-banner-tag {{ background-color: #D95F26 !important; color: #FFFFFF !important; padding: 6px 14px !important; border-radius: 8px !important; font-weight: 800 !important; margin-bottom: 12px !important; font-size: 0.85rem !important; letter-spacing: 0.05em !important; display: inline-block !important; box-shadow: 0 3px 10px rgba(217, 95, 38, 0.25) !important; }}
     .active-banner-tag * {{ color: #FFFFFF !important; }}
-    .in-cart-banner-tag {{ background-color: #47A5D1 !important; color: #FFFFFF !important; padding: 6px 14px !important; border-radius: 8px !important; font-weight: 800 !important; margin-bottom: 12px !important; font-size: 0.85rem !important; letter-spacing: 0.05em !important; display: inline-block !important; box-shadow: 0 3px 10px rgba(71, 165, 209, 0.25) !important; }}
+    .in-cart-banner-tag {{ background-color: #47A5D1 !important; color: #FFFFFF !important; padding: 6px 14px !important; border-radius: 8px !important; font-weight: 800 !important; margin-bottom: 12px !important; font-size: 0.85rem !important; display: inline-block !important; box-shadow: 0 3px 10px rgba(71, 165, 209, 0.25) !important; }}
     .in-cart-banner-tag * {{ color: #FFFFFF !important; }}
 
     .stTextInput input, .stTextArea textarea, .stSelectbox select {{ background-color: {card_bg} !important; color: {text_color} !important; border: 1px solid #D1D5DB !important; border-radius: 8px !important; font-family: 'Montserrat', sans-serif !important; }}
