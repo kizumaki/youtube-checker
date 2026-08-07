@@ -423,11 +423,11 @@ with tab1:
 
         with res_tab3:
             if rejected_handles:
-                st.caption("📋 Bảng chi tiết lý do từng kênh bị gạt bỏ khỏi danh sách đạt chuẩn:")
-                for idx, item in enumerate(rejected_handles):
+                st.caption("📋 Bảng chi tiết lý do từng kênh bị gạt bỏ. Bạn có thể bấm '🔄 Phục Hồi' để chuyển kênh sang danh sách Đạt Chuẩn:")
+                for idx, item in enumerate(list(rejected_handles)):
                     p_id = to_pure_id(item.get("Handle", ""))
                     with st.container(border=True):
-                        rc1, rc2 = st.columns([6, 4])
+                        rc1, rc2, rc3 = st.columns([5, 3.5, 1.5])
                         with rc1:
                             st.markdown(f"### #{idx+1} <a href='{get_channel_link(p_id)}' style='color:#EF4444;'>{item.get('Handle')}</a>", unsafe_allow_html=True)
                             st.write(f"**Tên Kênh:** {item.get('Tên Kênh', p_id.upper() if p_id else 'N/A')}")
@@ -435,7 +435,41 @@ with tab1:
                                 st.write(f"👥 **Subs:** `{item.get('Subscribers')}`")
                         with rc2:
                             reason = item.get('Lý do loại') or item.get('Trạng thái') or 'Không đạt tiêu chí lọc'
-                            st.markdown(f"<div style='background-color:#FEE2E2; border:1px solid #EF4444; padding:12px; border-radius:8px;'><span style='color:#B91C1C; font-weight:800; font-size:0.9rem;'>🔴 LÝ DO LOẠI:</span><br><span style='color:#991B1B; font-weight:700;'>{reason}</span></div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='background-color:#FEE2E2; border:1px solid #EF4444; padding:10px; border-radius:8px;'><span style='color:#B91C1C; font-weight:800; font-size:0.85rem;'>🔴 LÝ DO LOẠI:</span><br><span style='color:#991B1B; font-weight:700; font-size:0.85rem;'>{reason}</span></div>", unsafe_allow_html=True)
+                        with rc3:
+                            st.write("")
+                            if st.button("🔄 Phục Hồi", key=f"btn_restore_rej_{idx}_{p_id}", use_container_width=True):
+                                st.session_state['batch_check_rejected'] = [r for r in st.session_state['batch_check_rejected'] if to_pure_id(r.get("Handle")) != p_id]
+                                restored_item = dict(item)
+                                restored_item["Trạng thái"] = "✅ Đã Phục Hồi Thủ Công"
+                                restored_item["Link Kênh"] = get_channel_link(p_id)
+                                if 'batch_check_new' not in st.session_state:
+                                    st.session_state['batch_check_new'] = []
+                                st.session_state['batch_check_new'].append(restored_item)
+                                st.toast(f"🎉 Đã phục hồi kênh @{p_id} sang danh sách Đạt Chuẩn!")
+                                st.rerun()
+                            
+                            if st.button("🛒 Phục Hồi & Vào Giỏ", key=f"btn_restore_cart_{idx}_{p_id}", use_container_width=True):
+                                st.session_state['batch_check_rejected'] = [r for r in st.session_state['batch_check_rejected'] if to_pure_id(r.get("Handle")) != p_id]
+                                restored_item = dict(item)
+                                restored_item["Trạng thái"] = "✅ Đã Phục Hồi Thủ Công"
+                                restored_item["Link Kênh"] = get_channel_link(p_id)
+                                if 'batch_check_new' not in st.session_state:
+                                    st.session_state['batch_check_new'] = []
+                                st.session_state['batch_check_new'].append(restored_item)
+                                
+                                item_data = {
+                                    "Handle": item.get("Handle", f"@{p_id}"),
+                                    "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
+                                    "Link Kênh": get_channel_link(p_id),
+                                    "Trạng Thái DB": "✅ ĐÃ PHỤC HỒI",
+                                    "Tag": "📌 Chưa phân loại",
+                                    "Socials": item.get("Socials", {})
+                                }
+                                st.session_state['cart'][p_id] = item_data
+                                add_to_cart_db(p_id, item_data)
+                                st.toast(f"🎉 Đã phục hồi & thêm kênh @{p_id} vào Giỏ hàng vĩnh viễn!")
+                                st.rerun()
             else:
                 st.info("Không có kênh nào bị loại.")
 
