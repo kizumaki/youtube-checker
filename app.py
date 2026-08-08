@@ -122,12 +122,26 @@ def fetch_all_channels():
     start = 0
     while True:
         try:
-            res = supabase.table("channels").select("*").range(start, start + step - 1).execute()
+            res = supabase.table("channels").select("*").order("created_at", desc=True).range(start, start + step - 1).execute()
             if not res.data: break
             all_data.extend(res.data)
             if len(res.data) < step: break
             start += step
-        except Exception: break
+        except Exception:
+            try:
+                res = supabase.table("channels").select("*").order("id", desc=True).range(start, start + step - 1).execute()
+                if not res.data: break
+                all_data.extend(res.data)
+                if len(res.data) < step: break
+                start += step
+            except Exception:
+                try:
+                    res = supabase.table("channels").select("*").range(start, start + step - 1).execute()
+                    if not res.data: break
+                    all_data.extend(res.data)
+                    if len(res.data) < step: break
+                    start += step
+                except Exception: break
     return all_data
 
 def fetch_all_channel_handles():
@@ -136,12 +150,26 @@ def fetch_all_channel_handles():
     start = 0
     while True:
         try:
-            res = supabase.table("channels").select("handle, youtuber_name").range(start, start + step - 1).execute()
+            res = supabase.table("channels").select("handle, youtuber_name").order("created_at", desc=True).range(start, start + step - 1).execute()
             if not res.data: break
             all_data.extend(res.data)
             if len(res.data) < step: break
             start += step
-        except Exception: break
+        except Exception:
+            try:
+                res = supabase.table("channels").select("handle, youtuber_name").order("id", desc=True).range(start, start + step - 1).execute()
+                if not res.data: break
+                all_data.extend(res.data)
+                if len(res.data) < step: break
+                start += step
+            except Exception:
+                try:
+                    res = supabase.table("channels").select("handle, youtuber_name").range(start, start + step - 1).execute()
+                    if not res.data: break
+                    all_data.extend(res.data)
+                    if len(res.data) < step: break
+                    start += step
+                except Exception: break
     return all_data
 
 def delete_channel_from_system(pure_handle):
@@ -770,10 +798,12 @@ with tab5:
         df_all = pd.DataFrame(all_channels_data)
         if 'created_at' in df_all.columns:
             df_all['created_at_dt'] = pd.to_datetime(df_all['created_at'], errors='coerce')
-            df_all = df_all.sort_values(by='created_at_dt', ascending=False)
+            df_all = df_all.sort_values(by='created_at_dt', ascending=False, na_position='last')
+        elif 'id' in df_all.columns:
+            df_all = df_all.sort_values(by='id', ascending=False)
 
         c_top1, c_top2 = st.columns([7, 3])
-        with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all):,}</span>", unsafe_allow_html=True)
+        with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
         with c_top2:
             if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
                 confirm_clear_db_dialog(cb_clear_all)
@@ -827,7 +857,7 @@ with tab5:
             else: df_filtered = df_pre
         else: df_filtered = df_pre
 
-        st.caption(f"🎯 Kết quả khớp: **{len(df_filtered):,}** / {len(df_all):,} kênh")
+        st.caption(f"🎯 Kết quả khớp: **{len(df_filtered)}** / {len(df_all)} kênh")
 
         if view_mode == "📊 Table Grid View (Bảng nén gọn)":
             df_grid = df_filtered.copy()
