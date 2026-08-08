@@ -115,6 +115,35 @@ def format_page_range(page_num, items_per_page, total_items):
     end_item = min(page_num * items_per_page, total_items)
     return f"{start_item:,} - {end_item:,} / {total_items:,}"
 
+
+def fetch_all_channels():
+    all_data = []
+    step = 1000
+    start = 0
+    while True:
+        try:
+            res = supabase.table("channels").select("*").range(start, start + step - 1).execute()
+            if not res.data: break
+            all_data.extend(res.data)
+            if len(res.data) < step: break
+            start += step
+        except Exception: break
+    return all_data
+
+def fetch_all_channel_handles():
+    all_data = []
+    step = 1000
+    start = 0
+    while True:
+        try:
+            res = supabase.table("channels").select("handle, youtuber_name").range(start, start + step - 1).execute()
+            if not res.data: break
+            all_data.extend(res.data)
+            if len(res.data) < step: break
+            start += step
+        except Exception: break
+    return all_data
+
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
     p_raw = str(pure_handle).strip()
@@ -307,9 +336,9 @@ with tab1:
             
             db_existing_map = {}
             try:
-                response = supabase.table("channels").select("handle, youtuber_name").execute()
-                if response.data:
-                    for item in response.data:
+                db_items = fetch_all_channel_handles()
+                if db_items:
+                    for item in db_items:
                         h = item.get("handle")
                         if h:
                             p = to_pure_id(h)
@@ -547,7 +576,6 @@ with tab2:
                     except Exception: pass
 
             prog_t2.empty(); stat_t2.empty()
-            # Bỏ tự động lưu DB theo yêu cầu - Chỉ lưu danh sách vào session state để người dùng chủ động bấm Nạp vào DB!
             st.session_state['tab2_audit_output'] = {
                 "results": audit_results_t2, 
                 "count": len(audit_results_t2), 
@@ -563,7 +591,6 @@ with tab2:
         db_list_t2 = out_data.get("db_list", [])
         st.divider()
 
-        # Thêm Nút chủ động Nạp kênh vào Database
         if db_list_t2:
             st.markdown("#### 💾 Quản lý Đồng Bộ Database:")
             col_save1, col_save2 = st.columns([3, 7])
@@ -737,19 +764,16 @@ with tab5:
     st.markdown("<h3 style='font-weight: 700; margin-top: 15px;'>📊 Quản lý Database CRM Kênh</h3>", unsafe_allow_html=True)
     if 'new_db_channels_notify' in st.session_state: st.success(st.session_state['new_db_channels_notify'])
 
-    try: res = supabase.table("channels").select("*").order("created_at", desc=True).execute()
-    except Exception:
-        try: res = supabase.table("channels").select("*").order("id", desc=True).execute()
-        except Exception: res = supabase.table("channels").select("*").execute()
+    all_channels_data = fetch_all_channels()
 
-    if res.data:
-        df_all = pd.DataFrame(res.data)
+    if all_channels_data:
+        df_all = pd.DataFrame(all_channels_data)
         if 'created_at' in df_all.columns:
             df_all['created_at_dt'] = pd.to_datetime(df_all['created_at'], errors='coerce')
             df_all = df_all.sort_values(by='created_at_dt', ascending=False)
 
         c_top1, c_top2 = st.columns([7, 3])
-        with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
+        with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all):,}</span>", unsafe_allow_html=True)
         with c_top2:
             if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
                 confirm_clear_db_dialog(cb_clear_all)
@@ -803,7 +827,7 @@ with tab5:
             else: df_filtered = df_pre
         else: df_filtered = df_pre
 
-        st.caption(f"🎯 Kết quả khớp: **{len(df_filtered)}** / {len(df_all)} kênh")
+        st.caption(f"🎯 Kết quả khớp: **{len(df_filtered):,}** / {len(df_all):,} kênh")
 
         if view_mode == "📊 Table Grid View (Bảng nén gọn)":
             df_grid = df_filtered.copy()
@@ -893,9 +917,9 @@ with tab6:
     with col_i2:
         db_channels_options = ["-- Chọn Kênh từ Database --"]
         try:
-            res_db = supabase.table("channels").select("handle, youtuber_name").order("handle").execute()
-            if res_db.data:
-                for row in res_db.data:
+            res_db_data = fetch_all_channel_handles()
+            if res_db_data:
+                for row in res_db_data:
                     h = row.get("handle"); name = row.get("youtuber_name") or h
                     if h: db_channels_options.append(f"@{h} - {name}")
         except Exception: pass
