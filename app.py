@@ -738,7 +738,7 @@ with tab3:
                 top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed) if custom_keywords_input else extract_channel_master_keywords(seed_id)['master_keywords'][:4]
                 st.write(f"🏷️ **Từ khóa quét:** `{', '.join(top_kw_list)}`")
                 candidate_channel_ids = set()
-                q_chan = " ".join(top_kw_list[:2])
+                q_chan = " ".join(top_kw_list[:4])
                 c_search_res, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50), active_keys_t3, exhausted_set_t3, cost=100)
                 for c_item in c_search_res.get('items', []):
                     if c_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(c_item['snippet']['channelId'])
