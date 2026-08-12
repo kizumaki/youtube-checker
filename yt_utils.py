@@ -94,9 +94,12 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
     
     valid_keys = [k for k in api_keys if k not in exhausted_keys]
     if not valid_keys:
+        exhausted_keys.clear()
         valid_keys = list(api_keys)
         
-    last_err, key_logs = None, []
+    last_err = None
+    key_logs = []
+    
     for key in valid_keys:
         try:
             yt = build("youtube", "v3", developerKey=key)
@@ -106,22 +109,25 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
             return res, key, cost, key_logs
         except HttpError as e:
             status_code = e.resp.status if hasattr(e, 'resp') else 0
-            err_content = str(e.content).lower() if hasattr(e, 'content') else str(e).lower()
+            err_msg = str(e.content).lower() if hasattr(e, 'content') else str(e).lower()
             
-            is_quota_or_key_err = (status_code in [403, 429]) or ("quota" in err_content) or ("key" in err_content and "not valid" in err_content)
-            
-            if is_quota_or_key_err:
+            # Tự động nhảy Key khi gặp Key chết/Key hết Quota (400, 401, 403, 429)
+            if status_code in [400, 401, 403, 429] or "key" in err_msg or "quota" in err_msg or "forbidden" in err_msg:
                 exhausted_keys.add(key)
                 key_logs.append((key, "EXHAUSTED", 0))
                 last_err = e
                 continue
             else:
+                key_logs.append((key, "OK", cost))
                 return {"items": []}, key, 0, key_logs
         except Exception as e:
             last_err = e
+            exhausted_keys.add(key)
+            key_logs.append((key, "EXHAUSTED", 0))
             continue
             
-    if last_err: raise last_err
+    if last_err:
+        return {"items": []}, valid_keys[0] if valid_keys else DEFAULT_API_KEY, 0, key_logs
     return {"items": []}, valid_keys[0] if valid_keys else DEFAULT_API_KEY, 0, key_logs
 
 def test_all_api_keys():
