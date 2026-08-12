@@ -219,7 +219,7 @@ def extract_contacts_and_socials(text_corpus):
     if not text_corpus: return {}
     corpus = str(text_corpus)
     contacts = {}
-    emails = re.findall(r' [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,} ', corpus)
+    emails = re.findall(r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b', corpus)
     valid_emails = [e for e in emails if not any(e.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg']) and e.lower() not in ['user@domain.com', 'info@youtube.com']]
     if valid_emails: contacts['Email'] = valid_emails[0]
     
@@ -420,13 +420,33 @@ def passes_layer1_metadata_filter(title, desc, country_code):
     if NON_LATIN_REGEX.search(text): return False, "Ngôn ngữ không phù hợp"
     if VIETNAMESE_UNIQUE_REGEX.search(text): return False, "Kênh Ngôn Ngữ Tiếng Việt"
     for kw in EXCLUDED_KEYWORDS:
-        if re.search(r' ' + re.escape(kw) + r' ', text): return False, f"Loại nội dung cấm ({kw.upper()})"
+        if re.search(r'\b' + re.escape(kw) + r'\b', text): return False, f"Loại nội dung cấm ({kw.upper()})"
     return True, "OK"
 
 def clean_and_extract_keywords(text, seed_handle=""):
-    seed_clean = seed_handle.replace('@', '').lower()
-    words = re.findall(r' [a-zA-Z0-9]{3,} ', text.lower())
-    return [w for w in words if w not in {'the', 'a', 'and', 'official', 'channel', 'video'} and w not in seed_clean]
+    if not text or not str(text).strip():
+        return []
+    
+    seed_clean = seed_handle.replace('@', '').strip().lower()
+    
+    if ',' in str(text):
+        raw_terms = [t.strip().lower() for t in str(text).split(',') if t.strip()]
+    else:
+        raw_terms = [t.strip().lower() for t in re.split(r'[\n\r\t]+', str(text)) if t.strip()]
+
+    clean_terms = []
+    stop_words = {'the', 'a', 'and', 'official', 'channel', 'video', 'youtube', 'shorts', 'short'}
+    
+    for term in raw_terms:
+        t = term.strip()
+        if not t or len(t) < 2:
+            continue
+        if t in stop_words or t == seed_clean:
+            continue
+        if t not in clean_terms:
+            clean_terms.append(t)
+            
+    return clean_terms
 
 def extract_channel_master_keywords(channel_id):
     active_keys = st.session_state.get('api_keys', [DEFAULT_API_KEY])
@@ -436,7 +456,7 @@ def extract_channel_master_keywords(channel_id):
         if 'items' in ch_res and len(ch_res['items']) > 0:
             item = ch_res['items'][0]
             raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
-            found = re.findall(r'"([^"]+)"| ([a-zA-Z0-9]{3,}) ', raw_kw)
+            found = re.findall(r'"([^"]+)"|\b([a-zA-Z0-9]{3,})\b', raw_kw)
             for k1, k2 in found:
                 kw = k1 or k2
                 if kw and len(kw) > 2:
