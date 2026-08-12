@@ -732,12 +732,45 @@ def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=N
     except Exception: pass
     return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": p_id.upper(), "Trạng thái": "❌ Lỗi đọc dữ liệu API", "Lý do loại": "Lỗi API", "Socials": {}}, logs
 
+def check_is_existing(c_handle, c_id, c_custom_url, c_title, db_existing_set):
+    if not db_existing_set: return False
+    candidates_to_check = set()
+    if c_handle:
+        h_clean = str(c_handle).strip().lower()
+        candidates_to_check.add(h_clean)
+        candidates_to_check.add(re.sub(r'^@+', '', h_clean))
+        p = to_pure_id(c_handle)
+        if p:
+            candidates_to_check.add(p.lower())
+            candidates_to_check.add(f"@{p.lower()}")
+            
+    if c_id:
+        candidates_to_check.add(str(c_id).strip().lower())
+        
+    if c_custom_url:
+        cu_clean = str(c_custom_url).strip().lower()
+        candidates_to_check.add(cu_clean)
+        candidates_to_check.add(re.sub(r'^@+', '', cu_clean))
+        p_cu = to_pure_id(c_custom_url)
+        if p_cu:
+            candidates_to_check.add(p_cu.lower())
+            
+    if c_title:
+        t_clean = str(c_title).strip().lower()
+        candidates_to_check.add(t_clean)
+        candidates_to_check.add(re.sub(r'[^a-zA-Z0-9_.-]', '', t_clean))
+
+    for cand in candidates_to_check:
+        if cand and cand in db_existing_set:
+            return True
+    return False
+
 def process_single_candidate(item, min_subs_choice, min_duration_choice, db_existing_set, api_keys, exhausted_keys=None):
     c_handle = to_pure_id(item['snippet'].get('customUrl', '')) or item['id']
     c_title, c_desc, c_country = item['snippet']['title'], item['snippet'].get('description', ''), item['snippet'].get('country', 'N/A')
     c_subs, c_video_count = int(item['statistics'].get('subscriberCount', 0)), int(item['statistics'].get('videoCount', 0))
     c_url = get_channel_link(c_handle)
-    db_status = "❌ Đã có trong DB" if c_handle.lower() in db_existing_set else "✅ KÊNH MỚI"
+    db_status = "❌ Đã có trong DB" if check_is_existing(c_handle, item.get('id'), item.get('snippet', {}).get('customUrl'), c_title, db_existing_set) else "✅ KÊNH MỚI"
     
     c_playlist = item.get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
     latest_date, recent_vids = "N/A", []
@@ -766,7 +799,7 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
         "Score": score if score > 0 else None, "Socials": socials
     }
 
-    if c_handle.lower() in db_existing_set:
+    if check_is_existing(c_handle, item.get('id'), item.get('snippet', {}).get('customUrl'), c_title, db_existing_set):
         base_data["Lý do loại"] = "Kênh đã tồn tại trong Database CRM hoặc Giỏ hàng"
         return False, base_data
     if c_subs < min_subs_choice: base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; return False, base_data
