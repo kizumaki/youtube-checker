@@ -16,9 +16,11 @@ from db_utils import (
     clear_entire_database,
     confirm_clear_db_dialog,
     load_api_keys_from_db,
+    load_campaigns,
     load_cart_from_db,
     remove_from_cart_db,
     save_api_keys_to_db,
+    save_campaigns,
     supabase,
 )
 from ui_components import (
@@ -289,6 +291,195 @@ def get_selected_channel_data():
             data.append(item)
             seen.add(p)
     return data
+
+def render_shared_cart_ui(key_suffix="default"):
+    st.divider()
+    cart = st.session_state.get('cart', {})
+    
+    if not cart:
+        st.info("🛒 Giỏ hàng dùng chung hiện đang trống. Bấm '🛒 Thêm' ở Tab 1 hoặc Tab 3 để nhặt kênh vào giỏ!")
+        return
+
+    # Đối soát trạng thái DB thực tế của từng kênh trong giỏ
+    db_items = fetch_all_channel_handles()
+    db_handles_set = {to_pure_id(r["handle"]).lower() for r in db_items if to_pure_id(r.get("handle"))}
+    db_names_set = {str(r.get("youtuber_name")).strip().lower() for r in db_items if r.get("youtuber_name")}
+
+    for p_id, item_data in cart.items():
+        c_title = item_data.get("Tên Kênh") or item_data.get("youtuber_name") or ""
+        p_id_clean = to_pure_id(p_id) or p_id.lower()
+        if p_id_clean in db_handles_set or c_title.strip().lower() in db_names_set:
+            item_data["Trạng Thái DB"] = "❌ Đã có trong DB"
+        else:
+            item_data["Trạng Thái DB"] = "✅ KÊNH MỚI"
+
+    c_head1, c_head2 = st.columns([7, 3])
+    with c_head1:
+        st.markdown(f"<h3 style='font-weight:800; margin-top:10px;'>🛒 Giỏ Hàng Dùng Chung ({len(cart)} Kênh)</h3>", unsafe_allow_html=True)
+    with c_head2:
+        with st.expander("📁 Quản Lý Chiến Dịch", expanded=False):
+            camps = load_campaigns() or {}
+            camp_names = ["-- Chọn chiến dịch đã lưu --"] + list(camps.keys())
+            sel_camp = st.selectbox("Chiến dịch:", options=camp_names, key=f"sel_camp_{key_suffix}")
+            if sel_camp != "-- Chọn chiến dịch đã lưu --":
+                if st.button("📥 Tải chiến dịch này vào Giỏ", key=f"btn_load_camp_{key_suffix}", use_container_width=True):
+                    st.session_state['cart'] = camps[sel_camp]
+                    st.toast(f"🎉 Đã tải chiến dịch '{sel_camp}' vào Giỏ hàng!")
+                    st.rerun()
+            
+            new_camp_name = st.text_input("Tên chiến dịch mới:", key=f"txt_camp_name_{key_suffix}")
+            if st.button("💾 Lưu Giỏ Thành Chiến Dịch Mới", key=f"btn_save_camp_{key_suffix}", use_container_width=True):
+                if new_camp_name.strip():
+                    camps[new_camp_name.strip()] = dict(cart)
+                    save_campaigns(camps)
+                    st.toast(f"🎉 Đã lưu chiến dịch '{new_camp_name.strip()}'!")
+                    st.rerun()
+
+    # Tạo DataFrame hiển thị bảng Giỏ hàng
+    cart_rows = []
+    for p_id, item in cart.items():
+        h = item.get("Handle", f"@{p_id}")
+        name = item.get("Tên Kênh", p_id.upper())
+        link = get_channel_link(p_id)
+        db_st = item.get("Trạng Thái DB", "✅ KÊNH MỚI")
+        tag = item.get("Tag", "📌 Chưa phân loại")
+        soc = item.get("Socials", {})
+        soc_str = str(soc) if isinstance(soc, dict) else str(soc)
+        v_link = f"{link}/videos" if link else ""
+        
+        cart_rows.append({
+            "Handle": h,
+            "Tên Kênh": name,
+            "Trang Chủ": link,
+            "Trạng Thái DB": db_st,
+            "Nhãn Trạng Thái": tag,
+            "Socials": soc_str,
+            "Tab Videos": v_link
+        })
+
+    df_cart = pd.DataFrame(cart_rows)
+    df_cart.index = range(1, len(df_cart) + 1)
+    
+    st.dataframe(
+        df_cart, 
+        use_container_width=True,
+        column_config={
+            "Trang Chủ": st.column_config.LinkColumn("Trang Chủ", display_text="🏠 Kênh"),
+            "Tab Videos": st.column_config.LinkColumn("Tab Videos", display_text="🎬 Videos")
+        }
+    )
+
+    # Thanh công cụ thao tác Giỏ hàng
+    with st.expander("🚀 Đẩy Dữ Liệu & Xuất File (Google Sheets / Excel / Audit ZIP)", expanded=True):
+        col_b1, col_b2, col_b3, col_b4, col_b5 = st.columns([1.3, 1.3, 2.2, 2.2, 1.4])
+        
+        # 1. Tải TXT
+        with col_b1:
+            handles_txt = "\n".join([item.get("Handle", f"@{p_id}") for p_id, item in cart.items()])
+            st.download_button(
+                "📄 Tải TXT",
+                data=handles_txt,
+                file_name=f"danh_sach_handles_{datetime.datetime.now().strftime('%d-%m-%Y')}.txt",
+                mime="text/plain",
+                use_container_width=True,
+                key=f"btn_dl_txt_{key_suffix}"
+            )
+            
+        # 2. Tải Excel
+        with col_b2:
+            excel_buf = io.BytesIO()
+            with pd.ExcelWriter(excel_buf, engine='openpyxl') as writer:
+                df_cart.to_excel(writer, index=False, sheet_name="GioHang")
+            st.download_button(
+                "📊 Tải Excel",
+                data=excel_buf.getvalue(),
+                file_name=f"gio_hang_kenh_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key=f"btn_dl_excel_{key_suffix}"
+            )
+
+        # 3. NÚT MỚI: Lọc bỏ kênh đã có trong DB
+        with col_b3:
+            if st.button("🧹 Lọc Bỏ Kênh Trùng DB", key=f"btn_filter_db_dup_{key_suffix}", use_container_width=True, type="secondary"):
+                db_items_now = fetch_all_channel_handles()
+                db_handles_now = {to_pure_id(r["handle"]).lower() for r in db_items_now if to_pure_id(r.get("handle"))}
+                db_names_now = {str(r.get("youtuber_name")).strip().lower() for r in db_items_now if r.get("youtuber_name")}
+                
+                removed_cnt = 0
+                cart_keys = list(st.session_state['cart'].keys())
+                for p_id in cart_keys:
+                    item_data = st.session_state['cart'].get(p_id, {})
+                    p_id_clean = to_pure_id(p_id) or p_id.lower()
+                    c_title = (item_data.get("Tên Kênh") or item_data.get("youtuber_name") or "").strip().lower()
+                    
+                    if p_id_clean in db_handles_now or c_title in db_names_now:
+                        del st.session_state['cart'][p_id]
+                        remove_from_cart_db(p_id)
+                        removed_cnt += 1
+                        
+                if removed_cnt > 0:
+                    st.toast(f"🎉 Đã lọc và loại bỏ {removed_cnt} kênh trùng trong Database khỏi Giỏ hàng!")
+                else:
+                    st.toast("ℹ️ Không tìm thấy kênh nào trùng với Database trong Giỏ hàng!")
+                st.rerun()
+
+        # 4. Nạp DB & Tạo Audit
+        with col_b4:
+            if st.button("⚡ NẠP DB & TẠO BÁO CÁO AUDIT", type="primary", use_container_width=True, key=f"btn_nap_db_audit_{key_suffix}"):
+                db_rows = []
+                for p_id, item in cart.items():
+                    db_rows.append({
+                        "handle": p_id,
+                        "youtuber_name": item.get("Tên Kênh", p_id.upper()),
+                        "source": "Giỏ hàng dùng chung"
+                    })
+                if db_rows:
+                    try:
+                        supabase.table("channels").upsert(db_rows, on_conflict="handle").execute()
+                        st.toast(f"🎉 Đã nạp thành công {len(db_rows)} kênh vào Database CRM!")
+                        st.session_state['new_db_channels_notify'] = f"🎉 Vừa nạp thành công {len(db_rows)} kênh từ Giỏ hàng vào Database CRM!"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Lỗi nạp DB: {e}")
+
+        # 5. Xóa Giỏ hàng
+        with col_b5:
+            if st.button("🗑️ XÓA GIỎ HÀNG", use_container_width=True, key="btn_clear_cart_" + key_suffix):
+                st.session_state['cart'].clear()
+                clear_cart_db()
+                st.toast("🗑️ Đã xóa sạch toàn bộ Giỏ hàng!")
+                st.rerun()
+
+        st.markdown("---")
+        col_gs1, col_gs2 = st.columns([7, 3])
+        with col_gs1:
+            gs_url = st.text_input("📌 Dán Google Apps Script Webhook URL (Để đồng bộ lên Sheets):", key=f"txt_gs_url_{key_suffix}")
+        with col_gs2:
+            st.write("")
+            st.write("")
+            if st.button("🚀 PUSH TO GOOGLE SHEETS", type="primary", use_container_width=True, key=f"btn_push_gs_{key_suffix}"):
+                if gs_url.strip():
+                    try:
+                        push_payload = [
+                            {
+                                "handle": item.get("Handle", f"@{p_id}"),
+                                "youtuber_name": item.get("Tên Kênh", p_id.upper()),
+                                "channel_link": get_channel_link(p_id),
+                                "status": item.get("Trạng Thái DB", "✅ KÊNH MỚI"),
+                                "tag": item.get("Tag", "📌 Chưa phân loại")
+                            }
+                            for p_id, item in cart.items()
+                        ]
+                        resp = requests.post(gs_url.strip(), json=push_payload, timeout=10)
+                        if resp.status_code == 200:
+                            st.toast("🚀 Đã đẩy dữ liệu giỏ hàng lên Google Sheets thành công!")
+                        else:
+                            st.error(f"Lỗi HTTP: {resp.status_code}")
+                    except Exception as e:
+                        st.error(f"Lỗi gửi dữ liệu: {e}")
+                else:
+                    st.warning("⚠️ Vui lòng nhập Google Apps Script Webhook URL!")
 
 set_api_keys(st.session_state['global_api_keys'])
 
