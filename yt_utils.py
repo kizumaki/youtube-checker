@@ -92,7 +92,6 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
     if not api_keys: api_keys = [DEFAULT_API_KEY]
     if exhausted_keys is None: exhausted_keys = set()
     
-    # Filter out keys that are known to be exhausted
     valid_keys = [k for k in api_keys if k not in exhausted_keys]
     if not valid_keys:
         valid_keys = list(api_keys)
@@ -109,7 +108,6 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
             status_code = e.resp.status if hasattr(e, 'resp') else 0
             err_content = str(e.content).lower() if hasattr(e, 'content') else str(e).lower()
             
-            # Phân biệt chính xác lỗi hết Quota / Key hỏng thực sự (403, 429)
             is_quota_or_key_err = (status_code in [403, 429]) or ("quota" in err_content) or ("key" in err_content and "not valid" in err_content)
             
             if is_quota_or_key_err:
@@ -118,7 +116,6 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
                 last_err = e
                 continue
             else:
-                # Lỗi tham số / không tìm thấy (400, 404): Giữ nguyên Key sống, trả kết quả rỗng
                 return {"items": []}, key, 0, key_logs
         except Exception as e:
             last_err = e
