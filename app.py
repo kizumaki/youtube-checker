@@ -117,6 +117,7 @@ def format_page_range(page_num, items_per_page, total_items):
     return f"{start_item:,} - {end_item:,} / {total_items:,}"
 
 
+
 def fetch_all_channels():
     all_data = []
     step = 1000
@@ -172,7 +173,6 @@ def fetch_all_channel_handles():
                     start += step
                 except Exception: break
     return all_data
-
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
     p_raw = str(pure_handle).strip()
@@ -214,7 +214,6 @@ def delete_channel_from_system(pure_handle):
     for key in list(st.session_state.keys()):
         if key.startswith('crm_cache_') or key == 'tab5_crm_cache':
             st.session_state.pop(key, None)
-
 def set_api_keys(key_string):
     keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
     st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
@@ -263,7 +262,7 @@ with st.sidebar:
         found_logo = next((p for p in ["logo.png", "logo_2.png", "logo.jpg"] if os.path.exists(p)), None)
         if found_logo: st.image(found_logo, use_container_width=True)
         else:
-            st.markdown("""
+            st.markdown('''
             <div style="text-align: center; padding: 10px 0;">
                 <svg width="65" height="65" viewBox="0 0 100 100" fill="none">
                     <rect x="10" y="45" width="8" height="10" rx="2" fill="#D95F26"/>
@@ -274,13 +273,13 @@ with st.sidebar:
                     <rect x="70" y="35" width="8" height="30" rx="2" fill="#D95F26"/>
                     <rect x="82" y="42" width="8" height="16" rx="2" fill="#D95F26"/>
                 </svg>
-            </div>""", unsafe_allow_html=True)
+            </div>''', unsafe_allow_html=True)
             
-    st.markdown("""
+    st.markdown('''
         <div style="text-align: center; padding-bottom: 8px;">
             <h2 style="margin: 0 0 4px 0; font-weight: 800; font-size: 1.15rem;">YT CHECKER PRO</h2>
             <span class="badge-pro badge-ocean">Supabase Live</span>
-        </div>""", unsafe_allow_html=True)
+        </div>''', unsafe_allow_html=True)
     st.selectbox("🎨 Giao diện App:", options=["Studio Peach (Sáng)", "Studio Espresso (Tối)"], key="app_theme")
     st.divider()
 
@@ -296,14 +295,14 @@ with st.sidebar:
         elif pct < 90: color, status_label = "#F59E0B", f"🟡 {used:,}/10,000"
         else: color, status_label = "#EF4444", f"🔴 {used:,}/10,000" if k_stat_type != "DEAD" else "💀 Key Chết"
 
-        st.markdown(f"""
+        st.markdown(f'''
             <div style='margin-bottom: 8px;'>
                 <div style='font-size: 0.75rem; color: #6B7280; font-weight: 700;'>🔑 {k[:10]}...</div>
                 <div style='background-color: #E5E7EB; border-radius: 4px; height: 6px; width: 100%; margin-top: 4px;'>
                     <div style='background-color: {color}; width: {pct}%; height: 100%; border-radius: 4px;'></div>
                 </div>
                 <div style='font-size: 0.65rem; color: #9CA3AF; text-align: right; margin-top: 2px;'>{status_label}</div>
-            </div>""", unsafe_allow_html=True)
+            </div>''', unsafe_allow_html=True)
 
     if st.button("🧪 Kiểm Tra Sức Khỏe Keys", use_container_width=True, key="btn_test_keys"):
         with st.spinner("Đang kiểm tra thực tế..."): test_all_api_keys(); st.rerun()
@@ -328,11 +327,11 @@ with st.sidebar:
         st.rerun()
 
 # --- APP HEADER ---
-st.markdown("""
+st.markdown('''
     <div style="padding: 5px 0 15px 0;">
         <h1 style="font-weight: 900; margin-bottom: 5px; font-size: 2.4rem;">YT CHECKER <span style="color: #D95F26;">PRO</span></h1>
         <p style="font-size: 1.05rem; font-weight: 500; opacity: 0.8;">Hệ thống phân tích, tìm kiếm kênh đồng ngách Đa Luồng Siêu Tốc & Quản lý Chiến Dịch.</p>
-    </div>""", unsafe_allow_html=True)
+    </div>''', unsafe_allow_html=True)
 
 # TABS
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -605,6 +604,7 @@ with tab2:
                     except Exception: pass
 
             prog_t2.empty(); stat_t2.empty()
+            # Bỏ tự động lưu DB theo yêu cầu - Chỉ lưu danh sách vào session state để người dùng chủ động bấm Nạp vào DB!
             st.session_state['tab2_audit_output'] = {
                 "results": audit_results_t2, 
                 "count": len(audit_results_t2), 
@@ -620,6 +620,7 @@ with tab2:
         db_list_t2 = out_data.get("db_list", [])
         st.divider()
 
+        # Thêm Nút chủ động Nạp kênh vào Database
         if db_list_t2:
             st.markdown("#### 💾 Quản lý Đồng Bộ Database:")
             col_save1, col_save2 = st.columns([3, 7])
@@ -735,6 +736,157 @@ with tab3:
             (f"✅ ĐẠT CHUẨN (>{min_subs_choice:,} SUBS & >10MIN)", f"{len(passed_list)}", "#10B981"),
             ("❌ BỊ LOẠI", f"{len(rejected_list)}", "#EF4444")
         ], card_bg, border_color)
+
+        res_t3_1, res_t3_2 = st.tabs([
+            f"✅ Kênh Đạt Chuẩn ({len(passed_list)})", 
+            f"🚫 Kênh Bị Loại ({len(rejected_list)})"
+        ])
+
+        with res_t3_1:
+            if passed_list:
+                cart_keys = set(st.session_state['cart'].keys())
+                selected_set = st.session_state['selected_channels']
+                selected_not_in_cart = [p for p in selected_set if p not in cart_keys]
+                cnt_for_cart, cnt_total_sel = len(selected_not_in_cart), len(selected_set)
+
+                with st.container(border=True):
+                    st.markdown('<div class="action-bar-marker"></div>', unsafe_allow_html=True)
+                    tb1, tb2, tb3, tb4, tb5, tb6 = st.columns([1.8, 1.8, 1.5, 1.5, 1.5, 1.5])
+                    with tb1:
+                        if st.button(f"🛒 Thêm Giỏ ({cnt_for_cart})", key="btn_add_sel_t3", use_container_width=True):
+                            if cnt_for_cart > 0:
+                                items_to_add = []
+                                for item in passed_list:
+                                    p_id = to_pure_id(item["Handle"])
+                                    if p_id in selected_not_in_cart:
+                                        item_data = {"Handle": item["Handle"], "Tên Kênh": item.get("Tên Kênh", p_id.upper()), "Link Kênh": get_channel_link(p_id), "Trạng Thái DB": "✅ KÊNH MỚI", "Tag": "📌 Chưa phân loại", "Socials": item.get("Socials", {})}
+                                        st.session_state['cart'][p_id] = item_data
+                                        items_to_add.append((p_id, item_data))
+                                add_batch_to_cart_db(items_to_add); st.toast(f"🎉 Đã thêm {len(items_to_add)} kênh mới vào giỏ!"); st.rerun()
+                            else: st.warning("Vui lòng chọn kênh chưa có trong giỏ!")
+                    with tb2:
+                        if st.button(f"💾 Lưu DB ({cnt_total_sel})", key="btn_save_db_sel_t3", use_container_width=True):
+                            if cnt_total_sel > 0:
+                                data_db, saved_ids = [], set()
+                                for item in passed_list:
+                                    p_id = to_pure_id(item["Handle"])
+                                    if p_id in selected_set:
+                                        data_db.append({"handle": p_id, "youtuber_name": item.get("Tên Kênh", p_id.upper()), "source": "Săn kênh tương tự"})
+                                        saved_ids.add(p_id)
+                                if data_db:
+                                    supabase.table("channels").upsert(data_db, on_conflict="handle").execute()
+                                    st.session_state['new_db_channels_notify'] = f"🎉 Vừa lưu thành công {len(data_db)} kênh mới vào Database!"
+                                    st.session_state['passed_channels'] = [item for item in passed_list if to_pure_id(item["Handle"]) not in saved_ids]
+                                    st.session_state['selected_channels'].difference_update(saved_ids)
+                                    st.toast(f"🎉 Đã lưu thành công {len(data_db)} kênh!"); st.rerun()
+                            else: st.warning("Vui lòng chọn ít nhất 1 kênh!")
+                    with tb3:
+                        if st.button(f"⚖️ So sánh ({cnt_total_sel})", key="btn_cmp_sel_t3", use_container_width=True):
+                            if 1 < cnt_total_sel <= 5: compare_channels_dialog(get_selected_channel_data())
+                            else: st.warning("Vui lòng chọn 2-5 kênh để so sánh!")
+                    with tb4:
+                        if st.button(f"🗑️ Xóa ({cnt_total_sel})", key="btn_del_sel_t3", use_container_width=True):
+                            if cnt_total_sel > 0:
+                                for p_id in list(selected_set): delete_channel_from_system(p_id)
+                                st.session_state['selected_channels'].clear(); st.toast(f"🗑️ Đã xóa {cnt_total_sel} kênh!"); st.rerun()
+                            else: st.warning("Vui lòng chọn ít nhất 1 kênh!")
+                    with tb5: st.button("✅ Chọn Tất Cả", key="btn_sel_all_t3_pass", on_click=cb_select_all, args=(passed_list,), use_container_width=True)
+                    with tb6: st.button("❌ Bỏ Chọn", key="btn_clear_sel_t3_pass", on_click=cb_clear_all, use_container_width=True)
+
+                items_per_page = 20
+                if 'p_state_t3_pass' not in st.session_state: st.session_state['p_state_t3_pass'] = 1
+                total_pages = max(1, (len(passed_list) + items_per_page - 1) // items_per_page)
+                page_pass = st.session_state['p_state_t3_pass']
+                start_idx = (page_pass - 1) * items_per_page
+                paged_pass = passed_list[start_idx:start_idx + items_per_page]
+
+                col_p1, col_p2 = st.columns([2, 8])
+                with col_p1:
+                    st.number_input("Trang:", min_value=1, max_value=total_pages, step=1, key="page_t3_pass_top", on_change=sync_pagination_top, args=("page_t3_pass_top", "page_t3_pass_bottom", "p_state_t3_pass"))
+                with col_p2:
+                    st.write(""); st.markdown(f"📄 **Trang {int(page_pass)} / {total_pages}** *(Hiển thị {format_page_range(int(page_pass), items_per_page, len(passed_list))} kênh)*")
+
+                for idx, item in enumerate(paged_pass):
+                    p_id = to_pure_id(item["Handle"]); is_active = (p_id == st.session_state.get('active_inspected_handle')); is_in_cart = p_id in st.session_state['cart']
+                    stt_num = start_idx + idx + 1
+                    
+                    with st.container(border=True):
+                        if is_active: st.markdown('<div class="active-card-marker"></div><div class="active-banner-tag">🔍 ĐANG XEM 6 VIDEO MỚI</div>', unsafe_allow_html=True)
+                        elif is_in_cart: st.markdown('<div class="in-cart-marker"></div><div class="in-cart-banner-tag">🛒 ĐÃ CÓ TRONG GIỎ HÀNG</div>', unsafe_allow_html=True)
+
+                        c0, c1, c2, c3 = st.columns([0.4, 3.1, 3.5, 3.0])
+                        with c0: st.checkbox("", key=f"chk_t3_{p_id}_{st.session_state['chk_counter']}", value=(p_id in st.session_state['selected_channels']), on_change=toggle_select_channel, args=(p_id,))
+                        with c1:
+                            st.markdown(f"<h3 style='margin:0;'><span class='badge-stt'>#{stt_num}</span><a href='{item['Link Kênh']}' style='color:#D95F26;'>{item['Handle']}</a></h3>", unsafe_allow_html=True)
+                            st.write(f"**{item.get('Tên Kênh', p_id.upper())}**")
+                            c1_1, c1_2 = st.columns(2)
+                            if c1_1.button("👁️ Xem Video", key=f"btn_prev_t3_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)): show_video_dialog(p_id)
+                            if c1_2.button("📩 Soạn Mail", key=f"btn_mail_pass_t3_{p_id}"): show_ai_email_dialog(item)
+                        with c2:
+                            st.write(f"👥 **Subs:** `{item.get('Subscribers', 'N/A')}` | 🌍 **Q.Gia:** `{item.get('Quốc gia', 'N/A')}`")
+                            st.markdown(render_social_badges_html(item.get("Socials", {})), unsafe_allow_html=True)
+                        with c3:
+                            bc1, bc2 = st.columns(2)
+                            if is_in_cart:
+                                if bc1.button("❌ Bỏ Giỏ", key=f"rm_t3_{p_id}", use_container_width=True): remove_from_cart_db(p_id); del st.session_state['cart'][p_id]; st.rerun()
+                            else:
+                                if bc1.button("🛒 Giỏ", key=f"add_t3_{p_id}", use_container_width=True):
+                                    item_data = {"Handle": item["Handle"], "Tên Kênh": item.get("Tên Kênh", p_id.upper()), "Link Kênh": get_channel_link(p_id), "Trạng Thái DB": "✅ KÊNH MỚI", "Tag": "📌 Chưa phân loại", "Socials": item.get("Socials", {})}
+                                    st.session_state['cart'][p_id] = item_data; add_to_cart_db(p_id, item_data); st.rerun()
+                            if bc2.button("🗑️ Xóa", key=f"del_t3_{p_id}", use_container_width=True): delete_channel_from_system(p_id); st.toast(f"🗑️ Đã xóa kênh @{p_id}!"); st.rerun()
+
+        with res_t3_2:
+            if rejected_list:
+                st.caption("📋 Bảng chi tiết lý do từng kênh bị gạt bỏ. Bạn có thể bấm '🔄 Phục Hồi' để chuyển kênh sang danh sách Đạt Chuẩn:")
+                for idx, item in enumerate(list(rejected_list)):
+                    p_id = to_pure_id(item.get("Handle", ""))
+                    with st.container(border=True):
+                        rc1, rc2, rc3 = st.columns([5, 3.5, 1.5])
+                        with rc1:
+                            st.markdown(f"### #{idx+1} <a href='{get_channel_link(p_id)}' style='color:#EF4444;'>{item.get('Handle')}</a>", unsafe_allow_html=True)
+                            st.write(f"**Tên Kênh:** {item.get('Tên Kênh', p_id.upper() if p_id else 'N/A')}")
+                            if item.get('Subscribers'):
+                                st.write(f"👥 **Subs:** `{item.get('Subscribers')}`")
+                        with rc2:
+                            reason = item.get('Lý do loại') or item.get('Trạng thái') or 'Không đạt tiêu chí lọc'
+                            st.markdown(f"<div style='background-color:#FEE2E2; border:1px solid #EF4444; padding:10px; border-radius:8px;'><span style='color:#B91C1C; font-weight:800; font-size:0.85rem;'>🔴 LÝ DO LOẠI:</span><br><span style='color:#991B1B; font-weight:700; font-size:0.85rem;'>{reason}</span></div>", unsafe_allow_html=True)
+                        with rc3:
+                            st.write("")
+                            if st.button("🔄 Phục Hồi", key=f"btn_restore_t3_rej_{idx}_{p_id}", use_container_width=True):
+                                st.session_state['rejected_channels'] = [r for r in st.session_state['rejected_channels'] if to_pure_id(r.get("Handle")) != p_id]
+                                restored_item = dict(item)
+                                restored_item["Trạng thái"] = "✅ Đã Phục Hồi Thủ Công"
+                                restored_item["Link Kênh"] = get_channel_link(p_id)
+                                if 'passed_channels' not in st.session_state:
+                                    st.session_state['passed_channels'] = []
+                                st.session_state['passed_channels'].append(restored_item)
+                                st.toast(f"🎉 Đã phục hồi kênh @{p_id} sang danh sách Đạt Chuẩn!")
+                                st.rerun()
+                            
+                            if st.button("🛒 Phục Hồi & Vào Giỏ", key=f"btn_restore_t3_cart_{idx}_{p_id}", use_container_width=True):
+                                st.session_state['rejected_channels'] = [r for r in st.session_state['rejected_channels'] if to_pure_id(r.get("Handle")) != p_id]
+                                restored_item = dict(item)
+                                restored_item["Trạng thái"] = "✅ Đã Phục Hồi Thủ Công"
+                                restored_item["Link Kênh"] = get_channel_link(p_id)
+                                if 'passed_channels' not in st.session_state:
+                                    st.session_state['passed_channels'] = []
+                                st.session_state['passed_channels'].append(restored_item)
+                                
+                                item_data = {
+                                    "Handle": item.get("Handle", f"@{p_id}"),
+                                    "Tên Kênh": item.get("Tên Kênh", p_id.upper()),
+                                    "Link Kênh": get_channel_link(p_id),
+                                    "Trạng Thái DB": "✅ ĐÃ PHỤC HỒI",
+                                    "Tag": "📌 Chưa phân loại",
+                                    "Socials": item.get("Socials", {})
+                                }
+                                st.session_state['cart'][p_id] = item_data
+                                add_to_cart_db(p_id, item_data)
+                                st.toast(f"🎉 Đã phục hồi & thêm kênh @{p_id} vào Giỏ hàng vĩnh viễn!")
+                                st.rerun()
+            else:
+                st.info("Không có kênh nào bị loại.")
+
 
     render_shared_cart_ui(key_suffix="tab3")
 
