@@ -32,6 +32,7 @@ from ui_components import (
 )
 from yt_utils import (
     DEFAULT_API_KEY,
+    check_is_existing,
     clean_and_extract_keywords,
     extract_channel_master_keywords,
     extract_handle_from_filename,
@@ -117,7 +118,6 @@ def format_page_range(page_num, items_per_page, total_items):
     return f"{start_item:,} - {end_item:,} / {total_items:,}"
 
 
-
 def fetch_all_channels():
     all_data = []
     step = 1000
@@ -173,6 +173,51 @@ def fetch_all_channel_handles():
                     start += step
                 except Exception: break
     return all_data
+
+def get_comprehensive_existing_set():
+    existing_set = set()
+    try:
+        db_items = fetch_all_channel_handles()
+        for r in db_items:
+            h = r.get("handle")
+            name = r.get("youtuber_name")
+            if h:
+                h_str = str(h).strip().lower()
+                existing_set.add(h_str)
+                existing_set.add(re.sub(r'^@+', '', h_str))
+                pure = to_pure_id(h)
+                if pure:
+                    existing_set.add(pure.lower())
+                    existing_set.add(f"@{pure.lower()}")
+            if name:
+                n_str = str(name).strip().lower()
+                existing_set.add(n_str)
+                existing_set.add(re.sub(r'[^a-zA-Z0-9_.-]', '', n_str))
+                pure_n = to_pure_id(name)
+                if pure_n: existing_set.add(pure_n.lower())
+    except Exception: pass
+
+    try:
+        cart = st.session_state.get('cart', {})
+        for k, v in cart.items():
+            k_str = str(k).strip().lower()
+            existing_set.add(k_str)
+            existing_set.add(re.sub(r'^@+', '', k_str))
+            pure_k = to_pure_id(k)
+            if pure_k:
+                existing_set.add(pure_k.lower())
+                existing_set.add(f"@{pure_k.lower()}")
+            if isinstance(v, dict):
+                h_v = v.get("Handle") or v.get("handle")
+                name_v = v.get("Tên Kênh") or v.get("youtuber_name")
+                if h_v:
+                    pure_hv = to_pure_id(h_v)
+                    if pure_hv: existing_set.add(pure_hv.lower())
+                if name_v: existing_set.add(str(name_v).strip().lower())
+    except Exception: pass
+
+    return existing_set
+
 def delete_channel_from_system(pure_handle):
     if not pure_handle: return
     p_raw = str(pure_handle).strip()
@@ -214,6 +259,7 @@ def delete_channel_from_system(pure_handle):
     for key in list(st.session_state.keys()):
         if key.startswith('crm_cache_') or key == 'tab5_crm_cache':
             st.session_state.pop(key, None)
+
 def set_api_keys(key_string):
     keys = [k.strip() for k in re.split(r'[\n,]+', key_string) if k.strip()]
     st.session_state['api_keys'] = keys if keys else [DEFAULT_API_KEY]
@@ -707,10 +753,7 @@ with tab3:
                             c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id']
                             candidate_handles.append(c_h.lower()); channel_items.append(item)
 
-                    db_items = fetch_all_channel_handles()
-                    db_existing_set = {to_pure_id(r["handle"]).lower() for r in db_items if to_pure_id(r.get("handle"))}
-                    cart_set = {k.lower() for k in st.session_state.get('cart', {}).keys()}
-                    db_existing_set.update(cart_set)
+                    db_existing_set = get_comprehensive_existing_set()
 
                     prog_t3 = st.progress(0); stat_t3 = st.empty(); tot_cand = len(channel_items); comp_cand = 0
                     with ThreadPoolExecutor(max_workers=8) as executor:
@@ -730,8 +773,23 @@ with tab3:
         except Exception as e: st.error(f"Lỗi: {e}")
 
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
-        passed_list = st.session_state.get('passed_channels', [])
-        rejected_list = st.session_state.get('rejected_channels', [])
+        raw_passed_list = st.session_state.get('passed_channels', [])
+        raw_rejected_list = st.session_state.get('rejected_channels', [])
+        
+        current_existing_set = get_comprehensive_existing_set()
+        passed_list = []
+        rejected_list = list(raw_rejected_list)
+        
+        for item in raw_passed_list:
+            p_id = to_pure_id(item.get("Handle"))
+            c_title = item.get("Tên Kênh", "")
+            if check_is_existing(p_id, None, item.get("Handle"), c_title, current_existing_set):
+                rej_item = dict(item)
+                rej_item["Lý do loại"] = "Kênh đã tồn tại trong Database CRM hoặc Giỏ hàng"
+                rejected_list.append(rej_item)
+            else:
+                passed_list.append(item)
+
         st.divider()
         render_kpi_cards([
             ("TỔNG ỨNG VIÊN", f"{len(passed_list) + len(rejected_list)}", "#47A5D1"),
