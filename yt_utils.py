@@ -27,6 +27,16 @@ ROW_COLORS = [
     "E37222", "41536B", "A04000", "385723", "626262"
 ]
 
+def sanitize_api_key(k):
+    if not k: return ""
+    s = str(k).strip()
+    # Tự động sửa lỗi nhầm lẫn ký tự AlzaSy (l thường) -> AIzaSy (I hoa) của Google API Key
+    if s.startswith("AlzaSy"):
+        s = "AIzaSy" + s[6:]
+    elif s.lower().startswith("aizasy"):
+        s = "AIzaSy" + s[6:]
+    return s
+
 def to_pure_id(raw_val):
     if not raw_val or pd.isna(raw_val) or str(raw_val).strip().upper() in ["N/A", "NAN", "NONE", ""]: return None
     s = str(raw_val).strip()
@@ -92,14 +102,13 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
     if not api_keys: api_keys = [DEFAULT_API_KEY]
     if exhausted_keys is None: exhausted_keys = set()
     
-    valid_keys = [k for k in api_keys if k not in exhausted_keys]
+    sanitized_keys = [sanitize_api_key(k) for k in api_keys if k]
+    valid_keys = [k for k in sanitized_keys if k not in exhausted_keys]
     if not valid_keys:
         exhausted_keys.clear()
-        valid_keys = list(api_keys)
+        valid_keys = list(sanitized_keys)
         
-    last_err = None
-    key_logs = []
-    
+    last_err, key_logs = None, []
     for key in valid_keys:
         try:
             yt = build("youtube", "v3", developerKey=key)
@@ -110,15 +119,12 @@ def yt_execute_safe(request_func, api_keys, exhausted_keys=None, cost=1):
         except HttpError as e:
             status_code = e.resp.status if hasattr(e, 'resp') else 0
             err_msg = str(e.content).lower() if hasattr(e, 'content') else str(e).lower()
-            
-            # Tự động nhảy Key khi gặp Key chết/Key hết Quota (400, 401, 403, 429)
-            if status_code in [400, 401, 403, 429] or "key" in err_msg or "quota" in err_msg or "forbidden" in err_msg:
+            if status_code in [400, 401, 403, 429] or "quota" in err_msg or "key" in err_msg:
                 exhausted_keys.add(key)
                 key_logs.append((key, "EXHAUSTED", 0))
                 last_err = e
                 continue
             else:
-                key_logs.append((key, "OK", cost))
                 return {"items": []}, key, 0, key_logs
         except Exception as e:
             last_err = e
@@ -136,8 +142,9 @@ def test_all_api_keys():
     status_map = st.session_state.get('api_status_map', {})
     exhausted_set = st.session_state.get('exhausted_keys_set', set())
     for k in keys:
+        clean_k = sanitize_api_key(k)
         try:
-            yt = build("youtube", "v3", developerKey=k)
+            yt = build("youtube", "v3", developerKey=clean_k)
             yt.channels().list(part="id", id="UC_x5XG1OV2P6uZZ5FSM9Ttw").execute()
             status_map[k] = ("OK", usage.get(k, 0))
             if k in exhausted_set: exhausted_set.remove(k)
@@ -157,16 +164,28 @@ def get_channel_id_by_handle_direct(handle, api_keys, exhausted_keys=None):
             if 'items' in res and len(res['items']) > 0:
                 return res['items'][0]['id'], key_used, cost, logs
         except Exception: pass
+        
+    # Thử lấy qua forHandle không có @
     try:
         res, key_used, cost, logs = yt_execute_safe(lambda yt: yt.channels().list(part="id", forHandle=clean.lower()), api_keys, exhausted_keys, cost=1)
         if 'items' in res and len(res['items']) > 0:
             return res['items'][0]['id'], key_used, cost, logs
     except Exception: pass
+
+    # Thử lấy qua forHandle có @
+    try:
+        res, key_used, cost, logs = yt_execute_safe(lambda yt: yt.channels().list(part="id", forHandle=f"@{clean.lower()}"), api_keys, exhausted_keys, cost=1)
+        if 'items' in res and len(res['items']) > 0:
+            return res['items'][0]['id'], key_used, cost, logs
+    except Exception: pass
+
+    # Dự phòng qua Search API
     try:
         res, key_used, cost, logs = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1), api_keys, exhausted_keys, cost=100)
         if 'items' in res and len(res['items']) > 0:
             return res['items'][0]['snippet']['channelId'], key_used, cost, logs
     except Exception: pass
+    
     return None, None, 0, []
 
 def get_channel_details_direct(channel_id, api_keys, exhausted_keys=None):
@@ -270,12 +289,14 @@ def process_single_crm_channel_meta(pure_handle, api_keys, exhausted_keys=None):
         cid, k1, c1, l1 = get_channel_id_by_handle_direct(pure_handle, api_keys, exhausted_keys)
         logs.extend(l1)
         if cid:
-            playlist_id, sub_count, desc, joined, country_name, country_code, avatar, k2, c2, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
+            playlist_id, sub_count, desc, joined, country_name, country_code, avatar, channel_title, custom_url, k2, c2, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
             logs.extend(l2)
             recent_vids = get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys)
             v_descs = " ".join([v.get('Description', '') for v in recent_vids]) if recent_vids else ""
             socials = extract_contacts_and_socials(f"{desc} {v_descs}")
-            return pure_handle, {"sub_count": sub_count, "sub_str": f"{sub_count:,}" if sub_count > 0 else "N/A", "country": country_name if country_name else "N/A", "socials": socials}, logs
+            sub_formatted = f"{sub_count:,}" if sub_count > 0 else "Chưa công khai"
+            country_formatted = country_name if country_name and country_name != 'N/A' else "Không rõ"
+            return pure_handle, {"sub_count": sub_count, "sub_str": sub_formatted, "country": country_formatted, "socials": socials}, logs
     except Exception: pass
     return pure_handle, {"sub_count": -1, "sub_str": "N/A", "country": "N/A", "socials": {}}, logs
 
