@@ -41,7 +41,6 @@ def to_pure_id(raw_val):
         val = m_url.group(1)
         if val.lower() in ['watch', 'shorts', 'feed', 'embed', 'results']: return None
         s = val
-    s = re.sub(r'[\s]+', '', s)
     s = re.sub(r'^@+', '', s).strip().lower()
 
     pattern = r'_(?:backlog|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,4})[_\-\s,.]?.*$'
@@ -70,9 +69,9 @@ def generate_candidate_handles_from_query(q):
     decoded = urllib.parse.unquote(str(q)).strip()
     cleaned_name = re.sub(r'[^\w\s.-]', '', decoded).strip()
     candidates = []
-    c1 = re.sub(r'[\s._-]+', '', cleaned_name).lower()
+    c1 = re.sub(r'\s+', '', cleaned_name).lower()
     if c1 and len(c1) >= 3: candidates.append(c1)
-    c2 = re.sub(r'[\s]+', '', cleaned_name).lower()
+    c2 = re.sub(r'\s+', '_', cleaned_name).lower()
     c2_clean = re.sub(r'[^a-zA-Z0-9_.-]', '', c2)
     if c2_clean and c2_clean not in candidates and len(c2_clean) >= 3: candidates.append(c2_clean)
     if 'official' in cleaned_name.lower():
@@ -204,7 +203,7 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
     long_vids = []
     try:
         if cid:
-            playlist_id, _, _, _, _, _, _, _, _, _ = get_channel_details_direct(cid, api_keys, exhausted_keys)[:10]
+            playlist_id, _, _, _, _, _, _, _, _, _ = get_channel_details_direct(cid, api_keys, exhausted_keys)
             if playlist_id:
                 v_res, _, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50), api_keys, exhausted_keys, cost=1)
                 v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
@@ -220,7 +219,7 @@ def extract_contacts_and_socials(text_corpus):
     if not text_corpus: return {}
     corpus = str(text_corpus)
     contacts = {}
-    emails = re.findall(r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b', corpus)
+    emails = re.findall(r' [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,} ', corpus)
     valid_emails = [e for e in emails if not any(e.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg']) and e.lower() not in ['user@domain.com', 'info@youtube.com']]
     if valid_emails: contacts['Email'] = valid_emails[0]
     
@@ -256,9 +255,8 @@ def process_single_crm_channel_meta(pure_handle, api_keys, exhausted_keys=None):
         cid, k1, c1, l1 = get_channel_id_by_handle_direct(pure_handle, api_keys, exhausted_keys)
         logs.extend(l1)
         if cid:
-            res_det = get_channel_details_direct(cid, api_keys, exhausted_keys)
-            playlist_id, sub_count, desc, joined, country_name, country_code, avatar, channel_title, custom_url = res_det[:9]
-            logs.extend(res_det[-1])
+            playlist_id, sub_count, desc, joined, country_name, country_code, avatar, k2, c2, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
+            logs.extend(l2)
             recent_vids = get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys)
             v_descs = " ".join([v.get('Description', '') for v in recent_vids]) if recent_vids else ""
             socials = extract_contacts_and_socials(f"{desc} {v_descs}")
@@ -330,13 +328,11 @@ def parse_raw_inputs_to_handles(raw_inputs_list):
         v_id = extract_video_id(s)
         if v_id: video_ids.add(v_id); continue
         
-        # Bóc tách trực tiếp Channel ID dạng UC... nếu có trong chuỗi
         uc_cids = re.findall(r'\b(UC[a-zA-Z0-9_-]{22})\b', s)
         if uc_cids:
             for cid in uc_cids: handles.add(cid)
             continue
             
-        # Bóc tách trực tiếp Handle @... nếu có trong chuỗi
         at_handles = re.findall(r'@([a-zA-Z0-9_.-]{3,})', s)
         if at_handles:
             for h in at_handles: handles.add(h.lower())
@@ -379,7 +375,7 @@ def extract_raw_inputs_from_file(uploaded_file):
     try:
         uploaded_file.seek(0); file_bytes = uploaded_file.read(); uploaded_file.seek(0)
         if fname.endswith('.txt'): raw_list = re.split(r'[\n,\t\r]+', file_bytes.decode("utf-8", errors="ignore"))
-        elif fname.endswith('.csv') or fname.endswith('.xlsx') or fname.endswith('.xls'):
+        elif fname.endswith('.csv') or fname.endswith('.xls') or fname.endswith('.xlsx'):
             df = pd.read_csv(io.BytesIO(file_bytes)) if fname.endswith('.csv') else pd.read_excel(io.BytesIO(file_bytes))
             target_cols = [col for col in df.columns if any(k in str(col).lower() for k in ['search', 'youtuber', 'handle', 'link', 'kênh'])]
             cols_to_use = target_cols if target_cols else df.columns
@@ -396,7 +392,6 @@ def extract_handle_from_filename(filename):
     base_no_ext = os.path.splitext(base)[0]
     pattern = r'_(?:backlog|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|\d{1,4})[_\-\s,.]?.*$'
     cleaned = re.sub(pattern, '', base_no_ext, flags=re.IGNORECASE)
-    cleaned = re.sub(r'[\s]+', '', cleaned)
     pure_id = re.sub(r'^@+', '', cleaned).strip().lower()
     return pure_id if pure_id else None
 
@@ -415,7 +410,7 @@ def is_within_last_90_days(date_str):
     except Exception: return False
 
 EXCLUDED_COUNTRIES = {'CN', 'TW', 'HK', 'TH', 'IN', 'VN'}
-NON_LATIN_REGEX = re.compile(r'[\u0E00-\u0E7F]|[\u4E00-\u9FFF]|[\u0900-\u097F]|[\uAC00-\uD7AF]', re.IGNORECASE)
+NON_LATIN_REGEX = re.compile(r'[฀-๿]|[一-鿿]|[ऀ-ॿ]|[가-힯]', re.IGNORECASE)
 VIETNAMESE_UNIQUE_REGEX = re.compile(r'[ơờớởỡợưừứửữựđĐăằắẳẵặảẻỉỏủỷạẹịọụỵềếểễệồốổỗộầấẩẫậ]', re.IGNORECASE)
 EXCLUDED_KEYWORDS = ['official mv', 'music video', 'official audio', 'album', 'song', 'records', 'lyrics', 'remix', 'news', 'tin tức', 'lgbt', 'lgbtq', 'war']
 
@@ -425,12 +420,12 @@ def passes_layer1_metadata_filter(title, desc, country_code):
     if NON_LATIN_REGEX.search(text): return False, "Ngôn ngữ không phù hợp"
     if VIETNAMESE_UNIQUE_REGEX.search(text): return False, "Kênh Ngôn Ngữ Tiếng Việt"
     for kw in EXCLUDED_KEYWORDS:
-        if re.search(r'\b' + re.escape(kw) + r'\b', text): return False, f"Loại nội dung cấm ({kw.upper()})"
+        if re.search(r' ' + re.escape(kw) + r' ', text): return False, f"Loại nội dung cấm ({kw.upper()})"
     return True, "OK"
 
 def clean_and_extract_keywords(text, seed_handle=""):
     seed_clean = seed_handle.replace('@', '').lower()
-    words = re.findall(r'\b[a-zA-Z0-9]{3,}\b', text.lower())
+    words = re.findall(r' [a-zA-Z0-9]{3,} ', text.lower())
     return [w for w in words if w not in {'the', 'a', 'and', 'official', 'channel', 'video'} and w not in seed_clean]
 
 def extract_channel_master_keywords(channel_id):
@@ -441,7 +436,7 @@ def extract_channel_master_keywords(channel_id):
         if 'items' in ch_res and len(ch_res['items']) > 0:
             item = ch_res['items'][0]
             raw_kw = item.get('brandingSettings', {}).get('channel', {}).get('keywords', '')
-            found = re.findall(r'"([^"]+)"|\b([a-zA-Z0-9]{3,})\b', raw_kw)
+            found = re.findall(r'"([^"]+)"| ([a-zA-Z0-9]{3,}) ', raw_kw)
             for k1, k2 in found:
                 kw = k1 or k2
                 if kw and len(kw) > 2:
@@ -472,18 +467,18 @@ def extract_channel_master_keywords(channel_id):
         "top_tags": video_tags
     }
 
-def generate_v414_excel_report(display_title, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
+def generate_v414_excel_report(clean_handle, sub_count, channel_desc, channel_joined, channel_country, avatar_url, video_data):
     wb = openpyxl.Workbook()
     
     # -------------------------------------------------------------
     # SHEET 1: Channel Summary Report
     # -------------------------------------------------------------
     ws1 = wb.active
-    ws1.title = display_title.upper()[:31]
+    ws1.title = clean_handle.upper()[:31]
     
     # Header Banner
     ws1.merge_cells('A1:E1')
-    report_title = f"{display_title.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {datetime.datetime.now().strftime('%d-%m-%Y')}"
+    report_title = f"{clean_handle.upper()} YOUTUBE CHANNEL SUMMARY REPORT - up to {datetime.datetime.now().strftime('%d-%m-%Y')}"
     ws1['A1'] = report_title
     ws1['A1'].font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
     ws1['A1'].fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
@@ -591,7 +586,7 @@ def generate_v414_excel_report(display_title, sub_count, channel_desc, channel_j
     c2.font = Font(bold=True, color="FFFFFF")
     c2.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     
-    ws2.cell(row=1, column=4, value=f"📊 Top 10 Most Viewed Videos - {display_title.upper()}").font = Font(size=14, bold=True, color="1F4E78")
+    ws2.cell(row=1, column=4, value=f"📊 Top 10 Most Viewed Videos - {clean_handle.upper()}").font = Font(size=14, bold=True, color="1F4E78")
     
     top_10 = sorted(video_data, key=lambda x: x.get('Views', 0), reverse=True)[:10]
     
@@ -655,8 +650,7 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
         if not playlist_id: return None, None, logs
 
         clean_custom = to_pure_id(custom_url) or ""
-        display_title = channel_title.strip() if channel_title and channel_title.strip() else (clean_custom if clean_custom else pure_handle)
-        filename_prefix = clean_custom if clean_custom else (re.sub(r'[^\w\s.-]', '', display_title).strip() or pure_handle)
+        display_handle = clean_custom if clean_custom else (channel_title if channel_title else pure_handle)
 
         v_ids, next_token = [], None
         for _ in range(20):
@@ -674,64 +668,69 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
         v_data, l4 = get_video_details_direct(v_ids, api_keys, exhausted_keys)
         logs.extend(l4)
         
-        excel_bytes = generate_v414_excel_report(display_title, sub_count, desc, joined, country, avatar, v_data)
-        return excel_bytes, f"{filename_prefix}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx", logs
+        excel_bytes = generate_v414_excel_report(display_handle, sub_count, desc, joined, country, avatar, v_data)
+        return excel_bytes, f"{display_handle}_{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx", logs
     except Exception: return None, None, logs
 
 def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=None):
     p_clean = p_id.lower()
     
+    # 1. Check direct input against DB map
+    if p_clean in db_existing_map:
+        db_item = db_existing_map[p_clean]
+        return "EXISTING", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": db_item.get("youtuber_name", p_id.upper()), "Trạng thái": "❌ Đã có trong DB"}, []
+    
     cid, _, _, l1 = get_channel_id_by_handle_direct(p_clean, api_keys, exhausted_keys)
     logs = list(l1)
     if not cid: return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": p_id.upper(), "Trạng thái": "❌ Không tìm thấy kênh", "Lý do loại": "Không tồn tại trên YT"}, logs
     
-    res_det = get_channel_details_direct(cid, api_keys, exhausted_keys)
-    playlist_id, sub_count, ch_desc, joined, country_name, country_code, avatar_url, ch_title, custom_url = res_det[:9]
-    logs.extend(res_det[-1])
-    
-    pure_custom = to_pure_id(custom_url) or ""
-    display_handle = f"@{pure_custom}" if pure_custom else (f"@{p_id}" if not p_id.startswith('UC') else p_id)
-    display_name = ch_title if ch_title else p_id.upper()
-    
-    # Check if channel exists in DB map (by input, cid, or custom handle)
-    is_existing = (p_clean in db_existing_map) or (cid.lower() in db_existing_map) or (pure_custom.lower() in db_existing_map if pure_custom else False)
-
-    if is_existing:
-        db_item = db_existing_map.get(p_clean) or db_existing_map.get(cid.lower()) or db_existing_map.get(pure_custom.lower(), {})
-        db_name = db_item.get("youtuber_name", "")
-        # If DB name is missing or is just a raw UC id, use real ch_title ("NBA")
-        if not db_name or db_name.upper().startswith("UC"):
-            db_name = display_name
-        return "EXISTING", {
-            "Handle": display_handle, 
-            "Tên Kênh": db_name, 
-            "Trạng thái": "❌ Đã có trong DB"
-        }, logs
+    # 2. Check Channel ID against DB map
+    cid_clean = cid.lower()
+    if cid_clean in db_existing_map:
+        db_item = db_existing_map[cid_clean]
+        return "EXISTING", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": db_item.get("youtuber_name", p_id.upper()), "Trạng thái": "❌ Đã có trong DB"}, []
 
     try:
-        recent_vids = get_6_recent_videos_direct(p_id, cid, api_keys, exhausted_keys)
-        socials = extract_contacts_and_socials(f"{ch_title} {ch_desc} " + " ".join([v.get('Description', '') for v in recent_vids]))
+        res, _, _, l2 = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,statistics", id=cid), api_keys, exhausted_keys, cost=1)
+        logs.extend(l2)
+        if res.get('items'):
+            item = res['items'][0]
+            custom_url = item['snippet'].get('customUrl', '')
+            pure_custom = to_pure_id(custom_url)
+            
+            # 3. Check Custom URL Handle against DB map
+            if pure_custom and pure_custom.lower() in db_existing_map:
+                db_item = db_existing_map[pure_custom.lower()]
+                return "EXISTING", {"Handle": f"@{pure_custom}", "Tên Kênh": db_item.get("youtuber_name", item['snippet'].get('title', p_id.upper())), "Trạng thái": "❌ Đã có trong DB"}, logs
 
-        if sub_count < 1000000:
-            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ Dưới 1 triệu Subs ({sub_count:,})", "Lý do loại": f"Dưới 1M Subs ({sub_count:,})", "Socials": socials}, logs
-        
-        passes_l1, l1_reason = passes_layer1_metadata_filter(ch_title, ch_desc, country_code)
-        if not passes_l1:
-            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ {l1_reason}", "Lý do loại": l1_reason, "Socials": socials}, logs
+            ch_title = item['snippet'].get('title', p_id.upper())
+            ch_desc = item['snippet'].get('description', '')
+            country_code = item['snippet'].get('country', 'N/A')
+            country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
+            sub_count = int(item['statistics'].get('subscriberCount', 0))
+            recent_vids = get_6_recent_videos_direct(p_id, cid, api_keys, exhausted_keys)
+            socials = extract_contacts_and_socials(f"{ch_title} {ch_desc} " + " ".join([v.get('Description', '') for v in recent_vids]))
 
-        if not recent_vids:
-            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Kênh chỉ làm Shorts / Không có video dài", "Lý do loại": "Kênh chỉ làm Shorts", "Socials": socials}, logs
+            if sub_count < 1000000:
+                return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ Dưới 1 triệu Subs ({sub_count:,})", "Lý do loại": f"Dưới 1M Subs ({sub_count:,})", "Socials": socials}, logs
+            
+            passes_l1, l1_reason = passes_layer1_metadata_filter(ch_title, ch_desc, country_code)
+            if not passes_l1:
+                return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ {l1_reason}", "Lý do loại": l1_reason, "Socials": socials}, logs
 
-        latest_date = recent_vids[0].get('Published Date', 'N/A')
-        if not is_within_last_90_days(latest_date):
-            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ Ngưng hoạt động (>90 ngày, gần nhất: {latest_date})", "Lý do loại": "Kênh ngưng hoạt động (>90 ngày)", "Socials": socials}, logs
+            if not recent_vids:
+                return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Kênh chỉ làm Shorts / Không có video dài", "Lý do loại": "Kênh chỉ làm Shorts", "Socials": socials}, logs
 
-        if not any(v.get('Seconds', 0) >= 600 for v in recent_vids):
-            return "REJECTED", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Không có video > 10 phút trong các video gần nhất", "Lý do loại": "Không có video > 10 phút", "Socials": socials}, logs
-        
-        return "NEW", {"Handle": display_handle, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Quốc gia": country_name, "Link Kênh": get_channel_link(p_id), "Trạng thái": "✅ Kênh Mới Đạt Chuẩn", "Socials": socials}, logs
+            latest_date = recent_vids[0].get('Published Date', 'N/A')
+            if not is_within_last_90_days(latest_date):
+                return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ Ngưng hoạt động (>90 ngày, gần nhất: {latest_date})", "Lý do loại": "Kênh ngưng hoạt động (>90 ngày)", "Socials": socials}, logs
+
+            if not any(v.get('Seconds', 0) >= 600 for v in recent_vids):
+                return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Không có video > 10 phút trong các video gần nhất", "Lý do loại": "Không có video > 10 phút", "Socials": socials}, logs
+            
+            return "NEW", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Quốc gia": country_name, "Link Kênh": get_channel_link(p_id), "Trạng thái": "✅ Kênh Mới Đạt Chuẩn", "Socials": socials}, logs
     except Exception: pass
-    return "REJECTED", {"Handle": display_handle, "Tên Kênh": display_name, "Trạng thái": "❌ Lỗi đọc dữ liệu API", "Lý do loại": "Lỗi API", "Socials": {}}, logs
+    return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": p_id.upper(), "Trạng thái": "❌ Lỗi đọc dữ liệu API", "Lý do loại": "Lỗi API", "Socials": {}}, logs
 
 def process_single_candidate(item, min_subs_choice, min_duration_choice, db_existing_set, api_keys, exhausted_keys=None):
     c_handle = to_pure_id(item['snippet'].get('customUrl', '')) or item['id']
@@ -767,6 +766,9 @@ def process_single_candidate(item, min_subs_choice, min_duration_choice, db_exis
         "Score": score if score > 0 else None, "Socials": socials
     }
 
+    if c_handle.lower() in db_existing_set:
+        base_data["Lý do loại"] = "Kênh đã tồn tại trong Database CRM hoặc Giỏ hàng"
+        return False, base_data
     if c_subs < min_subs_choice: base_data["Lý do loại"] = f"Dưới {min_subs_choice:,} Subs"; return False, base_data
     passes_l1, l1_reason = passes_layer1_metadata_filter(c_title, c_desc, c_country)
     if not passes_l1: base_data["Lý do loại"] = l1_reason; return False, base_data
