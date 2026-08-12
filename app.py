@@ -707,8 +707,10 @@ with tab3:
                             c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id']
                             candidate_handles.append(c_h.lower()); channel_items.append(item)
 
-                    db_res = supabase.table("channels").select("handle").in_("handle", candidate_handles).execute()
-                    db_existing_set = {r["handle"].lower() for r in db_res.data} if db_res.data else set()
+                    db_items = fetch_all_channel_handles()
+                    db_existing_set = {to_pure_id(r["handle"]).lower() for r in db_items if to_pure_id(r.get("handle"))}
+                    cart_set = {k.lower() for k in st.session_state.get('cart', {}).keys()}
+                    db_existing_set.update(cart_set)
 
                     prog_t3 = st.progress(0); stat_t3 = st.empty(); tot_cand = len(channel_items); comp_cand = 0
                     with ThreadPoolExecutor(max_workers=8) as executor:
