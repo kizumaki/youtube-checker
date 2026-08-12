@@ -55,6 +55,7 @@ from yt_utils import (
     run_single_channel_audit,
     test_all_api_keys,
     to_pure_id,
+    yt_execute_safe,
 )
 
 # Page Configuration
@@ -798,9 +799,7 @@ with tab5:
         df_all = pd.DataFrame(all_channels_data)
         if 'created_at' in df_all.columns:
             df_all['created_at_dt'] = pd.to_datetime(df_all['created_at'], errors='coerce')
-            df_all = df_all.sort_values(by='created_at_dt', ascending=False, na_position='last')
-        elif 'id' in df_all.columns:
-            df_all = df_all.sort_values(by='id', ascending=False)
+            df_all = df_all.sort_values(by='created_at_dt', ascending=False)
 
         c_top1, c_top2 = st.columns([7, 3])
         with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
