@@ -399,7 +399,7 @@ def render_shared_cart_ui(key_suffix="default"):
                 key=f"btn_dl_excel_{key_suffix}"
             )
 
-        # 3. NÚT MỚI: Lọc bỏ kênh đã có trong DB
+        # 3. Lọc bỏ kênh đã có trong DB
         with col_b3:
             if st.button("🧹 Lọc Bỏ Kênh Trùng DB", key=f"btn_filter_db_dup_{key_suffix}", use_container_width=True, type="secondary"):
                 db_items_now = fetch_all_channel_handles()
@@ -556,7 +556,8 @@ with st.sidebar:
             'passed_channels', 'rejected_channels', 'tab2_audit_output',
             'active_inspected_handle', 'last_inspected_data',
             'last_inspected_handle', 'seed_input_tab3', 'custom_kw_tab3',
-            'pending_seed_handle', 'pending_keywords', 'p_state_t1_new'
+            'pending_seed_handle', 'pending_keywords', 'p_state_t1_new',
+            'excel_bytes_map', 'tab5_zip_output'
         ]
         for k in keys_to_clear:
             st.session_state.pop(k, None)
@@ -1204,11 +1205,47 @@ with tab5:
             df_all['created_at_dt'] = pd.to_datetime(df_all['created_at'], errors='coerce')
             df_all = df_all.sort_values(by='created_at_dt', ascending=False)
 
-        c_top1, c_top2 = st.columns([7, 3])
+        c_top1, c_top2 = st.columns([6, 4])
         with c_top1: st.markdown(f"Tổng số kênh hiện có trong DB: <span style='font-weight:800; color:#D95F26;'>{len(df_all)}</span>", unsafe_allow_html=True)
         with c_top2:
-            if st.button("💣 Xóa Vĩnh Viễn Toàn Bộ DB", use_container_width=True, key="btn_trigger_wipe_db"):
-                confirm_clear_db_dialog(cb_clear_all)
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                # NÚT MỚI 1: Tải Báo Cáo Audit ZIP cho toàn bộ Kênh Đã Chọn trong DB
+                cnt_total_sel_db = len(st.session_state.get('selected_channels', set()))
+                if st.button(f"📦 Tạo Audit ZIP ({cnt_total_sel_db})", key="btn_gen_zip_db_sel", use_container_width=True, type="secondary"):
+                    if cnt_total_sel_db > 0:
+                        target_handles = list(st.session_state['selected_channels'])
+                        tot_zip = len(target_handles)
+                        prog_zip = st.progress(0); stat_zip = st.empty(); comp_zip = 0; zip_results = []
+                        active_keys_t5 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+                        exhausted_set_t5 = set(st.session_state.get('exhausted_keys_set', set()))
+
+                        with ThreadPoolExecutor(max_workers=5) as executor:
+                            futures = {executor.submit(run_single_channel_audit, p_h, active_keys_t5, exhausted_set_t5): p_h for p_h in target_handles}
+                            for future in as_completed(futures):
+                                comp_zip += 1; prog_zip.progress(comp_zip / tot_zip)
+                                stat_zip.markdown(f"⏳ **Đang cào & tạo báo cáo Audit:** `{comp_zip}/{tot_zip}` kênh...")
+                                try:
+                                    res_val = future.result()
+                                    if res_val and res_val[0] and res_val[1]:
+                                        b_bytes, f_name, _ = res_val; zip_results.append((f_name, b_bytes))
+                                except Exception: pass
+
+                        prog_zip.empty(); stat_zip.empty()
+                        if zip_results:
+                            zip_buf = io.BytesIO()
+                            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as z_file:
+                                for fname, fbytes in zip_results: z_file.writestr(fname, fbytes)
+                            st.session_state['tab5_zip_output'] = (zip_buf.getvalue(), f"Goi_Audit_DB_{datetime.datetime.now().strftime('%d-%m-%Y')}.zip")
+                            st.rerun()
+                    else: st.warning("Vui lòng tick chọn ít nhất 1 kênh trong DB!")
+            with col_b2:
+                if st.button("💣 Xóa Vĩnh Viễn DB", use_container_width=True, key="btn_trigger_wipe_db"):
+                    confirm_clear_db_dialog(cb_clear_all)
+
+        if 'tab5_zip_output' in st.session_state:
+            z_bytes, z_name = st.session_state['tab5_zip_output']
+            st.download_button(f"📦 TẢI GÓI ZIP AUDIT EXCEL DÀNH CHO {len(st.session_state.get('selected_channels', []))} KÊNH", data=z_bytes, file_name=z_name, mime="application/zip", type="primary", key="btn_dl_tab5_zip", use_container_width=True)
 
         st.divider()
         st.markdown("#### 🔍 Bộ Lọc Database Chuyên Sâu:")
@@ -1327,7 +1364,30 @@ with tab5:
                     with c1:
                         st.markdown(f"### <span class='badge-stt'>#{stt_num_db}</span><a href='{get_channel_link(p_id)}'>@{p_id}</a>", unsafe_allow_html=True)
                         st.write(f"**Tên YouTuber:** {row.get('youtuber_name', 'N/A')}")
-                        if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)): show_video_dialog(p_id)
+                        
+                        col_c1_1, col_c1_2 = st.columns(2)
+                        with col_c1_1:
+                            if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)): show_video_dialog(p_id)
+                        with col_c1_2:
+                            # NÚT MỚI 2: Tải Báo Cáo Audit Excel đơn lẻ cho từng kênh
+                            if st.button("📊 Tạo File Excel", key=f"btn_gen_audit_db_{idx}_{p_id}", use_container_width=True):
+                                with st.spinner(f"⏳ Đang cào dữ liệu & tạo Excel cho @{p_id}..."):
+                                    active_keys_single = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+                                    exhausted_set_single = set(st.session_state.get('exhausted_keys_set', set()))
+                                    b_bytes, f_name, _ = run_single_channel_audit(p_id, active_keys_single, exhausted_set_single)
+                                    if b_bytes:
+                                        if 'excel_bytes_map' not in st.session_state:
+                                            st.session_state['excel_bytes_map'] = {}
+                                        st.session_state['excel_bytes_map'][p_id] = (b_bytes, f_name)
+                                        st.toast(f"🎉 Đã tạo xong file Excel cho @{p_id}!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Không cào được dữ liệu kênh này!")
+
+                        if 'excel_bytes_map' in st.session_state and p_id in st.session_state['excel_bytes_map']:
+                            b_bytes, f_name = st.session_state['excel_bytes_map'][p_id]
+                            st.download_button("📥 Tải Excel V4.14", data=b_bytes, file_name=f_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_excel_db_{idx}_{p_id}", type="primary", use_container_width=True)
+
                     with c2:
                         st.write(f"👥 **Subs:** `{crm_meta['sub_str']}` | 🌍 **Q.Gia:** `{crm_meta['country']}`")
                         st.write(f"📁 **Nguồn:** {row.get('source', 'N/A')}" + (f" | 📅 **Cập nhật:** `{created_str}`" if created_str else ""))
