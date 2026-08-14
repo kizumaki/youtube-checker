@@ -231,7 +231,6 @@ def is_long_form_video(v, min_seconds=180):
 
 def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
     long_vids = []
-    api_success = False
     try:
         if cid:
             playlist_id, _, _, _, _, _, _, _, _, _ = get_channel_details_direct(cid, api_keys, exhausted_keys)
@@ -253,15 +252,15 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
                         cost=1
                     )
                     items = v_res.get('items', [])
-                    if items:
-                        api_success = True
-                        v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in items if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
-                        if v_ids:
-                            v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
-                            for v in v_details:
-                                if is_long_form_video(v, min_seconds=180):
-                                    long_vids.append(v)
-                                if len(long_vids) >= 6: break
+                    if not items: break
+                    
+                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in items if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
+                    if v_ids:
+                        v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
+                        for v in v_details:
+                            if is_long_form_video(v, min_seconds=180):
+                                long_vids.append(v)
+                            if len(long_vids) >= 6: break
                     
                     if len(long_vids) >= 6: break
                     next_token = v_res.get('nextPageToken')
@@ -282,8 +281,6 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
                 items_long = s_res_long.get('items', [])
                 s_vids.extend([s_item['id']['videoId'] for s_item in items_long if s_item.get('id', {}).get('videoId')])
                 
-                if items_med or items_long:
-                    api_success = True
                 if s_vids:
                     v_details_fb, _ = get_video_details_direct(list(set(s_vids)), api_keys, exhausted_keys)
                     for v in v_details_fb:
@@ -291,7 +288,7 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
                             long_vids.append(v)
                         if len(long_vids) >= 6: break
     except Exception: pass
-    return long_vids[:6], api_success
+    return long_vids[:6]
 
 def extract_contacts_and_socials(text_corpus):
     if not text_corpus: return {}
@@ -335,7 +332,7 @@ def process_single_crm_channel_meta(pure_handle, api_keys, exhausted_keys=None):
         if cid:
             playlist_id, sub_count, desc, joined, country_name, country_code, avatar, channel_title, custom_url, k2, c2, l2 = get_channel_details_direct(cid, api_keys, exhausted_keys)
             logs.extend(l2)
-            recent_vids, _ = get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys)
+            recent_vids = get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys)
             v_descs = " ".join([v.get('Description', '') for v in recent_vids]) if recent_vids else ""
             socials = extract_contacts_and_socials(f"{desc} {v_descs}")
             sub_formatted = f"{sub_count:,}" if sub_count > 0 else "Chưa công khai"
@@ -775,6 +772,7 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
 def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=None):
     p_clean = p_id.lower()
     
+    # 1. Đối soát trực tiếp với Map Database
     if p_clean in db_existing_map:
         db_item = db_existing_map[p_clean]
         return "EXISTING", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": db_item.get("youtuber_name", p_id.upper()), "Trạng thái": "❌ Đã có trong DB"}, []
@@ -805,7 +803,7 @@ def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=N
             country_code = item['snippet'].get('country', 'N/A')
             country_name = pycountry.countries.get(alpha_2=country_code).name if country_code != 'N/A' and pycountry.countries.get(alpha_2=country_code) else country_code
             sub_count = int(item['statistics'].get('subscriberCount', 0))
-            recent_vids, api_ok = get_6_recent_videos_direct(p_id, cid, api_keys, exhausted_keys)
+            recent_vids = get_6_recent_videos_direct(p_id, cid, api_keys, exhausted_keys)
             socials = extract_contacts_and_socials(f"{ch_title} {ch_desc} " + " ".join([v.get('Description', '') for v in recent_vids]))
 
             if sub_count < 1000000:
@@ -816,8 +814,6 @@ def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=N
                 return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": f"❌ {l1_reason}", "Lý do loại": l1_reason, "Socials": socials}, logs
 
             if not recent_vids:
-                if not api_ok:
-                    return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Lỗi đọc dữ liệu API video", "Lý do loại": "Lỗi API / Tải video thất bại", "Socials": socials}, logs
                 return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Trạng thái": "❌ Kênh chỉ làm Shorts / Không có video dài", "Lý do loại": "Kênh chỉ làm Shorts", "Socials": socials}, logs
 
             latest_date = recent_vids[0].get('Published Date', 'N/A')
@@ -829,7 +825,7 @@ def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=N
             
             return "NEW", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": ch_title, "Subscribers": f"{sub_count:,}", "Quốc gia": country_name, "Link Kênh": get_channel_link(p_id), "Trạng thái": "✅ Kênh Mới Đạt Chuẩn", "Socials": socials}, logs
     except Exception: pass
-    return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": p_id.upper(), "Trạng thái": "❌ Lỗi đọc dữ liệu API", "Lý do loại": "Lỗi API", "Socials": {}}, logs
+    return "REJECTED", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": p_id.upper(), "Trạng thái": "❌ Lỗi đọc dữ liệu API", "Lý do loại": "Lỗi API / Tải video thất bại", "Socials": {}}, logs
 
 def check_is_existing(c_handle, c_id, c_custom_url, c_title, db_existing_set):
     if not db_existing_set: return False
