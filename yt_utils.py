@@ -234,27 +234,58 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
     try:
         if cid:
             playlist_id, _, _, _, _, _, _, _, _, _ = get_channel_details_direct(cid, api_keys, exhausted_keys)
+            if not playlist_id and cid.startswith("UC"):
+                playlist_id = f"UU{cid[2:]}"
+                
             if playlist_id:
-                v_res, _, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50), api_keys, exhausted_keys, cost=1)
-                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', []) if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
-                if v_ids:
-                    v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
-                    for v in v_details:
-                        if is_long_form_video(v, min_seconds=180): long_vids.append(v)
-                        if len(long_vids) >= 6: break
+                next_token = None
+                # Quét phân trang sâu tới 300 video mới nhất (6 trang) để vượt qua các chuỗi đăng Shorts
+                for _ in range(6):
+                    v_res, _, _, _ = yt_execute_safe(
+                        lambda yt: yt.playlistItems().list(
+                            part="snippet", 
+                            playlistId=playlist_id, 
+                            maxResults=50, 
+                            pageToken=next_token
+                        ), 
+                        api_keys, 
+                        exhausted_keys, 
+                        cost=1
+                    )
+                    items = v_res.get('items', [])
+                    if not items: break
+                    
+                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in items if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
+                    if v_ids:
+                        v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
+                        for v in v_details:
+                            if is_long_form_video(v, min_seconds=180):
+                                long_vids.append(v)
+                            if len(long_vids) >= 6: break
+                    
+                    if len(long_vids) >= 6: break
+                    next_token = v_res.get('nextPageToken')
+                    if not next_token: break
 
-            # LỚP DỰ PHÒNG: Nếu 50 video gần nhất chỉ toàn Shorts, truy vấn trực tiếp kho video dài của kênh
+            # Lớp dự phòng 2: Nếu quét 300 video vẫn chưa đủ, dùng Search API ép lấy video dài
             if not long_vids:
-                s_res, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="medium", maxResults=10), api_keys, exhausted_keys, cost=100)
+                s_res, _, _, _ = yt_execute_safe(
+                    lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="medium", maxResults=10),
+                    api_keys, exhausted_keys, cost=100
+                )
                 s_vids = [s_item['id']['videoId'] for s_item in s_res.get('items', []) if s_item.get('id', {}).get('videoId')]
                 
-                s_res_long, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="long", maxResults=10), api_keys, exhausted_keys, cost=100)
+                s_res_long, _, _, _ = yt_execute_safe(
+                    lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="long", maxResults=10),
+                    api_keys, exhausted_keys, cost=100
+                )
                 s_vids.extend([s_item['id']['videoId'] for s_item in s_res_long.get('items', []) if s_item.get('id', {}).get('videoId')])
                 
                 if s_vids:
                     v_details_fb, _ = get_video_details_direct(list(set(s_vids)), api_keys, exhausted_keys)
                     for v in v_details_fb:
-                        if is_long_form_video(v, min_seconds=180): long_vids.append(v)
+                        if is_long_form_video(v, min_seconds=180):
+                            long_vids.append(v)
                         if len(long_vids) >= 6: break
     except Exception: pass
     return long_vids[:6]
