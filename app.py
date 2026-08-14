@@ -225,7 +225,6 @@ def delete_channel_from_system(pure_handle):
     p_raw = str(pure_handle).strip()
     p_clean = p_raw.lower()
     
-    # Execute case-insensitive and exact case deletes in Supabase DB
     try:
         supabase.table("channels").delete().ilike("handle", p_raw).execute()
         supabase.table("channels").delete().eq("handle", p_raw).execute()
@@ -237,7 +236,6 @@ def delete_channel_from_system(pure_handle):
         remove_from_cart_db(p_clean)
     except Exception: pass
 
-    # Remove from session state cart
     cart_keys_to_del = [k for k in st.session_state.get('cart', {}) if k.lower() == p_clean]
     for k in cart_keys_to_del:
         st.session_state['cart'].pop(k, None)
@@ -245,12 +243,10 @@ def delete_channel_from_system(pure_handle):
     if st.session_state.get('active_inspected_handle') in [p_clean, p_raw.lower()]:
         st.session_state['active_inspected_handle'] = None
 
-    # Remove from selected_channels set
     sel_to_remove = [s for s in st.session_state.get('selected_channels', set()) if s.lower() == p_clean]
     for s in sel_to_remove:
         st.session_state['selected_channels'].remove(s)
 
-    # Remove from temporary batch check lists
     for list_key in ['batch_check_new', 'batch_check_existing', 'batch_check_rejected', 'passed_channels', 'rejected_channels']:
         if list_key in st.session_state:
             st.session_state[list_key] = [
@@ -300,7 +296,6 @@ def render_shared_cart_ui(key_suffix="default"):
         st.info("🛒 Giỏ hàng dùng chung hiện đang trống. Bấm '🛒 Thêm' ở Tab 1 hoặc Tab 3 để nhặt kênh vào giỏ!")
         return
 
-    # Đối soát trạng thái DB thực tế của từng kênh trong giỏ
     db_items = fetch_all_channel_handles()
     db_handles_set = {to_pure_id(r["handle"]).lower() for r in db_items if to_pure_id(r.get("handle"))}
     db_names_set = {str(r.get("youtuber_name")).strip().lower() for r in db_items if r.get("youtuber_name")}
@@ -335,7 +330,6 @@ def render_shared_cart_ui(key_suffix="default"):
                     st.toast(f"🎉 Đã lưu chiến dịch '{new_camp_name.strip()}'!")
                     st.rerun()
 
-    # Tạo DataFrame hiển thị bảng Giỏ hàng
     cart_rows = []
     for p_id, item in cart.items():
         h = item.get("Handle", f"@{p_id}")
@@ -369,11 +363,9 @@ def render_shared_cart_ui(key_suffix="default"):
         }
     )
 
-    # Thanh công cụ thao tác Giỏ hàng
     with st.expander("🚀 Đẩy Dữ Liệu & Xuất File (Google Sheets / Excel / Audit ZIP)", expanded=True):
         col_b1, col_b2, col_b3, col_b4, col_b5 = st.columns([1.3, 1.3, 2.2, 2.2, 1.4])
         
-        # 1. Tải TXT
         with col_b1:
             handles_txt = "\n".join([item.get("Handle", f"@{p_id}") for p_id, item in cart.items()])
             st.download_button(
@@ -385,7 +377,6 @@ def render_shared_cart_ui(key_suffix="default"):
                 key=f"btn_dl_txt_{key_suffix}"
             )
             
-        # 2. Tải Excel
         with col_b2:
             excel_buf = io.BytesIO()
             with pd.ExcelWriter(excel_buf, engine='openpyxl') as writer:
@@ -399,7 +390,6 @@ def render_shared_cart_ui(key_suffix="default"):
                 key=f"btn_dl_excel_{key_suffix}"
             )
 
-        # 3. Lọc bỏ kênh đã có trong DB
         with col_b3:
             if st.button("🧹 Lọc Bỏ Kênh Trùng DB", key=f"btn_filter_db_dup_{key_suffix}", use_container_width=True, type="secondary"):
                 db_items_now = fetch_all_channel_handles()
@@ -424,7 +414,6 @@ def render_shared_cart_ui(key_suffix="default"):
                     st.toast("ℹ️ Không tìm thấy kênh nào trùng với Database trong Giỏ hàng!")
                 st.rerun()
 
-        # 4. Nạp DB & Tạo Audit
         with col_b4:
             if st.button("⚡ NẠP DB & TẠO BÁO CÁO AUDIT", type="primary", use_container_width=True, key=f"btn_nap_db_audit_{key_suffix}"):
                 db_rows = []
@@ -443,7 +432,6 @@ def render_shared_cart_ui(key_suffix="default"):
                     except Exception as e:
                         st.error(f"Lỗi nạp DB: {e}")
 
-        # 5. Xóa Giỏ hàng
         with col_b5:
             if st.button("🗑️ XÓA GIỎ HÀNG", use_container_width=True, key="btn_clear_cart_" + key_suffix):
                 st.session_state['cart'].clear()
@@ -600,6 +588,7 @@ with tab1:
         else:
             progress_bar = st.progress(0); status_text = st.empty()
             
+            # Cố định Map Database cố định 1 lần duy nhất từ Supabase
             db_existing_map = {}
             try:
                 db_items = fetch_all_channel_handles()
@@ -617,7 +606,7 @@ with tab1:
             active_keys_t1 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
             exhausted_set_t1 = set(st.session_state.get('exhausted_keys_set', set()))
 
-            # GIẢM XUỐNG 4 LUỒNG ĐỂ TRÁNH NGHẼN MẠNG VÀ TÁT QUOTA YOUTUBE API
+            # Chạy 4 luồng an toàn chống nghẽn API
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [executor.submit(process_tab1_single_handle, p_id, db_existing_map, active_keys_t1, exhausted_set_t1) for p_id in target_list]
                 for future in as_completed(futures):
@@ -694,7 +683,7 @@ with tab1:
                                     st.toast(f"🎉 Đã lưu thành công {len(data_db)} kênh!"); st.rerun()
                             else: st.warning("Vui lòng chọn ít nhất 1 kênh!")
                     with tb3:
-                        if st.button(f"⚖️ So sánh ({cnt_total_sel})", key="btn_cmp_sel_t1", use_container_width=True):
+                        if st.button(f"秤 So sánh ({cnt_total_sel})", key="btn_cmp_sel_t1", use_container_width=True):
                             if 1 < cnt_total_sel <= 5: compare_channels_dialog(get_selected_channel_data())
                             else: st.warning("Vui lòng chọn 2-5 kênh để so sánh!")
                     with tb4:
@@ -843,7 +832,6 @@ with tab2:
                     except Exception: pass
 
             prog_t2.empty(); stat_t2.empty()
-            # Bỏ tự động lưu DB theo yêu cầu - Chỉ lưu danh sách vào session state để người dùng chủ động bấm Nạp vào DB!
             st.session_state['tab2_audit_output'] = {
                 "results": audit_results_t2, 
                 "count": len(audit_results_t2), 
@@ -859,7 +847,6 @@ with tab2:
         db_list_t2 = out_data.get("db_list", [])
         st.divider()
 
-        # Thêm Nút chủ động Nạp kênh vào Database
         if db_list_t2:
             st.markdown("#### 💾 Quản lý Đồng Bộ Database:")
             col_save1, col_save2 = st.columns([3, 7])
