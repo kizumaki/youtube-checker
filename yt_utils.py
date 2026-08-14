@@ -232,61 +232,65 @@ def is_long_form_video(v, min_seconds=180):
 def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
     long_vids = []
     try:
+        playlist_id = None
         if cid:
-            playlist_id, _, _, _, _, _, _, _, _, _ = get_channel_details_direct(cid, api_keys, exhausted_keys)
-            if not playlist_id and cid.startswith("UC"):
+            if cid.startswith("UC") and len(cid) == 24:
                 playlist_id = f"UU{cid[2:]}"
-                
-            if playlist_id:
-                next_token = None
-                for _ in range(6):
-                    v_res, _, _, _ = yt_execute_safe(
-                        lambda yt: yt.playlistItems().list(
-                            part="snippet", 
-                            playlistId=playlist_id, 
-                            maxResults=50, 
-                            pageToken=next_token
-                        ), 
-                        api_keys, 
-                        exhausted_keys, 
-                        cost=1
-                    )
-                    items = v_res.get('items', [])
-                    if not items: break
-                    
-                    v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in items if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
-                    if v_ids:
-                        v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
-                        for v in v_details:
-                            if is_long_form_video(v, min_seconds=180):
-                                long_vids.append(v)
-                            if len(long_vids) >= 6: break
-                    
-                    if len(long_vids) >= 6: break
-                    next_token = v_res.get('nextPageToken')
-                    if not next_token: break
+            else:
+                res_det = get_channel_details_direct(cid, api_keys, exhausted_keys)
+                if res_det and res_det[0]:
+                    playlist_id = res_det[0]
 
-            if not long_vids:
-                s_res, _, _, _ = yt_execute_safe(
-                    lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="medium", maxResults=10),
-                    api_keys, exhausted_keys, cost=100
+        if playlist_id:
+            next_token = None
+            for _ in range(6):
+                v_res, _, _, _ = yt_execute_safe(
+                    lambda yt: yt.playlistItems().list(
+                        part="snippet", 
+                        playlistId=playlist_id, 
+                        maxResults=50, 
+                        pageToken=next_token
+                    ), 
+                    api_keys, 
+                    exhausted_keys, 
+                    cost=1
                 )
-                items_med = s_res.get('items', [])
-                s_vids = [s_item['id']['videoId'] for s_item in items_med if s_item.get('id', {}).get('videoId')]
+                items = v_res.get('items', [])
+                if not items: break
                 
-                s_res_long, _, _, _ = yt_execute_safe(
-                    lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="long", maxResults=10),
-                    api_keys, exhausted_keys, cost=100
-                )
-                items_long = s_res_long.get('items', [])
-                s_vids.extend([s_item['id']['videoId'] for s_item in items_long if s_item.get('id', {}).get('videoId')])
-                
-                if s_vids:
-                    v_details_fb, _ = get_video_details_direct(list(set(s_vids)), api_keys, exhausted_keys)
-                    for v in v_details_fb:
+                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in items if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
+                if v_ids:
+                    v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
+                    for v in v_details:
                         if is_long_form_video(v, min_seconds=180):
                             long_vids.append(v)
                         if len(long_vids) >= 6: break
+                
+                if len(long_vids) >= 6: break
+                next_token = v_res.get('nextPageToken')
+                if not next_token: break
+
+        if not long_vids and cid:
+            s_res, _, _, _ = yt_execute_safe(
+                lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="medium", maxResults=10),
+                api_keys, exhausted_keys, cost=100
+            )
+            items_med = s_res.get('items', [])
+            s_vids = [s_item['id']['videoId'] for s_item in items_med if s_item.get('id', {}).get('videoId')]
+            
+            s_res_long, _, _, _ = yt_execute_safe(
+                lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="long", maxResults=10),
+                api_keys, exhausted_keys, cost=100
+            )
+            items_long = s_res_long.get('items', [])
+            s_vids.extend([s_item['id']['videoId'] for s_item in items_long if s_item.get('id', {}).get('videoId')])
+            
+            if s_vids:
+                v_details_fb, _ = get_video_details_direct(list(set(s_vids)), api_keys, exhausted_keys)
+                for v in v_details_fb:
+                    if is_long_form_video(v, min_seconds=180):
+                        long_vids.append(v)
+                    if len(long_vids) >= 6: break
     except Exception: pass
     return long_vids[:6]
 
@@ -772,7 +776,6 @@ def run_single_channel_audit(pure_handle, api_keys, exhausted_keys=None):
 def process_tab1_single_handle(p_id, db_existing_map, api_keys, exhausted_keys=None):
     p_clean = p_id.lower()
     
-    # 1. Đối soát trực tiếp với Map Database
     if p_clean in db_existing_map:
         db_item = db_existing_map[p_clean]
         return "EXISTING", {"Handle": f"@{p_id}" if not p_id.startswith('UC') else p_id, "Tên Kênh": db_item.get("youtuber_name", p_id.upper()), "Trạng thái": "❌ Đã có trong DB"}, []
