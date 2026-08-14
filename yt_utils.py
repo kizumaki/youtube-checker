@@ -30,7 +30,6 @@ ROW_COLORS = [
 def sanitize_api_key(k):
     if not k: return ""
     s = str(k).strip()
-    # Tự động sửa lỗi nhầm lẫn ký tự AlzaSy (l thường) -> AIzaSy (I hoa) của Google API Key
     if s.startswith("AlzaSy"):
         s = "AIzaSy" + s[6:]
     elif s.lower().startswith("aizasy"):
@@ -165,21 +164,18 @@ def get_channel_id_by_handle_direct(handle, api_keys, exhausted_keys=None):
                 return res['items'][0]['id'], key_used, cost, logs
         except Exception: pass
         
-    # Thử lấy qua forHandle không có @
     try:
         res, key_used, cost, logs = yt_execute_safe(lambda yt: yt.channels().list(part="id", forHandle=clean.lower()), api_keys, exhausted_keys, cost=1)
         if 'items' in res and len(res['items']) > 0:
             return res['items'][0]['id'], key_used, cost, logs
     except Exception: pass
 
-    # Thử lấy qua forHandle có @
     try:
         res, key_used, cost, logs = yt_execute_safe(lambda yt: yt.channels().list(part="id", forHandle=f"@{clean.lower()}"), api_keys, exhausted_keys, cost=1)
         if 'items' in res and len(res['items']) > 0:
             return res['items'][0]['id'], key_used, cost, logs
     except Exception: pass
 
-    # Dự phòng qua Search API
     try:
         res, key_used, cost, logs = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=clean, type="channel", maxResults=1), api_keys, exhausted_keys, cost=100)
         if 'items' in res and len(res['items']) > 0:
@@ -240,10 +236,24 @@ def get_6_recent_videos_direct(pure_handle, cid, api_keys, exhausted_keys=None):
             playlist_id, _, _, _, _, _, _, _, _, _ = get_channel_details_direct(cid, api_keys, exhausted_keys)
             if playlist_id:
                 v_res, _, _, _ = yt_execute_safe(lambda yt: yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50), api_keys, exhausted_keys, cost=1)
-                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', [])]
+                v_ids = [v_item['snippet']['resourceId']['videoId'] for v_item in v_res.get('items', []) if v_item.get('snippet', {}).get('resourceId', {}).get('videoId')]
                 if v_ids:
                     v_details, _ = get_video_details_direct(v_ids, api_keys, exhausted_keys)
                     for v in v_details:
+                        if is_long_form_video(v, min_seconds=180): long_vids.append(v)
+                        if len(long_vids) >= 6: break
+
+            # LỚP DỰ PHÒNG: Nếu 50 video gần nhất chỉ toàn Shorts, truy vấn trực tiếp kho video dài của kênh
+            if not long_vids:
+                s_res, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="medium", maxResults=10), api_keys, exhausted_keys, cost=100)
+                s_vids = [s_item['id']['videoId'] for s_item in s_res.get('items', []) if s_item.get('id', {}).get('videoId')]
+                
+                s_res_long, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", channelId=cid, type="video", videoDuration="long", maxResults=10), api_keys, exhausted_keys, cost=100)
+                s_vids.extend([s_item['id']['videoId'] for s_item in s_res_long.get('items', []) if s_item.get('id', {}).get('videoId')])
+                
+                if s_vids:
+                    v_details_fb, _ = get_video_details_direct(list(set(s_vids)), api_keys, exhausted_keys)
+                    for v in v_details_fb:
                         if is_long_form_video(v, min_seconds=180): long_vids.append(v)
                         if len(long_vids) >= 6: break
     except Exception: pass
