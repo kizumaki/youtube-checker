@@ -617,7 +617,8 @@ with tab1:
             active_keys_t1 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
             exhausted_set_t1 = set(st.session_state.get('exhausted_keys_set', set()))
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            # GIẢM XUỐNG 4 LUỒNG ĐỂ TRÁNH NGHẼN MẠNG VÀ TÁT QUOTA YOUTUBE API
+            with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [executor.submit(process_tab1_single_handle, p_id, db_existing_map, active_keys_t1, exhausted_set_t1) for p_id in target_list]
                 for future in as_completed(futures):
                     try:
@@ -948,7 +949,7 @@ with tab3:
                     db_existing_set = get_comprehensive_existing_set()
 
                     prog_t3 = st.progress(0); stat_t3 = st.empty(); tot_cand = len(channel_items); comp_cand = 0
-                    with ThreadPoolExecutor(max_workers=8) as executor:
+                    with ThreadPoolExecutor(max_workers=4) as executor:
                         futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set, active_keys_t3, exhausted_set_t3) for item in channel_items]
                         for future in as_completed(futures):
                             try:
@@ -1210,7 +1211,6 @@ with tab5:
         with c_top2:
             col_b1, col_b2 = st.columns(2)
             with col_b1:
-                # NÚT MỚI 1: Tải Báo Cáo Audit ZIP cho toàn bộ Kênh Đã Chọn trong DB
                 cnt_total_sel_db = len(st.session_state.get('selected_channels', set()))
                 if st.button(f"📦 Tạo Audit ZIP ({cnt_total_sel_db})", key="btn_gen_zip_db_sel", use_container_width=True, type="secondary"):
                     if cnt_total_sel_db > 0:
@@ -1369,7 +1369,6 @@ with tab5:
                         with col_c1_1:
                             if st.button("👁️ Xem 6 Video Mới", key=f"btn_prev_db_{idx}_{p_id}", on_click=set_active_inspected_channel, args=(p_id,)): show_video_dialog(p_id)
                         with col_c1_2:
-                            # NÚT MỚI 2: Tải Báo Cáo Audit Excel đơn lẻ cho từng kênh
                             if st.button("📊 Tạo File Excel", key=f"btn_gen_audit_db_{idx}_{p_id}", use_container_width=True):
                                 with st.spinner(f"⏳ Đang cào dữ liệu & tạo Excel cho @{p_id}..."):
                                     active_keys_single = st.session_state.get('api_keys', [DEFAULT_API_KEY])
