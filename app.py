@@ -1082,7 +1082,7 @@ with tab3:
                                     st.session_state['cart'][p_id] = item_data; add_to_cart_db(p_id, item_data); st.rerun()
                             if bc2.button("🗑️ Xóa", key=f"del_t3_{p_id}", use_container_width=True): delete_channel_from_system(p_id); st.toast(f"🗑️ Đã xóa kênh @{p_id}!"); st.rerun()
 
-        with res_tab3_2:
+        with res_t3_2:
             if rejected_list:
                 st.caption("📋 Bảng chi tiết lý do từng kênh bị gạt bỏ. Bạn có thể bấm '🔄 Phục Hồi' để chuyển kênh sang danh sách Đạt Chuẩn:")
                 for idx, item in enumerate(list(rejected_list)):
