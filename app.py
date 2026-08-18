@@ -588,7 +588,6 @@ with tab1:
         else:
             progress_bar = st.progress(0); status_text = st.empty()
             
-            # Cố định Map Database cố định 1 lần duy nhất từ Supabase
             db_existing_map = {}
             try:
                 db_items = fetch_all_channel_handles()
@@ -606,7 +605,6 @@ with tab1:
             active_keys_t1 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
             exhausted_set_t1 = set(st.session_state.get('exhausted_keys_set', set()))
 
-            # Chạy 4 luồng an toàn chống nghẽn API
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [executor.submit(process_tab1_single_handle, p_id, db_existing_map, active_keys_t1, exhausted_set_t1) for p_id in target_list]
                 for future in as_completed(futures):
@@ -683,7 +681,7 @@ with tab1:
                                     st.toast(f"🎉 Đã lưu thành công {len(data_db)} kênh!"); st.rerun()
                             else: st.warning("Vui lòng chọn ít nhất 1 kênh!")
                     with tb3:
-                        if st.button(f"秤 So sánh ({cnt_total_sel})", key="btn_cmp_sel_t1", use_container_width=True):
+                        if st.button(f"⚖️ So sánh ({cnt_total_sel})", key="btn_cmp_sel_t1", use_container_width=True):
                             if 1 < cnt_total_sel <= 5: compare_channels_dialog(get_selected_channel_data())
                             else: st.warning("Vui lòng chọn 2-5 kênh để so sánh!")
                     with tb4:
@@ -886,7 +884,7 @@ with tab3:
 
     col_f1, col_f2 = st.columns([2, 1])
     with col_f1:
-        seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @NickDiGiovanni):", key="seed_input_tab3")
+        seed_channel_input = st.text_input("Nhập Handle Kênh Mồi (ví dụ: @NickDiGiovanni - CÓ THỂ ĐỂ TRỐNG NẾU ĐÃ CÓ TỪ KHÓA):", key="seed_input_tab3")
         if st.button("✨ Tự Động Phân Tích từ Kênh Mồi"):
             pure_s_auto = to_pure_id(seed_channel_input)
             if pure_s_auto:
@@ -898,59 +896,68 @@ with tab3:
                         st.session_state['custom_kw_tab3'] = ", ".join(ext['master_keywords'][:6]); st.rerun()
                 except Exception as e: st.error(f"Lỗi: {e}")
         
-        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết):", key="custom_kw_tab3")
+        custom_keywords_input = st.text_input("Từ khóa chủ đề (Tự động liên kết hoặc Dán trực tiếp):", key="custom_kw_tab3")
     with col_f2:
         min_subs_choice = st.selectbox("Mốc Subscribers Tối Thiểu:", options=[100000, 250000, 500000, 1000000], index=3, format_func=lambda x: f"{x:,} Subs")
         min_duration_choice = st.selectbox("Lọc Yêu Cầu Đồ Dài Video:", options=[600], index=0, format_func=lambda x: "Bắt buộc có Video > 10 phút")
 
     start_btn = st.button("🚀 Bắt Đầu Săn Kênh Đồng Ngách", type="primary")
 
-    if (start_btn or trigger_auto_start_search) and seed_channel_input:
-        pure_seed = to_pure_id(seed_channel_input)
-        try:
-            st.info(f"🔍 Đang kết nối API và phân tích `{pure_seed}`...")
-            active_keys_t3 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
-            exhausted_set_t3 = set(st.session_state.get('exhausted_keys_set', set()))
-            seed_id, _, _, _ = get_channel_id_by_handle_direct(pure_seed, active_keys_t3, exhausted_set_t3)
+    if (start_btn or trigger_auto_start_search):
+        if not seed_channel_input and not custom_keywords_input:
+            st.warning("⚠️ Vui lòng nhập Handle Kênh Mồi HOẶC dán Từ khóa chủ đề để bắt đầu tìm kiếm!")
+        else:
+            pure_seed = to_pure_id(seed_channel_input) if seed_channel_input else None
+            try:
+                active_keys_t3 = st.session_state.get('api_keys', [DEFAULT_API_KEY])
+                exhausted_set_t3 = set(st.session_state.get('exhausted_keys_set', set()))
+                
+                seed_id = None
+                if pure_seed:
+                    st.info(f"🔍 Đang kết nối API và phân tích `{pure_seed}`...")
+                    seed_id, _, _, _ = get_channel_id_by_handle_direct(pure_seed, active_keys_t3, exhausted_set_t3)
 
-            if not seed_id: st.error("Không tìm thấy kênh mồi này!")
-            else:
-                top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed) if custom_keywords_input else extract_channel_master_keywords(seed_id)['master_keywords'][:4]
-                st.write(f"🏷️ **Từ khóa quét:** `{', '.join(top_kw_list)}`")
-                candidate_channel_ids = set()
-                q_chan = " ".join(top_kw_list[:4])
-                c_search_res, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50), active_keys_t3, exhausted_set_t3, cost=100)
-                for c_item in c_search_res.get('items', []):
-                    if c_item['snippet']['channelId'] != seed_id: candidate_channel_ids.add(c_item['snippet']['channelId'])
-
-                candidate_ids_list = list(candidate_channel_ids)
-                if not candidate_ids_list: st.warning("Không quét được ứng viên nào!")
+                top_kw_list = clean_and_extract_keywords(custom_keywords_input, seed_handle=pure_seed or "") if custom_keywords_input else (extract_channel_master_keywords(seed_id)['master_keywords'][:4] if seed_id else [])
+                
+                if not top_kw_list:
+                    st.error("⚠️ Không tìm thấy từ khóa hợp lệ nào để quét!")
                 else:
-                    passed_channels, rejected_channels, channel_items, candidate_handles = [], [], [], []
-                    for i in range(0, len(candidate_ids_list), 50):
-                        chan_res, _, _, _ = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])), active_keys_t3, exhausted_set_t3, cost=1)
-                        for item in chan_res.get('items', []):
-                            c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id']
-                            candidate_handles.append(c_h.lower()); channel_items.append(item)
+                    st.write(f"🏷️ **Từ khóa quét:** `{', '.join(top_kw_list)}`")
+                    candidate_channel_ids = set()
+                    q_chan = " ".join(top_kw_list[:4])
+                    c_search_res, _, _, _ = yt_execute_safe(lambda yt: yt.search().list(part="snippet", q=q_chan, type="channel", maxResults=50), active_keys_t3, exhausted_set_t3, cost=100)
+                    for c_item in c_search_res.get('items', []):
+                        if not seed_id or c_item['snippet']['channelId'] != seed_id:
+                            candidate_channel_ids.add(c_item['snippet']['channelId'])
 
-                    db_existing_set = get_comprehensive_existing_set()
+                    candidate_ids_list = list(candidate_channel_ids)
+                    if not candidate_ids_list: st.warning("Không quét được ứng viên nào!")
+                    else:
+                        passed_channels, rejected_channels, channel_items, candidate_handles = [], [], [], []
+                        for i in range(0, len(candidate_ids_list), 50):
+                            chan_res, _, _, _ = yt_execute_safe(lambda yt: yt.channels().list(part="snippet,contentDetails,statistics", id=','.join(candidate_ids_list[i:i+50])), active_keys_t3, exhausted_set_t3, cost=1)
+                            for item in chan_res.get('items', []):
+                                c_h = to_pure_id(item['snippet'].get('customUrl', '')) or item['id']
+                                candidate_handles.append(c_h.lower()); channel_items.append(item)
 
-                    prog_t3 = st.progress(0); stat_t3 = st.empty(); tot_cand = len(channel_items); comp_cand = 0
-                    with ThreadPoolExecutor(max_workers=4) as executor:
-                        futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set, active_keys_t3, exhausted_set_t3) for item in channel_items]
-                        for future in as_completed(futures):
-                            try:
-                                is_pass, res_data = future.result()
-                                if is_pass: passed_channels.append(res_data)
-                                else: rejected_channels.append(res_data)
-                            except Exception: pass
-                            comp_cand += 1; prog_t3.progress(comp_cand / tot_cand)
-                            stat_t3.markdown(f"📊 **Đang phân tích siêu tốc:** `{comp_cand}/{tot_cand}` ứng viên...")
+                        db_existing_set = get_comprehensive_existing_set()
 
-                    prog_t3.empty(); stat_t3.empty()
-                    st.session_state['passed_channels'] = passed_channels
-                    st.session_state['rejected_channels'] = rejected_channels
-        except Exception as e: st.error(f"Lỗi: {e}")
+                        prog_t3 = st.progress(0); stat_t3 = st.empty(); tot_cand = len(channel_items); comp_cand = 0
+                        with ThreadPoolExecutor(max_workers=4) as executor:
+                            futures = [executor.submit(process_single_candidate, item, min_subs_choice, min_duration_choice, db_existing_set, active_keys_t3, exhausted_set_t3) for item in channel_items]
+                            for future in as_completed(futures):
+                                try:
+                                    is_pass, res_data = future.result()
+                                    if is_pass: passed_channels.append(res_data)
+                                    else: rejected_channels.append(res_data)
+                                except Exception: pass
+                                comp_cand += 1; prog_t3.progress(comp_cand / tot_cand)
+                                stat_t3.markdown(f"📊 **Đang phân tích siêu tốc:** `{comp_cand}/{tot_cand}` ứng viên...")
+
+                        prog_t3.empty(); stat_t3.empty()
+                        st.session_state['passed_channels'] = passed_channels
+                        st.session_state['rejected_channels'] = rejected_channels
+            except Exception as e: st.error(f"Lỗi: {e}")
 
     if 'passed_channels' in st.session_state or 'rejected_channels' in st.session_state:
         raw_passed_list = st.session_state.get('passed_channels', [])
@@ -1075,7 +1082,7 @@ with tab3:
                                     st.session_state['cart'][p_id] = item_data; add_to_cart_db(p_id, item_data); st.rerun()
                             if bc2.button("🗑️ Xóa", key=f"del_t3_{p_id}", use_container_width=True): delete_channel_from_system(p_id); st.toast(f"🗑️ Đã xóa kênh @{p_id}!"); st.rerun()
 
-        with res_t3_2:
+        with res_tab3_2:
             if rejected_list:
                 st.caption("📋 Bảng chi tiết lý do từng kênh bị gạt bỏ. Bạn có thể bấm '🔄 Phục Hồi' để chuyển kênh sang danh sách Đạt Chuẩn:")
                 for idx, item in enumerate(list(rejected_list)):
